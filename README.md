@@ -76,20 +76,6 @@ For details on how to contribute, branch, commit, and submit changes, see [CONTR
 
 ---
 
-# Branch Reference
-
-| Branch | Purpose |
-|---|---|
-| main | Stable project version |
-| android-development | Android Studio Java application |
-| backend-development | Python backend API |
-| ai-development | Computer vision and AI models |
-| web-development | Web application |
-| database-development | Database design and scripts |
-| documentation | Reports and documentation |
-
----
-
 # Collaborators
 
 - Carel von Ronge — GitHub: https://github.com/MeanBanana
