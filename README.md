@@ -1,6 +1,6 @@
 # Argus Shield
 
-Real-Time Computer Vision System for Suspect and Vehicle Intelligence Capture in CIT Robbery Investigations.
+Real-Time Computer Vision Application for Suspect and Vehicle Intelligence Capture in CIT Robbery Investigations.
 
 Argus Shield is a research and development project focused on creating an investigator-facing system that uses computer vision, artificial intelligence, and data management techniques to extract, store, and query suspect and vehicle intelligence from cash-in-transit robbery footage.
 
