@@ -8,7 +8,7 @@
 4. Push your branch.
 5. Open a Pull Request.
 6. Wait for review.
-7. Merge into develop/main.
+7. Merge into main branch.
 
 ## Branch Naming
 
