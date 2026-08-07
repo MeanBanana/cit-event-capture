@@ -1,253 +1,14 @@
 # Contributing Guidelines
 
-Welcome to the Argus project.
+Welcome to the Argus Shield project. This document explains how team members should contribute to the GitHub repository — branching, committing, reviewing, and merging. Following this workflow keeps the project organised and prevents conflicts.
 
-This document explains how team members should contribute to the GitHub repository. The goal is to keep the project organised, prevent conflicts, and ensure everyone follows the same development process.
-
----
-
-# Project Structure
-
-The Argus project contains multiple components. Each component has its own folder where related files should be stored.
-
-```text
-Argus/
-│
-├── android-app/     # Android Studio application (Java)
-├── backend/         # Python backend/API/server
-├── web-app/         # Website frontend (HTML, CSS, JavaScript, PHP)
-├── database/        # Database scripts and documentation
-├── ai/              # Computer vision and AI components
-├── docs/            # Project documentation
-└── testing/         # Testing files and reports
-```
-
-Team members should only add or modify files inside the folder related to their assigned task.
-
-If you are unsure where a file belongs, communicate with the team before adding it.
+For an overview of the project and folder structure, see [README.md](./README.md).
 
 ---
 
-# Branch Rules
+# Git Workflow Overview
 
-The `main` branch is the stable version of the project.
-
-Team members must not directly commit or push changes to `main`.
-
-Each member should create their own branch before starting work.
-
-Create a branch:
-
-```bash
-git checkout -b branch-name
 ```
-
-Examples:
-
-```bash
-git checkout -b backend-login
-git checkout -b android-camera
-git checkout -b web-dashboard
-git checkout -b database-setup
-```
-
-Branch names should describe the work being completed.
-
----
-
-# How Files Are Added to GitHub
-
-GitHub does not decide where files should be placed.
-
-The location of a file is determined by where the file is created or edited on your computer.
-
-For example, if you create:
-
-```text
-backend/api/login.py
-```
-
-Git records the location of the file.
-
-After pushing to GitHub, the file will appear as:
-
-```text
-Repository
-└── backend
-    └── api
-        └── login.py
-```
-
-The folder structure on your computer determines where the file appears on GitHub.
-
----
-
-# Adding and Uploading Changes
-
-Follow this process when adding new work to the repository.
-
-## 1. Check Your Branch
-
-Before making changes, confirm that you are working on the correct branch.
-
-```bash
-git branch
-```
-
-Example:
-
-```text
-* backend-login
-  main
-```
-
-The branch with the `*` is your current branch.
-
----
-
-## 2. Make Your Changes
-
-Create or edit files inside the correct folder.
-
-Examples:
-
-Backend:
-
-```text
-backend/routes/login.py
-```
-
-Android:
-
-```text
-android/app/src/MainActivity.java
-```
-
-Web:
-
-```text
-web/dashboard/index.php
-```
-
-Database:
-
-```text
-database/schema.sql
-```
-
-AI:
-
-```text
-ai/detection.py
-```
-
----
-
-## 3. Check Your Changes
-
-Before committing, check which files have been changed.
-
-```bash
-git status
-```
-
-Make sure the listed files are the files you intended to modify.
-
----
-
-## 4. Add Your Changes
-
-To add one specific file:
-
-```bash
-git add filename
-```
-
-Example:
-
-```bash
-git add backend/routes/login.py
-```
-
-To add all changes:
-
-```bash
-git add .
-```
-
-Only add files related to your task.
-
----
-
-## 5. Commit Your Changes
-
-Create a commit with a clear message describing what was changed.
-
-Format:
-
-```bash
-git commit -m "Description of change"
-```
-
-Examples:
-
-Good:
-
-```bash
-git commit -m "Added user authentication API"
-```
-
-```bash
-git commit -m "Created Android camera activity"
-```
-
-```bash
-git commit -m "Updated database structure"
-```
-
-Bad:
-
-```bash
-git commit -m "Changes"
-```
-
-```bash
-git commit -m "Update"
-```
-
-```bash
-git commit -m "Fixed stuff"
-```
-
-Commit messages should explain the purpose of the change.
-
----
-
-## 6. Push Your Changes
-
-Upload your branch to GitHub.
-
-```bash
-git push origin branch-name
-```
-
-Example:
-
-```bash
-git push origin backend-login
-```
-
-Your changes will now appear on GitHub under your branch.
-
----
-
-# Pull Request Process
-
-All changes must go through a Pull Request before being merged into `main`.
-
-The workflow is:
-
-```text
 Create Branch
       |
       v
@@ -269,12 +30,121 @@ Code Review
 Merge Into Main
 ```
 
-A Pull Request should explain:
+The `main` branch is the stable, tested version of the project. No one should push directly to `main` — all work happens on a separate branch.
 
-- What was changed
-- Why it was changed
-- How it was tested
-- Any known issues
+---
+
+# Choosing a Branch
+
+Create a branch named after the area you're working on, using the relevant prefix from the table below (see README for the full purpose list): `android-development`, `backend-development`, `ai-development`, `web-development`, `database-development`, `documentation`.
+
+You may also use more specific, descriptive branch names for individual tasks, e.g.:
+
+```bash
+git checkout -b backend-login
+git checkout -b android-camera
+git checkout -b web-dashboard
+```
+
+---
+
+# Where Files Belong
+
+GitHub does not decide where files are placed — the folder structure on your computer determines where a file appears in the repository.
+
+Example: creating `backend/api/login.py` locally will result in that same path on GitHub.
+
+Only add or modify files inside the folder related to your assigned task. If unsure where a file belongs, or if you need to touch another component's folder, communicate with the team first.
+
+---
+
+# Step-by-Step Process
+
+## 1. Update Your Local Repo
+
+```bash
+git pull origin main
+```
+
+## 2. Check or Switch Branch
+
+```bash
+git branch
+```
+
+The branch marked with `*` is your current branch. Switch or create as needed:
+
+```bash
+git checkout -b your-branch-name
+```
+
+## 3. Make Your Changes
+
+Create or edit files inside the correct folder for your task (see README project structure).
+
+## 4. Check Your Changes
+
+```bash
+git status
+```
+
+Confirm the listed files match what you intended to modify.
+
+## 5. Add Your Changes
+
+Add a specific file:
+
+```bash
+git add filename
+```
+
+Or all changes:
+
+```bash
+git add .
+```
+
+Only stage files related to your task.
+
+## 6. Commit Your Changes
+
+```bash
+git commit -m "Description of change"
+```
+
+**Good commit messages** (clear, specific):
+```
+Added user authentication API
+Created Android camera activity
+Updated database schema
+Implemented image processing module
+```
+
+**Bad commit messages** (vague):
+```
+stuff
+changes
+update
+fixed things
+```
+
+## 7. Push Your Branch
+
+```bash
+git push origin branch-name
+```
+
+---
+
+# Pull Request Process
+
+Every change must go through a Pull Request before merging into `main`.
+
+A Pull Request description should include:
+
+- **Changes** — what was changed
+- **Testing** — how it was tested
+- **Known Issues** — anything outstanding
 
 Example:
 
@@ -290,11 +160,13 @@ Known Issues:
 - Processing speed requires improvement
 ```
 
+Another team member must review and approve before it's merged.
+
 ---
 
-# Code Review Rules
+# Code Review Checklist
 
-When reviewing another team member's work, check:
+When reviewing a Pull Request, check:
 
 - Does the code work?
 - Is the code understandable?
@@ -302,98 +174,65 @@ When reviewing another team member's work, check:
 - Could it break another system component?
 - Has it been tested?
 
-Code reviews are meant to improve the project and maintain quality.
-
 ---
 
-# Files That Should Not Be Uploaded
+# Security Guidelines
 
-Do not commit:
+Never commit:
 
-- Passwords
+- Passwords or credentials
 - API keys
-- Database credentials
 - Personal information
-- Temporary files
-- Generated build files
+- Sensitive datasets
+- Secrets hard-coded in source files
+- Temporary or generated build files (`node_modules/`, `build/`, `.gradle/`, `venv/`)
 
-Examples:
+Use environment variables for private information, and ensure sensitive files are listed in `.gitignore`, e.g.:
 
-```text
+```
 .env
-credentials.txt
-node_modules/
-build/
-.gradle/
-venv/
+credentials.json
+passwords.txt
+database_passwords.txt
 ```
-
-These files should be added to `.gitignore`.
 
 ---
 
-# Updating Your Branch
+# File Naming
 
-Before starting new work, update your branch with the latest version.
+Use clear, descriptive file names.
 
-```bash
-git pull origin main
+**Good:**
+```
+UserAuthentication.java
+vehicle_detection.py
+database_schema.sql
 ```
 
-This helps prevent conflicts with other team members' changes.
-
----
-
-# Working on Existing Code
-
-Before modifying another person's work:
-
-1. Check if someone is already working on that section.
-2. Communicate with the team.
-3. Avoid changing unrelated files.
-
-Example:
-
-If you are assigned to:
-
-```text
-web-app/
+**Bad:**
 ```
-
-do not modify:
-
-```text
-backend/
+test.py
+newfile.java
+thing2.py
 ```
-
-unless it has been discussed with the team.
 
 ---
 
 # GitHub Issues
 
-GitHub Issues should be used to track:
+Use GitHub Issues to track tasks, bugs, features, and improvements. Each issue should include:
 
-- Tasks
-- Bugs
-- Features
-- Improvements
+- Description of the task
+- Assigned team member
+- Expected outcome
 
 Examples:
 
 ```text
 Bug: Vehicle detection crashes when uploading video
-
 Feature: Add investigator search function
-
 Task: Create database relationship diagram
 ```
-
-Each issue should include:
-
-- Description of the task
-- Assigned team member
-- Expected outcome
 
 ---
 
@@ -401,20 +240,11 @@ Each issue should include:
 
 All contributors must:
 
-- Work on their own branch.
-- Avoid committing directly to `main`.
-- Check changes before committing.
+- Work on their own branch, never commit directly to `main`.
+- Pull the latest `main` before starting new work.
+- Place files in the correct project folder.
+- Check changes (`git status`) before committing.
 - Write meaningful commit messages.
 - Test their work before pushing.
-- Keep the repository organised.
-- Communicate before making major changes.
-
----
-
-# Final Reminder
-
-The folder where you save the file is the folder where GitHub will place the file.
-
-Git does not decide where files belong. Git records the file location when the commit is created.
-
-Following this workflow will keep the Argus project organised and make collaboration easier for everyone.
+- Communicate before modifying another person's section or making major changes.
+- Wait for PR approval before merging.
