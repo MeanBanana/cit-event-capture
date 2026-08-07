@@ -1,4 +1,5 @@
-# Argus Shield
+# cit-event-capture
+# Argus-Shield
 
 Real-Time Computer Vision Application for Suspect and Vehicle Intelligence Capture in CIT Robbery Investigations.
 
@@ -15,7 +16,7 @@ The system consists of three main components:
 # Project Structure
 
 ```
-Argus-Shield/
+cit-event-capture/
 
 ├── android/
 │   └── Android Studio Java application
@@ -69,7 +70,7 @@ git clone https://github.com/MeanBanana/cit-event-capture.git
 Enter the project folder:
 
 ```bash
-cd Argus-Shield
+cd cit-event-capture
 ```
 
 For details on how to contribute, branch, commit, and submit changes, see [CONTRIBUTING.md](./CONTRIBUTING.md).
