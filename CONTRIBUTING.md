@@ -120,13 +120,13 @@ backend/routes/login.py
 Android:
 
 ```text
-android-app/app/src/MainActivity.java
+android/app/src/MainActivity.java
 ```
 
 Web:
 
 ```text
-web-app/dashboard/index.php
+web/dashboard/index.php
 ```
 
 Database:
@@ -138,7 +138,7 @@ database/schema.sql
 AI:
 
 ```text
-ai-model/detection.py
+ai/detection.py
 ```
 
 ---
