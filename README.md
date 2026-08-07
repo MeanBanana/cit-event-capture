@@ -10,3 +10,12 @@ Real-Time Computer Vision System for Suspect and Vehicle Intelligence Capture in
 - web: Web application
 - database: Database scripts
 - docs: Documentation
+
+---
+
+# Collaborators
+Carel von Ronge
+Deacon George Nel
+Claire Aimee Duke
+Eliandro Cidy Gomez Miranda
+Melusi Sikakane
