@@ -14,8 +14,8 @@ Real-Time Computer Vision System for Suspect and Vehicle Intelligence Capture in
 ---
 
 # Collaborators
-Carel von Ronge
-Deacon George Nel
-Claire Aimee Duke
-Eliandro Cidy Gomez Miranda
-Melusi Sikakane
+- Carel von Ronge
+- Deacon George Nel
+- Claire Aimee Duke
+- Eliandro Cidy Gomez Miranda
+- Melusi Sikakane
