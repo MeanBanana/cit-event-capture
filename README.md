@@ -63,7 +63,7 @@ Before starting development, ensure the following software is installed:
 Download the repository:
 
 ```bash
-git clone https://github.com/YOUR-GROUP/Argus-Shield.git
+git clone https://github.com/MeanBanana/cit-event-capture.git
 ```
 
 Enter the project folder:
