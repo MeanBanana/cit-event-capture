@@ -36,7 +36,7 @@ The `main` branch is the stable, tested version of the project. No one should pu
 
 # Choosing a Branch
 
-Create a branch named after the area you're working on, using the relevant prefix from the table below (see README for the full purpose list): `android-development`, `backend-development`, `ai-development`, `web-development`, `database-development`, `documentation`.
+Create a branch named after the area you're working on, using the relevant prefix from the table below (see README for the full purpose list): example `android-development`, `backend-development`, `ai-development`, `web-development`, `database-development`, `documentation`.
 
 You may also use more specific, descriptive branch names for individual tasks, e.g.:
 
@@ -45,6 +45,8 @@ git checkout -b backend-login
 git checkout -b android-camera
 git checkout -b web-dashboard
 ```
+
+These are just examples, ensure you are not working on the same branch as a team member, it may cause merge conflicts, be descriptive with branch naming, feel free to create your own branches
 
 ---
 
