@@ -496,10 +496,6 @@ Development should maintain appropriate ethical, security, privacy, and responsi
 
 ---
 
-# License
-
-Add the project's chosen license here once the team has agreed on the appropriate licensing terms.
-
 For example:
 
 ```text
