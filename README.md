@@ -2,9 +2,11 @@
 
 **Real-Time Computer Vision Application for Suspect and Vehicle Intelligence Capture in CIT Robbery Investigations**
 
-Argus Shield is a research and development project focused on creating an investigator-facing system that uses computer vision, artificial intelligence, and data management techniques to extract, store, and query suspect and vehicle intelligence from cash-in-transit (CIT) robbery footage.
+Argus Shield is a research and development project focused on creating an investigator-facing mobile system that uses computer vision, artificial intelligence, and data management techniques to extract, store, and query suspect and vehicle intelligence from cash-in-transit (CIT) robbery footage.
 
 The system is designed to assist investigators by transforming video footage into structured, searchable intelligence while considering ethical, security, and privacy requirements.
+
+> **Note:** The project's technology stack was revised after the initial planning phase. The application is now built as a **Flutter mobile app** backed by **Supabase**, rather than the original Android Studio (Java) + PHP web + custom Python backend design. See [Architectural Design](#architectural-design) below for details. Whether a separate **web application** will also be built is still being decided by the team — see the note under [`web/`](#web) for the current status.
 
 ---
 
@@ -12,11 +14,18 @@ The system is designed to assist investigators by transforming video footage int
 
 Argus Shield consists of several interconnected development areas:
 
-* **Android Application** — Java application developed using Android Studio for capturing and/or interacting with relevant investigation footage and data.
-* **Python Backend** — Backend API responsible for communication, processing, business logic, and integration between system components.
-* **AI / Computer Vision** — Computer vision models and artificial intelligence functionality used to extract information from footage.
-* **Web Application** — HTML, CSS, JavaScript, and PHP application used by investigators to interact with the system.
-* **Database** — Database structures, queries, scripts, and configuration used to store and retrieve investigation data.
+* **Mobile Application** — Flutter (Dart) application, targeting both iOS and Android, used by citizens, investigators, and admins to interact with the system.
+* **Backend (Supabase)** — Backend-as-a-service platform (built on PostgreSQL) providing authentication, auto-generated REST APIs, database, and file storage. Any custom server-side logic (e.g. Supabase Edge Functions) also lives here.
+* **AI / Computer Vision** — Python-based computer vision models used to extract information (suspects, vehicles, weapons, license plates) from footage.
+* **Web Application** *(status TBD)* — Not yet confirmed as part of the current scope. See [`web/`](#web) below.
+* **Database** — Supabase/PostgreSQL schema, migrations, and row-level security (RLS) policies used to store and retrieve investigation data.
+* **Diagrams** — Architecture diagrams (C4 model), entity relationship diagrams (ERD), use-case diagrams, and UI mockups/wireframes.
+
+The three primary user roles are:
+
+* **Citizens** — submit footage/evidence of CIT incidents.
+* **Investigators / Law enforcement officers** — review structured intelligence and manage assigned cases.
+* **Admins** — manage investigator accounts, assign cases, and oversee system-wide activity ("watchover" dashboard).
 
 These components work together to provide an end-to-end system for processing and querying suspect and vehicle intelligence.
 
@@ -27,23 +36,26 @@ These components work together to provide an end-to-end system for processing an
 ```text
 cit-event-capture/
 │
-├── android/
-│   └── Android Studio Java application
+├── mobile/
+│   └── Flutter (Dart) application — iOS and Android
 │
 ├── backend/
-│   └── Python backend API and server logic
+│   └── Supabase configuration, policies, and Edge Functions (TypeScript)
 │
 ├── ai/
-│   └── Computer vision models and AI processing
+│   └── Computer vision models and AI processing (Python)
 │
 ├── web/
-│   └── HTML, CSS, JavaScript and PHP web application
+│   └── Web application — status TBD, see note below
 │
 ├── database/
-│   └── Database scripts, schemas and configuration
+│   └── Supabase/PostgreSQL schema, migrations and RLS policies
+│
+├── diagrams/
+│   └── Architecture, ERD and use-case diagrams; UI mockups/wireframes
 │
 ├── docs/
-│   └── Research documents, diagrams and project reports
+│   └── Research documents and project reports
 │
 ├── tests/
 │   └── Testing files, test scripts and test results
@@ -55,69 +67,72 @@ cit-event-capture/
 
 ## Folder Responsibilities
 
-### `android/`
+### `mobile/`
 
-Contains the Android application developed using Java and Android Studio.
+Contains the Flutter (Dart) mobile application, targeting both iOS and Android from a single codebase.
 
-Android-specific code, resources, configuration, and related files should be placed here.
+This may include:
+
+* Screens/UI (login, admin dashboard, investigator case board, citizen submission board)
+* Widgets and shared UI components
+* State management
+* Supabase client integration (auth, data, storage)
+* Mobile-specific configuration and assets
 
 ### `backend/`
 
-Contains the Python backend API and server-side application logic.
+Contains backend configuration and logic built around **Supabase**.
 
-This may include:
+Supabase provides authentication (JWT-based), auto-generated PostgREST APIs for each database table, database hosting, and file storage — removing the need for a hand-rolled API server. This folder may include:
 
-* API endpoints
-* Request handling
-* Authentication
-* Business logic
-* Communication with the database
-* Communication with AI services
-* Data processing
+* Supabase project configuration
+* Row-level security (RLS) policy definitions
+* Supabase Edge Functions (TypeScript, Deno) for any custom server-side logic not covered by auto-generated APIs
+* Integration glue between the mobile app, Supabase, and the AI/CV component
 
 ### `ai/`
 
-Contains artificial intelligence and computer vision functionality.
+Contains artificial intelligence and computer vision functionality, written in Python.
 
 This may include:
 
-* Computer vision models
-* Image processing
-* Video processing
-* Object detection
-* Vehicle detection
-* Person detection
+* Computer vision models (e.g. YOLOv8-based detection)
+* Image and video processing
+* Object detection: weapons, vehicles, license plates
+* Person/suspect detection
 * Feature extraction
 * Model configuration and related scripts
 
 ### `web/`
 
-Contains the investigator-facing web application.
+**Status: to be decided by the team.**
 
-This may include:
-
-* HTML
-* CSS
-* JavaScript
-* PHP
-* Web pages
-* User interfaces
-* Investigator search functionality
-* Data visualisation
+The original project plan included a PHP/HTML/CSS/JS web application for investigators. Since the pivot to a Flutter mobile app, it has not yet been decided whether a separate web application will still be built (e.g. as an admin/investigator portal) or whether the mobile app will cover all user roles. This folder is a placeholder until that decision is made — update this section once confirmed.
 
 ### `database/`
 
-Contains database-related files.
+Contains database-related files for the Supabase/PostgreSQL database.
 
 This may include:
 
-* Database schemas
-* SQL scripts
-* Migrations
+* Table/schema definitions
+* SQL migrations
 * Seed data
+* Row-level security (RLS) policies
 * Database configuration
 
-Do not store database passwords, credentials, or other secrets in this directory.
+Do not store database passwords, service role keys, or other credentials in this directory.
+
+### `diagrams/`
+
+Contains architecture and design diagrams for the project.
+
+This may include:
+
+* C4 model diagrams (Level 1 context diagram, Level 2 container diagram)
+* Entity Relationship Diagrams (ERD)
+* Use-case diagrams
+* UI mockups and wireframes (e.g. login, admin dashboard, investigator board, citizen submission board)
 
 ### `docs/`
 
@@ -126,12 +141,10 @@ Contains project documentation.
 This may include:
 
 * Research documentation
-* Architecture diagrams
-* Database diagrams
-* UML diagrams
 * Design documents
 * Technical reports
 * Project planning documents
+* Deliverables (e.g. requirements and use-case descriptions)
 
 ### `tests/`
 
@@ -139,9 +152,9 @@ Contains testing-related files.
 
 This may include:
 
-* Unit tests
-* Integration tests
-* API tests
+* Flutter widget/unit tests
+* Supabase/API integration tests
+* AI model tests
 * Test data
 * Test results
 * Automated testing scripts
@@ -155,11 +168,11 @@ Before starting development, ensure the required software for your assigned deve
 General requirements include:
 
 * Git
-* Android Studio
-* Java Development Kit (JDK)
-* Python 3.x
-* PHP development environment
-* Database management software
+* Flutter SDK and Dart
+* Android Studio (recommended IDE for Flutter development, with emulator support)
+* Python 3.x (for AI/CV development)
+* Supabase account and Supabase CLI
+* Figma (for UI/UX prototyping, if contributing to design)
 
 Additional dependencies may be required depending on the component being developed.
 
@@ -207,11 +220,12 @@ All contributors are expected to follow these guidelines.
 Determine which part of the project you are working on:
 
 ```text
-android/
+mobile/
 backend/
 ai/
 web/
 database/
+diagrams/
 docs/
 tests/
 ```
@@ -274,11 +288,12 @@ Branches should have descriptive names that indicate the area or purpose of the 
 Examples:
 
 ```text
-feature/backend-login
+feature/backend-auth-policies
 feature/vehicle-detection
 feature/investigator-dashboard
-bugfix/android-camera
+bugfix/mobile-camera-upload
 database-schema
+diagrams/erd-update
 documentation/project-architecture
 ```
 
@@ -307,11 +322,42 @@ When contributing to Argus Shield:
 * Place files in the correct project directory.
 * Keep commits focused and descriptive.
 * Test your changes before creating a Pull Request.
-* Do not commit secrets or sensitive information.
+* Do not commit secrets or sensitive information (including Supabase keys).
 * Communicate with the team before making major cross-component changes.
 * Create a Pull Request before merging changes into `main`.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full contribution process.
+
+---
+
+# Architectural Design
+
+## Technology Stack
+
+| Layer/Component | Technology | Purpose |
+|---|---|---|
+| UI/UX | Flutter (Dart) | Cross-platform mobile framework (iOS + Android) from a single codebase |
+| Backend | Supabase | Backend-as-a-service on PostgreSQL — auth, auto-generated REST APIs, storage |
+| AI/CV | Python | Computer vision and AI/ML libraries (e.g. OpenCV, TensorFlow, PyTorch) for footage analysis |
+| Database | Supabase PostgreSQL | Relational database with row-level security |
+| Authentication | JWT via Supabase | Token-based auth for secure API access between mobile app and backend |
+| APIs | PostgREST (auto-generated by Supabase) | Standard REST communication between mobile app and backend |
+| Edge Functions (if needed) | TypeScript (Deno, via Supabase) | Custom server-side logic beyond auto-generated APIs |
+| UI/UX Prototyping | Figma | Collaborative design and prototyping |
+
+## Development Environments / IDEs
+
+* Android Studio — Flutter development and testing (emulators)
+* Supabase — backend, database, and file storage hosting
+
+## High-Level Technical Design
+
+The high-level architecture follows the C4 model (Levels 1–2):
+
+* **Level 1 — Context diagram:** how the system interacts with its users (citizens, investigators, admins) and external systems.
+* **Level 2 — Container diagram:** the mobile app, Supabase backend, database, and AI/CV component as containers, including their responsibilities, relationships, and technologies.
+
+See [`diagrams/`](#diagrams) for the current diagrams.
 
 ---
 
@@ -324,7 +370,7 @@ Security and privacy must therefore be considered throughout development.
 Never commit the following to the repository:
 
 * Passwords
-* API keys
+* Supabase API keys or service role keys
 * Authentication tokens
 * Database credentials
 * Personal information
@@ -333,7 +379,7 @@ Never commit the following to the repository:
 * Hard-coded secrets
 * Environment-specific credentials
 
-Sensitive configuration should be stored using appropriate environment variables or other secure configuration mechanisms.
+Sensitive configuration should be stored using appropriate environment variables or other secure configuration mechanisms (e.g. Supabase project settings, `.env` files excluded from Git).
 
 The following types of files should generally be excluded using `.gitignore`:
 
@@ -354,13 +400,13 @@ If sensitive information is accidentally committed, notify the team immediately 
 
 # Documentation
 
-Project documentation should be stored in the `docs/` directory.
+Project documentation should be stored in the `docs/` directory, with diagrams stored in `diagrams/`.
 
 Examples include:
 
-* System architecture
-* Database design
-* UML diagrams
+* System architecture (C4 diagrams)
+* Database design and ERD
+* UI mockups/wireframes
 * API documentation
 * Research
 * Design decisions
@@ -381,12 +427,11 @@ Testing should be appropriate to the component being modified.
 
 Examples include:
 
-* Android application testing
-* Backend API testing
+* Flutter widget and unit testing
+* Supabase/API integration testing
 * AI model testing
-* Database testing
-* Web application testing
-* Integration testing
+* Database testing (including RLS policy testing)
+* Integration testing across mobile app, Supabase, and AI component
 
 Test results should be documented where appropriate.
 
@@ -467,18 +512,18 @@ Computer Vision / AI
 Information Extraction
       |
       v
-Database
+Database (Supabase/PostgreSQL)
       |
       v
-Backend API
+Backend (Supabase)
       |
       v
-Investigator Interface
+Investigator Interface (Flutter mobile app)
 ```
 
 The system should ultimately allow investigators to efficiently search, retrieve, and analyse relevant suspect and vehicle intelligence extracted from CIT robbery footage.
 
-Development should maintain appropriate ethical, security, privacy, and responsible-AI considerations throughout the project.
+Development should maintain appropriate ethical, security, privacy, and responsible-AI considerations throughout the project. In particular, the system is designed as a decision-support tool: it does not determine guilt, make arrests, or take autonomous enforcement action — investigators remain responsible for reviewing and acting on system-generated intelligence.
 
 ---
 
@@ -496,10 +541,6 @@ Development should maintain appropriate ethical, security, privacy, and responsi
 
 ---
 
-For example:
-
-```text
 This project is currently not licensed for redistribution.
-```
 
 The team should decide on the appropriate license before publicly distributing the project.
