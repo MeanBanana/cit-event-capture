@@ -41,19 +41,20 @@ The `main` branch is the stable, tested version of the project. No one should pu
 
 Create a branch named after the area you're working on, using the relevant prefix from the table below (see README for the full purpose list):
 
-* `android-development`
+* `mobile-development`
 * `backend-development`
 * `ai-development`
-* `web-development`
+* `web-development` *(status TBD — see README)*
 * `database-development`
+* `diagrams-development`
 * `documentation`
 
 You may also use more specific, descriptive branch names for individual tasks, for example:
 
 ```bash
-git checkout -b feature/backend-login
-git checkout -b bugfix/android-camera
-git checkout -b web-dashboard
+git checkout -b feature/backend-auth-policies
+git checkout -b bugfix/mobile-camera-upload
+git checkout -b feature/investigator-dashboard
 ```
 
 These are just examples. Ensure you are not working on the same branch as another team member, as this may cause merge conflicts.
@@ -69,7 +70,7 @@ GitHub does not decide where files are placed — the folder structure on your c
 For example, creating:
 
 ```text
-backend/api/login.py
+mobile/lib/screens/login_screen.dart
 ```
 
 locally will result in that same path on GitHub.
@@ -119,7 +120,7 @@ git checkout -b your-branch-name
 For example:
 
 ```bash
-git checkout -b feature/backend-login
+git checkout -b feature/mobile-login-screen
 ```
 
 If the branch already exists, switch to it:
@@ -183,10 +184,10 @@ git commit -m "Description of change"
 ### Good commit messages
 
 ```text
-Added user authentication API
-Created Android camera activity
+Added Supabase authentication policies
+Created Flutter login screen
 Updated database schema
-Implemented image processing module
+Implemented vehicle detection module
 ```
 
 ### Bad commit messages
@@ -457,10 +458,10 @@ Example:
 ```text
 Changes:
 - Added vehicle detection API
-- Connected backend to database
+- Connected mobile app to Supabase
 
 Testing:
-- Tested API requests using Postman
+- Tested Supabase requests using Postman
 
 Known Issues:
 - Processing speed requires improvement
@@ -481,7 +482,7 @@ When reviewing a Pull Request, check:
 * Has it been tested?
 * Has the branch been synchronised with the latest `main`?
 * Are there any unresolved merge conflicts?
-* Are any sensitive files or credentials included?
+* Are any sensitive files, API keys, or credentials included?
 * Are the changes relevant to the Pull Request?
 * Does the Pull Request description explain the changes and testing?
 
@@ -514,7 +515,7 @@ git pull origin main
 Never commit:
 
 * Passwords or credentials.
-* API keys.
+* Supabase API keys or service role keys.
 * Personal information.
 * Sensitive datasets.
 * Secrets hard-coded in source files.
@@ -546,7 +547,7 @@ Use clear, descriptive file names.
 ### Good
 
 ```text
-UserAuthentication.java
+login_screen.dart
 vehicle_detection.py
 database_schema.sql
 ```
@@ -554,9 +555,9 @@ database_schema.sql
 ### Bad
 
 ```text
-test.py
-newfile.java
-thing2.py
+test.dart
+newfile.py
+thing2.sql
 ```
 
 File names should clearly describe their purpose.
