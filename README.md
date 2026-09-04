@@ -107,7 +107,9 @@ This may include:
 
 **Status: to be decided by the team.**
 
-The original project plan included a PHP/HTML/CSS/JS web application for investigators. Since the pivot to a Flutter mobile app, it has not yet been decided whether a separate web application will still be built (e.g. as an admin/investigator portal) or whether the mobile app will cover all user roles. This folder is a placeholder until that decision is made — update this section once confirmed.
+"The original project plan included a PHP/HTML/CSS/JS web application for investigators. Since the pivot to a Flutter mobile app, it has not yet been decided whether a separate web application will still be built (e.g. as an admin/investigator portal) or whether the mobile app will cover all user roles. This folder is a placeholder until that decision is made — update this section once confirmed."
+
+status confirmed - no web app, maybe if enough time, build admin console web app, otherwise only mobile flutter app for all users.
 
 ### `database/`
 
