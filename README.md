@@ -484,9 +484,9 @@ Research: Evaluate vehicle detection model performance
 
 * [Carel von Ronge](https://github.com/MeanBanana)
 * [Deacon George Nel](https://github.com/Deacs-ifbb)
-* Claire Aimee Duke
-* Eliandro Cidy Gomez Miranda
-* Melusi Sikakane
+* [Claire Aimee Duke](https://github.com/Claireeduke)
+* [Eliandro Cidy Gomez Miranda](https://github.com/EliandroGomesMiranda)
+* [Melusi Sikakane](https://github.com/melumbulelosikakane-lang)
 
 ---
 
