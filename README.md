@@ -6,7 +6,7 @@ Argus Shield is a research and development project focused on creating an invest
 
 The system is designed to assist investigators by transforming video footage into structured, searchable intelligence while considering ethical, security, and privacy requirements.
 
-> **Note:** The project's technology stack was revised after the initial planning phase. The application is now built as a **Flutter mobile app** backed by **Supabase**, rather than the original Android Studio (Java) + PHP web + custom Python backend design. See [Architectural Design](#architectural-design) below for details. Whether a separate **web application** will also be built is still being decided by the team — see the note under [`web/`](#web) for the current status.
+> **Note:** The project's technology stack was revised after the initial planning phase. The application is now built as a **Flutter mobile app** backed by **Supabase**, rather than the original Android Studio (Java) + PHP web + custom Python backend design. See [Architectural Design](#architectural-design) below for details. No separate web application is planned; the Flutter app serves all user roles (see [`web/`](#web)).
 
 ---
 
@@ -17,8 +17,8 @@ Argus Shield consists of several interconnected development areas:
 * **Mobile Application** — Flutter (Dart) application, targeting both iOS and Android, used by citizens, investigators, and admins to interact with the system.
 * **Backend (Supabase)** — Backend-as-a-service platform (built on PostgreSQL) providing authentication, auto-generated REST APIs, database, and file storage. Any custom server-side logic (e.g. Supabase Edge Functions) also lives here.
 * **AI / Computer Vision** — Python-based computer vision models used to extract information (suspects, vehicles, weapons, license plates) from footage.
-* **Web Application** *(status TBD)* — Not yet confirmed as part of the current scope. See [`web/`](#web) below.
-* **Database** — Supabase/PostgreSQL schema, migrations, and row-level security (RLS) policies used to store and retrieve investigation data.
+* **Web Application** *(optional, not in current scope)* — An admin console may be built only if time allows. See [`web/`](#web) below.
+* **Database** — Supabase/PostgreSQL schema, migrations, and row-level security (RLS) policies used to store and retrieve investigation data, managed with the Supabase CLI.
 * **Diagrams** — Architecture diagrams (C4 model), entity relationship diagrams (ERD), use-case diagrams, and UI mockups/wireframes.
 
 The three primary user roles are:
@@ -40,16 +40,18 @@ cit-event-capture/
 │   └── Flutter (Dart) application — iOS and Android
 │
 ├── backend/
-│   └── Supabase configuration, policies, and Edge Functions (TypeScript)
+│   └── Supabase Edge Functions (TypeScript) and integration glue
 │
 ├── ai/
 │   └── Computer vision models and AI processing (Python)
 │
 ├── web/
-│   └── Web application — status TBD, see note below
+│   └── Placeholder — optional admin console, only if time allows
 │
 ├── database/
-│   └── Supabase/PostgreSQL schema, migrations and RLS policies
+│   └── supabase/                 ← run Supabase CLI commands from database/
+│       ├── config.toml           ← Supabase CLI project configuration
+│       └── migrations/           ← SQL migrations (schema, auth link, RLS policies)
 │
 ├── diagrams/
 │   └── Architecture, ERD and use-case diagrams; UI mockups/wireframes
@@ -85,10 +87,10 @@ Contains backend configuration and logic built around **Supabase**.
 
 Supabase provides authentication (JWT-based), auto-generated PostgREST APIs for each database table, database hosting, and file storage — removing the need for a hand-rolled API server. This folder may include:
 
-* Supabase project configuration
-* Row-level security (RLS) policy definitions
-* Supabase Edge Functions (TypeScript, Deno) for any custom server-side logic not covered by auto-generated APIs
+* Supabase Edge Functions (TypeScript, Deno) for any custom server-side logic not covered by auto-generated APIs (e.g. letting an admin create investigator accounts from inside the app)
 * Integration glue between the mobile app, Supabase, and the AI/CV component
+
+The Supabase CLI configuration (`config.toml`) and all RLS policies live in [`database/`](#database) as migrations, not in this folder.
 
 ### `ai/`
 
@@ -105,23 +107,26 @@ This may include:
 
 ### `web/`
 
-**Status: to be decided by the team.**
+**Status: confirmed — no web application in the current scope.**
 
-"The original project plan included a PHP/HTML/CSS/JS web application for investigators. Since the pivot to a Flutter mobile app, it has not yet been decided whether a separate web application will still be built (e.g. as an admin/investigator portal) or whether the mobile app will cover all user roles. This folder is a placeholder until that decision is made — update this section once confirmed."
+The original project plan included a PHP/HTML/CSS/JS web application for investigators. Following the move to Flutter, the team has decided that the **Flutter mobile app will serve all user roles** (citizens, investigators, and admins).
 
-status confirmed - no web app, maybe if enough time, build admin console web app, otherwise only mobile flutter app for all users.
+If time allows at the end of the project, a web-based **admin console** may be built. This folder is kept as a placeholder for that possibility.
 
 ### `database/`
 
-Contains database-related files for the Supabase/PostgreSQL database.
+Contains the Supabase/PostgreSQL database, managed with the **Supabase CLI**. The live database is hosted on Supabase Cloud; this folder is the version-controlled record of its structure.
 
-This may include:
+```text
+database/
+└── supabase/
+    ├── config.toml
+    └── migrations/
+        ├── 20260929072508_remote_schema.sql   ← baseline schema pulled from Supabase Cloud
+        └── <timestamp>_auth_and_rls.sql       ← Supabase Auth link + role-based RLS policies
+```
 
-* Table/schema definitions
-* SQL migrations
-* Seed data
-* Row-level security (RLS) policies
-* Database configuration
+Migrations are applied in timestamp order. **All database changes must be made as migrations** (see [Database Workflow](#database-workflow)), not by editing tables in the Supabase dashboard; otherwise Git and the live database drift apart.
 
 Do not store database passwords, service role keys, or other credentials in this directory.
 
@@ -174,6 +179,7 @@ General requirements include:
 * Android Studio (recommended IDE for Flutter development, with emulator support)
 * Python 3.x (for AI/CV development)
 * Supabase account and Supabase CLI
+* Docker Desktop (required by the Supabase CLI for `supabase db pull`; on Windows this needs WSL and virtualization enabled)
 * Figma (for UI/UX prototyping, if contributing to design)
 
 Additional dependencies may be required depending on the component being developed.
@@ -342,7 +348,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full contribution process.
 | Backend | Supabase | Backend-as-a-service on PostgreSQL — auth, auto-generated REST APIs, storage |
 | AI/CV | Python | Computer vision and AI/ML libraries (e.g. OpenCV, TensorFlow, PyTorch) for footage analysis |
 | Database | Supabase PostgreSQL | Relational database with row-level security |
-| Authentication | JWT via Supabase | Token-based auth for secure API access between mobile app and backend |
+| Authentication | Supabase Auth (JWT) | Sign-up, login and token-based access; the Supabase client SDK refreshes sessions automatically |
 | APIs | PostgREST (auto-generated by Supabase) | Standard REST communication between mobile app and backend |
 | Edge Functions (if needed) | TypeScript (Deno, via Supabase) | Custom server-side logic beyond auto-generated APIs |
 | UI/UX Prototyping | Figma | Collaborative design and prototyping |
@@ -360,6 +366,101 @@ The high-level architecture follows the C4 model (Levels 1–2):
 * **Level 2 — Container diagram:** the mobile app, Supabase backend, database, and AI/CV component as containers, including their responsibilities, relationships, and technologies.
 
 See [`diagrams/`](#diagrams) for the current diagrams.
+
+---
+
+# Authentication and Access Control
+
+## How login works
+
+User accounts are split across two linked tables:
+
+| Table | Managed by | Holds |
+|---|---|---|
+| `auth.users` | Supabase Auth | Email, encrypted password, login sessions |
+| `public."User"` | This project | Full name, role, badge number, and the `userid` referenced by all other tables |
+
+`public."User".authid` links each profile to its Supabase Auth account. Passwords are **never** stored in `public."User"`.
+
+* **Sign-up:** when anyone registers, a database trigger automatically creates their `User` profile with the role **`citizen`**. The role is never taken from the app.
+* **Investigators:** created by an admin (currently via the Supabase dashboard → Authentication → Add user), after which the admin sets their `role` to `investigator` and assigns a badge number.
+* **Role changes:** only admins can change a user's role, badge number, or email. This is enforced in the database.
+* **Deleted accounts:** if an auth account is deleted, the profile row is kept (with `authid` set to empty) so the evidence trail on cases and uploads is preserved.
+
+## Who can see and do what (row-level security)
+
+Every table has RLS enabled. The mobile app uses the **anon key** and the logged-in user's token, so each query automatically returns only the rows that user is allowed to see.
+
+| Role | Access |
+|---|---|
+| **Citizen** | Report incidents and upload footage as themselves; view only their own submissions and profile; edit their own name |
+| **Investigator** | View only cases they are actively assigned to, plus that footage, detections, and vehicle details; update case status; log corrections; view cross-incident links and other investigators |
+| **Admin** | Full access; assign cases; confirm suspects; manage user roles |
+| **Not logged in** | No access to any table |
+
+The Python AI/CV pipeline uses the **service role key**, which bypasses RLS, to write detections and update processing status. This key must **never** be placed in the mobile app or committed to Git.
+
+## Using it from Flutter (`supabase_flutter`)
+
+```dart
+// Register (always creates a citizen account)
+await supabase.auth.signUp(
+  email: email, password: password, data: {'fullname': fullName});
+
+// Log in, then read the role to decide which dashboard to show
+await supabase.auth.signInWithPassword(email: email, password: password);
+final profile = await supabase
+    .from('User')
+    .select('userid, fullname, role')
+    .eq('authid', supabase.auth.currentUser!.id)
+    .single();
+// profile['role'] -> 'admin' | 'investigator' | 'citizen'
+
+// Reads are filtered automatically by RLS
+final cases = await supabase.from('crimescene').select();
+```
+
+---
+
+# Database Workflow
+
+All Supabase CLI commands are run from the `database/` folder (the folder that contains `supabase/`). Git commands are run from the repository root.
+
+## First-time setup
+
+```bash
+cd database
+supabase login
+supabase link --project-ref <project-ref>   # ask the team for the project ref and database password
+supabase migration list                     # every migration should appear under both Local and Remote
+```
+
+## Making a database change
+
+1. Create a new migration:
+   ```bash
+   cd database
+   supabase migration new short_descriptive_name
+   ```
+2. Write the SQL (e.g. `ALTER TABLE ...`, `CREATE POLICY ...`) in the new file under `supabase/migrations/`.
+3. Apply it to the Supabase database:
+   ```bash
+   supabase db push
+   ```
+   `db push` only applies migrations the remote database has not yet run. Check that the list it shows contains only your new migration before confirming.
+4. Commit the migration file on your feature branch and open a Pull Request.
+
+## Rules
+
+* Do **not** change tables, columns, or policies in the Supabase dashboard. If a change is ever made there, run `supabase db pull` straight away so it is captured as a migration.
+* Do **not** edit a migration that has already been pushed. Create a new migration instead.
+* New tables automatically get RLS enabled (via the `ensure_rls` event trigger) but have **no policies**, so the app cannot read them until policies are added in a migration.
+* Only one person should push database migrations at a time; coordinate with the team first.
+
+## Troubleshooting (Windows)
+
+* **`ports are not available ... 54320`** during `supabase db pull`: Windows has reserved that port. Restart the NAT service in an Administrator PowerShell (`net stop winnat` then `net start winnat`), or set `shadow_port` to a free port under `[db]` in `supabase/config.toml`.
+* **Docker errors:** make sure Docker Desktop is running and `docker info` works before running Supabase CLI commands.
 
 ---
 
@@ -432,7 +533,7 @@ Examples include:
 * Flutter widget and unit testing
 * Supabase/API integration testing
 * AI model testing
-* Database testing (including RLS policy testing)
+* Database testing, including RLS policy testing: log in as a citizen, an investigator, and an admin and confirm each only sees what it should
 * Integration testing across mobile app, Supabase, and AI component
 
 Test results should be documented where appropriate.
