@@ -40,7 +40,7 @@ cit-event-capture/
 │   └── Flutter (Dart) application — iOS and Android
 │
 ├── backend/
-│   └── Supabase Edge Functions (TypeScript) and integration glue
+│   └── Integration glue between the app, Supabase and the AI/CV component
 │
 ├── ai/
 │   └── Computer vision models and AI processing (Python)
@@ -49,9 +49,11 @@ cit-event-capture/
 │   └── Placeholder — optional admin console, only if time allows
 │
 ├── database/
+│   ├── README.md                 ← full database documentation
 │   └── supabase/                 ← run Supabase CLI commands from database/
 │       ├── config.toml           ← Supabase CLI project configuration
-│       └── migrations/           ← SQL migrations (schema, auth link, RLS policies)
+│       ├── migrations/           ← SQL migrations (schema, users/roles, RLS policies)
+│       └── functions/            ← Supabase Edge Functions (TypeScript)
 │
 ├── diagrams/
 │   └── Architecture, ERD and use-case diagrams; UI mockups/wireframes
@@ -87,10 +89,9 @@ Contains backend configuration and logic built around **Supabase**.
 
 Supabase provides authentication (JWT-based), auto-generated PostgREST APIs for each database table, database hosting, and file storage — removing the need for a hand-rolled API server. This folder may include:
 
-* Supabase Edge Functions (TypeScript, Deno) for any custom server-side logic not covered by auto-generated APIs (e.g. letting an admin create investigator accounts from inside the app)
 * Integration glue between the mobile app, Supabase, and the AI/CV component
 
-The Supabase CLI configuration (`config.toml`) and all RLS policies live in [`database/`](#database) as migrations, not in this folder.
+**Edge Functions** (TypeScript, Deno) for custom server-side logic, such as letting an admin create investigator accounts from inside the app, live in `database/supabase/functions/`, because the Supabase CLI deploys functions from its own `supabase/` folder. The Supabase CLI configuration (`config.toml`) and all RLS policies also live in [`database/`](#database), not in this folder.
 
 ### `ai/`
 
@@ -119,12 +120,16 @@ Contains the Supabase/PostgreSQL database, managed with the **Supabase CLI**. Th
 
 ```text
 database/
+├── README.md
 └── supabase/
     ├── config.toml
     └── migrations/
-        ├── 20260929072508_remote_schema.sql   ← baseline schema pulled from Supabase Cloud
-        └── <timestamp>_auth_and_rls.sql       ← Supabase Auth link + role-based RLS policies
+        ├── 20260929072508_remote_schema.sql     ← baseline schema pulled from Supabase Cloud
+        ├── 20260929114152_auth_and_rls.sql      ← Supabase Auth link + role-based RLS policies
+        └── 20260929221626_user_role_tables.sql  ← role enum, citizen/investigator tables, usernames
 ```
+
+**See [`database/README.md`](./database/README.md)** for the full schema, how accounts and login work, who can see what, Flutter examples, and troubleshooting.
 
 Migrations are applied in timestamp order. **All database changes must be made as migrations** (see [Database Workflow](#database-workflow)), not by editing tables in the Supabase dashboard; otherwise Git and the live database drift apart.
 
@@ -371,47 +376,58 @@ See [`diagrams/`](#diagrams) for the current diagrams.
 
 # Authentication and Access Control
 
-## How login works
+Full details, including Flutter code and the complete permission table, are in [`database/README.md`](./database/README.md).
 
-User accounts are split across two linked tables:
+## How users are stored
 
 | Table | Managed by | Holds |
 |---|---|---|
-| `auth.users` | Supabase Auth | Email, encrypted password, login sessions |
-| `public."User"` | This project | Full name, role, badge number, and the `userid` referenced by all other tables |
+| `auth.users` | Supabase Auth | Email, hashed password, login sessions |
+| `public."User"` | This project | Everyone: `username`, `firstname`, `surname`, `email`, `phonenumber`, `role`, and the `userid` referenced by all other tables |
+| `public.citizen` | This project | Citizen-only details: `residence` |
+| `public.investigator` | This project | Investigator-only details: `rank`, `badgenumber`, `station`, `unit`, `dutystatus` |
 
-`public."User".authid` links each profile to its Supabase Auth account. Passwords are **never** stored in `public."User"`.
+* `role` is an enum: `citizen`, `investigator` or `admin`. Admins have no extra details, so they only have a `"User"` row.
+* `"User".authid` links each profile to its Supabase Auth account. Passwords and tokens are **never** stored in our tables; the app sends them straight to Supabase Auth.
+* The database guarantees a citizen row only belongs to a citizen and an investigator row only to an investigator.
 
-* **Sign-up:** when anyone registers, a database trigger automatically creates their `User` profile with the role **`citizen`**. The role is never taken from the app.
-* **Investigators:** created by an admin (currently via the Supabase dashboard → Authentication → Add user), after which the admin sets their `role` to `investigator` and assigns a badge number.
-* **Role changes:** only admins can change a user's role, badge number, or email. This is enforced in the database.
-* **Deleted accounts:** if an auth account is deleted, the profile row is kept (with `authid` set to empty) so the evidence trail on cases and uploads is preserved.
+## How accounts are created
+
+* **Citizens** register in the app (`supabase.auth.signUp`), sending their username, name, phone number and residence. A database trigger creates their `"User"` and `citizen` rows. **App sign-ups are always citizens.** A role sent from the app is ignored.
+* **Investigators** do not register themselves. An admin creates them from the admin screen through the `create-investigator` Edge Function, which emails them a code to set their own password.
+* **Admins** are set up manually by the database owner (see `database/README.md`).
+* **Login** uses a **username**. The app looks up the matching email with `email_for_username`, then signs in with email + password and reads `role` to choose the dashboard.
+* **Deleted accounts:** if a login is deleted, the profile row is kept (with `authid` empty) so the evidence trail on cases and uploads is preserved.
 
 ## Who can see and do what (row-level security)
 
-Every table has RLS enabled. The mobile app uses the **anon key** and the logged-in user's token, so each query automatically returns only the rows that user is allowed to see.
+Every table has RLS enabled. The mobile app uses the **publishable key** and the logged-in user's token, so each query automatically returns only the rows that user is allowed to see.
 
 | Role | Access |
 |---|---|
-| **Citizen** | Report incidents and upload footage as themselves; view only their own submissions and profile; edit their own name |
-| **Investigator** | View only cases they are actively assigned to, plus that footage, detections, and vehicle details; update case status; log corrections; view cross-incident links and other investigators |
-| **Admin** | Full access; assign cases; confirm suspects; manage user roles |
-| **Not logged in** | No access to any table |
+| **Citizen** | Report incidents and upload footage as themselves; view only their own submissions and profile; edit their own username, name, phone number and residence |
+| **Investigator** | View only cases they are actively assigned to, plus that footage, detections and vehicle details; update case status; log corrections; view cross-incident links and other investigators; change their own duty status |
+| **Admin** | Full access; assign cases; confirm suspects; manage users and investigator details |
+| **Not logged in** | No access to any table (only the username lookup used by the login screen) |
 
-The Python AI/CV pipeline uses the **service role key**, which bypasses RLS, to write detections and update processing status. This key must **never** be placed in the mobile app or committed to Git.
+The Python AI/CV pipeline uses the **service role (secret) key**, which bypasses RLS, to write detections and update processing status. This key must **never** be placed in the mobile app or committed to Git.
 
 ## Using it from Flutter (`supabase_flutter`)
 
 ```dart
 // Register (always creates a citizen account)
-await supabase.auth.signUp(
-  email: email, password: password, data: {'fullname': fullName});
+await supabase.auth.signUp(email: email, password: password, data: {
+  'username': username, 'firstname': firstname, 'surname': surname,
+  'phonenumber': phone, 'residence': residence,
+});
 
-// Log in, then read the role to decide which dashboard to show
-await supabase.auth.signInWithPassword(email: email, password: password);
+// Log in with a username, then read the role to decide which dashboard to show
+final email = await supabase.rpc('email_for_username',
+    params: {'p_username': username}) as String?;
+await supabase.auth.signInWithPassword(email: email!, password: password);
 final profile = await supabase
     .from('User')
-    .select('userid, fullname, role')
+    .select('userid, username, firstname, surname, role')
     .eq('authid', supabase.auth.currentUser!.id)
     .single();
 // profile['role'] -> 'admin' | 'investigator' | 'citizen'
@@ -437,17 +453,23 @@ supabase migration list                     # every migration should appear unde
 
 ## Making a database change
 
-1. Create a new migration:
+The full step-by-step guide is in [`database/README.md`](./database/README.md#workflow-making-a-database-change). In short:
+
+1. Create a branch, then check GitHub and Supabase match:
    ```bash
    cd database
+   supabase migration list     # Local and Remote must be identical
+   supabase db pull            # should say "No schema changes found"
+   ```
+2. Create a new migration and write the SQL in the new file under `supabase/migrations/`:
+   ```bash
    supabase migration new short_descriptive_name
    ```
-2. Write the SQL (e.g. `ALTER TABLE ...`, `CREATE POLICY ...`) in the new file under `supabase/migrations/`.
-3. Apply it to the Supabase database:
+3. Check, then apply it to the Supabase database:
    ```bash
+   supabase db push --dry-run  # must list only your new migration
    supabase db push
    ```
-   `db push` only applies migrations the remote database has not yet run. Check that the list it shows contains only your new migration before confirming.
 4. Commit the migration file on your feature branch and open a Pull Request.
 
 ## Rules
@@ -455,11 +477,13 @@ supabase migration list                     # every migration should appear unde
 * Do **not** change tables, columns, or policies in the Supabase dashboard. If a change is ever made there, run `supabase db pull` straight away so it is captured as a migration.
 * Do **not** edit a migration that has already been pushed. Create a new migration instead.
 * New tables automatically get RLS enabled (via the `ensure_rls` event trigger) but have **no policies**, so the app cannot read them until policies are added in a migration.
-* Only one person should push database migrations at a time; coordinate with the team first.
+* Only one person should push database migrations at a time; coordinate with the database owner (Carel) first.
 
 ## Troubleshooting (Windows)
 
+* **`Bind for 0.0.0.0:54320 failed: port is already allocated`** during `supabase db pull`: a leftover Docker container is using the port. Find it with `docker ps -a --filter "publish=54320"` and remove it with `docker rm -f <ID>`.
 * **`ports are not available ... 54320`** during `supabase db pull`: Windows has reserved that port. Restart the NAT service in an Administrator PowerShell (`net stop winnat` then `net start winnat`), or set `shadow_port` to a free port under `[db]` in `supabase/config.toml`.
+* **`db pull` writes a file that only drops and re-adds the same CHECK constraints:** a false alarm. Answer **No** to updating the migration history and delete the file. See `database/README.md`.
 * **Docker errors:** make sure Docker Desktop is running and `docker info` works before running Supabase CLI commands.
 
 ---
