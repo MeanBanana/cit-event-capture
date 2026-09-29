@@ -477,7 +477,6 @@ The full step-by-step guide is in [`database/README.md`](./database/README.md#wo
 * Do **not** change tables, columns, or policies in the Supabase dashboard. If a change is ever made there, run `supabase db pull` straight away so it is captured as a migration.
 * Do **not** edit a migration that has already been pushed. Create a new migration instead.
 * New tables automatically get RLS enabled (via the `ensure_rls` event trigger) but have **no policies**, so the app cannot read them until policies are added in a migration.
-* Only one person should push database migrations at a time; coordinate with the database owner (Carel) first.
 
 ## Troubleshooting (Windows)
 
