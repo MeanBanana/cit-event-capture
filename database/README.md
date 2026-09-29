@@ -2,8 +2,6 @@
 
 This folder is the version-controlled record of the Argus Shield database. The live database runs on **Supabase Cloud** (PostgreSQL 17) and is managed with the **Supabase CLI**. Every change to it is made as a **migration** in this folder, so GitHub and Supabase always match.
 
-> **Owner:** Carel von Ronge (database & GitHub). Talk to Carel before changing anything in this folder or in the Supabase dashboard.
-
 **Contents**
 
 1. [Folder layout](#folder-layout)
@@ -344,7 +342,6 @@ supabase migration list                     # every migration should show under 
 * **Never** change tables, columns, policies or functions in the Supabase dashboard. Every change is a migration.
 * **Never** edit a migration that has already been pushed — write a new one.
 * A new table gets RLS turned on automatically but has **no policies**, so the app can't read it until policies are added in a migration.
-* Only one person pushes migrations at a time — check with Carel first.
 * Changing data (e.g. creating the first admin) in the SQL editor is fine. Changing **structure** is not.
 
 ---
@@ -376,7 +373,7 @@ ROLLBACK;
 
 ## Still to do
 
-* **`create-investigator` Edge Function** — needed for the admin "add investigator" screen. It goes in `database/supabase/functions/create-investigator/index.ts` (the Supabase CLI deploys functions from `supabase/functions/`) and is deployed with `supabase functions deploy create-investigator`. Its code is ready; ask Carel.
+* **`create-investigator` Edge Function** — needed for the admin "add investigator" screen. It goes in `database/supabase/functions/create-investigator/index.ts` (the Supabase CLI deploys functions from `supabase/functions/`) and is deployed with `supabase functions deploy create-investigator`.
 * **Storage bucket for footage** — `media.storagepath` expects files in Supabase Storage, but no bucket or storage policies exist yet.
 * **Email** — custom SMTP provider and the Reset Password template with `{{ .Token }}`.
 * **Registration fields** — there is no registration wireframe yet. If citizens need more than residence (e.g. ID number, suburb, city), add columns to `citizen` in a new migration.
