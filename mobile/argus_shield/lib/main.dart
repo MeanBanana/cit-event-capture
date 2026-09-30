@@ -9,7 +9,7 @@ Future<void> main() async {
      url: 'https://tnydrlxptqegzhbvwpcq.supabase.co',
      anonKey: 'sb_publishable_qyDg3_F69Cy2rpoWDvR-7A_Z3AXR8h3',
   );
-  runApp(RootApp());
+  runApp(const RootApp());
 }
 
 class RootApp extends StatelessWidget {

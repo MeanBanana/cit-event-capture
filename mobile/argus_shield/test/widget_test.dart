@@ -1,30 +1,27 @@
-// This is a basic Flutter widget test.
+// Basic smoke tests for the Argus Shield screens.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// These only build the screens - they do not talk to Supabase, so they can run
+// without a network connection.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:argus_shield/main.dart';
+import 'package:argus_shield/login.dart';
+import 'package:argus_shield/register_citizen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Login page shows the login form', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LoginPage()));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Login'), findsOneWidget);
+    expect(find.text('Access System'), findsOneWidget);
+    expect(find.text('Register as citizen'), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('Register page shows the registration form', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: RegisterPage()));
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Register as citizen'), findsOneWidget);
+    expect(find.text('Register Account'), findsOneWidget);
   });
 }
