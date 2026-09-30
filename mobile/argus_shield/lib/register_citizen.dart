@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'supabase_service.dart';
-import 'loadingscreen.dart';
-import 'login.dart';
 
 
 class RegisterPage extends StatefulWidget{
@@ -106,10 +104,10 @@ class _RegisterPageState extends State<RegisterPage>{
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty){
+                    if (value == null || value.trim().isEmpty){
                       return "Firstname is required";
-                    }else if (!RegExp(r'^[A-Za-z]+$').hasMatch(value)){
-                      return "Firstname requires only letters and no spaces.";
+                    }else if (!RegExp(r"^[A-Za-zÀ-ÿ' \-]+$").hasMatch(value.trim())){
+                      return "Firstname can only contain letters, spaces, hyphens and apostrophes.";
                     }
                     return null;
                   },
@@ -138,10 +136,10 @@ class _RegisterPageState extends State<RegisterPage>{
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty){
+                    if (value == null || value.trim().isEmpty){
                       return "Surname is required";
-                    }else if (!RegExp(r'^[A-Za-z]+$').hasMatch(value)){
-                      return "Surname requires only letters and no spaces.";
+                    }else if (!RegExp(r"^[A-Za-zÀ-ÿ' \-]+$").hasMatch(value.trim())){
+                      return "Surname can only contain letters, spaces, hyphens and apostrophes.";
                     }
                     return null;
                   },
@@ -172,8 +170,8 @@ class _RegisterPageState extends State<RegisterPage>{
                   validator: (value) {
                     if (value == null || value.isEmpty){
                       return "Email is required";
-                    }else if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value)){
-                      return "Email requires only letters and no spaces.";
+                    }else if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim())){
+                      return "Enter a valid email address.";
                     }
                     return null;
                   },
@@ -270,8 +268,10 @@ class _RegisterPageState extends State<RegisterPage>{
                     border: OutlineInputBorder(),
                   ),
                   validator: (value){
-                    if (value == null || value.isEmpty){
+                    if (value == null || value.trim().isEmpty){
                       return "Username is required";
+                    }else if (!RegExp(r'^[A-Za-z0-9_.]{3,30}$').hasMatch(value.trim())){
+                      return "Username must be 3-30 characters: letters, numbers, _ or . only.";
                     }
                     return null;
                   },
@@ -291,6 +291,7 @@ class _RegisterPageState extends State<RegisterPage>{
                 ),
                 TextFormField(
                   controller: passwordController,
+                  obscureText: true,
                   style: TextStyle(
                     color: Colors.white,
                   ),
@@ -301,7 +302,7 @@ class _RegisterPageState extends State<RegisterPage>{
                     if (value == null || value.isEmpty){
                       return "Password is required.";
                     }else if (!RegExp(r'^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*_\-+=]).{8,}$').hasMatch(value)){
-                      return "Password requires on capital letter, one digit, and one special character and must at least be 8 characters long.";
+                      return "Password requires one capital letter, one digit, and one special character and must at least be 8 characters long.";
                     }
                     return null;
                   },
@@ -376,35 +377,37 @@ class _RegisterPageState extends State<RegisterPage>{
                   child: FloatingActionButton(
                     onPressed: () async {
                       final ctx = context;
-                      if (_formKey.currentState!.validate()) {
-                        final result = await service.registerUser(firstname: firstNameController.text, surname: surnameController.text, username: usernameController.text, email: emailController.text, phone: phoneNumberController.text, residence: residenceController.text, password: passwordController.text);
-
-                        if (!ctx.mounted) return;
-
-                        /*Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => LoadingScreen(
-                              resultMessage: result["message"],   // shown only on loading screen
-                              nextScreen: const LoginPage(),    // no message passed here
-                            ),
-                          ),
-                        );*/
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(result["message"]),
-                            backgroundColor: result["success"] == true ? Colors.green : Colors.red,
-                            duration: const Duration(seconds: 4),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-
-                      } else {
-                        if (!ctx.mounted) return;
+                      if (!_formKey.currentState!.validate()) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
                           const SnackBar(content: Text('Please correct errors')),
                         );
+                        return;
                       }
+                      if (!isChecked) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Please accept the Terms and Conditions')),
+                        );
+                        return;
+                      }
+
+                      final result = await service.registerUser(firstname: firstNameController.text, surname: surnameController.text, username: usernameController.text, email: emailController.text, phone: phoneNumberController.text, residence: residenceController.text, password: passwordController.text);
+
+                      if (!ctx.mounted) return;
+
+                      final success = result["success"] == true;
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text(success
+                              ? "${result["message"]}. You can now log in."
+                              : result["message"]),
+                          backgroundColor: success ? Colors.green : Colors.red,
+                          duration: const Duration(seconds: 4),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+
+                      // Back to the login page after a successful registration
+                      if (success) Navigator.of(ctx).pop();
                     },
 
                     backgroundColor: Colors.orangeAccent,

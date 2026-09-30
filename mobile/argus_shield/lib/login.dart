@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'register_citizen.dart';
+import 'supabase_service.dart';
 
 class LoginPage extends StatefulWidget{
   const LoginPage({super.key});
@@ -11,6 +12,57 @@ class LoginPage extends StatefulWidget{
 class _LoginPageState extends State<LoginPage>{
   final TextEditingController userNameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+
+  final service = SupabaseService();
+  bool isLoading = false;
+
+  @override
+  void dispose() {
+    userNameController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    final ctx = context;
+    if (userNameController.text.trim().isEmpty || passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Enter your username and password')),
+      );
+      return;
+    }
+
+    setState(() => isLoading = true);
+    final result = await service.loginUser(
+      username: userNameController.text,
+      password: passwordController.text,
+    );
+    if (!ctx.mounted) return;
+    setState(() => isLoading = false);
+
+    if (result["success"] == true) {
+      final role = result["profile"]["role"]; // 'citizen' | 'investigator' | 'admin'
+
+      // TODO: open the right dashboard once those pages exist, e.g.
+      // Navigator.pushReplacement(ctx, MaterialPageRoute(builder: (_) =>
+      //   role == 'admin' ? const AdminDashboard()
+      //   : role == 'investigator' ? const InvestigatorDashboard()
+      //   : const CitizenDashboard()));
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text("${result["message"]} (logged in as $role)"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          content: Text(result["message"]),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +212,7 @@ class _LoginPageState extends State<LoginPage>{
                 width: 400,
                 height:70,
                 child: FloatingActionButton(
-                  onPressed: (){},
+                  onPressed: isLoading ? null : _login,
                   backgroundColor: Colors.orangeAccent,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.zero,
