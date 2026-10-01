@@ -4,6 +4,8 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'supabase_service.dart';
 import 'login.dart';
 import 'loadingscreen.dart';
+import 'theme/app_theme.dart';
+import 'theme/argus_widgets.dart';
 
 
 class RegisterPage extends StatefulWidget{
@@ -31,39 +33,7 @@ class _RegisterPageState extends State<RegisterPage>{
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Align(
-              alignment: Alignment.center,
-              child: Text(
-                "Argus Shield",
-                style: TextStyle(
-                  fontSize: 30,
-                  color: Colors.white,
-                  fontFamily: 'CourierPrime',
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-
-            Align(
-              alignment: Alignment.center,
-              child:Text(
-                "CIT Intelligence System",
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.white,
-                  fontFamily: 'CourierPrime',
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Color(0xFF11192A) ,
-      ),
+      appBar: const ArgusAppBar(),
       body:Padding(
         padding: EdgeInsets.symmetric(vertical: 60, horizontal: 30),
         child: Form(
@@ -73,38 +43,17 @@ class _RegisterPageState extends State<RegisterPage>{
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
+                const Text(
                   "Register as citizen",
-                  style: TextStyle(
-                    fontSize:50,
-                    color: Colors.white,
-                    fontFamily: 'CourierPrime',
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: AppText.pageTitle,
                 ),
   
                 const SizedBox(height: 30),
   
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Firstname",
-                    style: TextStyle(
-                      fontSize:20,
-                      color: Colors.white,
-                      fontFamily: 'CourierPrime',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                const FieldLabel("Firstname"),
                 TextFormField(
                   controller: firstNameController,
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty){
                       return "Firstname is required";
@@ -117,26 +66,10 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Surname",
-                    style: TextStyle(
-                      fontSize:20,
-                      color: Colors.white,
-                      fontFamily: 'CourierPrime',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                const FieldLabel("Surname"),
                 TextFormField(
                   controller: surnameController,
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty){
                       return "Surname is required";
@@ -149,26 +82,10 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Email",
-                    style: TextStyle(
-                      fontSize:20,
-                      color: Colors.white,
-                      fontFamily: 'CourierPrime',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                const FieldLabel("Email"),
                 TextFormField(
                   controller: emailController,
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(),
                   validator: (value) {
                     if (value == null || value.isEmpty){
                       return "Email is required";
@@ -181,18 +98,7 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Phone number",
-                    style: TextStyle(
-                      fontSize:20,
-                      color: Colors.white,
-                      fontFamily: 'CourierPrime',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                const FieldLabel("Phone number"),
                 TextFormField(
                   keyboardType: TextInputType.number,
                   inputFormatters: [
@@ -200,13 +106,7 @@ class _RegisterPageState extends State<RegisterPage>{
                     LengthLimitingTextInputFormatter(9),
                   ],
                   controller: phoneNumberController,
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                    prefixText: "+27",
-                  ),
+                  decoration: const InputDecoration(prefixText: "+27 "),
                   validator: (value) {
                     if (value == null || value.isEmpty){
                       return "Phone is required";
@@ -219,26 +119,10 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Residence",
-                    style: TextStyle(
-                      fontSize:20,
-                      color: Colors.white,
-                      fontFamily: 'CourierPrime',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                const FieldLabel("Residence"),
                 TextFormField(
                   controller: residenceController,
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(),
                   validator: (value){
                     if (value == null || value.isEmpty){
                       return "Residence is required.";
@@ -249,26 +133,10 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
 
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Username",
-                    style: TextStyle(
-                      fontSize:20,
-                      color: Colors.white,
-                      fontFamily: 'CourierPrime',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                const FieldLabel("Username"),
                 TextFormField(
                   controller: usernameController,
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(),
                   validator: (value){
                     if (value == null || value.trim().isEmpty){
                       return "Username is required";
@@ -279,27 +147,13 @@ class _RegisterPageState extends State<RegisterPage>{
                   },
                 ),
 
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Password",
-                    style: TextStyle(
-                      fontSize:20,
-                      color: Colors.white,
-                      fontFamily: 'CourierPrime',
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                const SizedBox(height: 10),
+
+                const FieldLabel("Password"),
                 TextFormField(
                   controller: passwordController,
                   obscureText: true,
-                  style: TextStyle(
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(),
                   validator: (value){
                     if (value == null || value.isEmpty){
                       return "Password is required.";
@@ -315,11 +169,7 @@ class _RegisterPageState extends State<RegisterPage>{
                   child: CheckboxListTile(
                     title: const Text(
                         "Terms and conditions",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontFamily: 'CourierPrime',
-                        )
+                        style: AppText.checkboxLabel
                     ),
                     value: isChecked,
                     onChanged: (bool? value){
@@ -337,7 +187,7 @@ class _RegisterPageState extends State<RegisterPage>{
                           context: context,
                           builder: (BuildContext context){
                             return AlertDialog(
-                              title: const Text("TERMS AND CONDITIONS"),
+                              title: const Text("TERMS AND CONDITIONS", style: AppText.sectionTitle),
                               content: SizedBox(
                                 width: double.maxFinite,
                                 height:MediaQuery.of(context).size.height * 0.6,
@@ -353,7 +203,7 @@ class _RegisterPageState extends State<RegisterPage>{
                                   child: Text(
                                     "Close T&Cs",
                                     style: TextStyle(
-                                      fontFamily: 'Inter',
+                                      fontFamily: AppFonts.body,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -366,18 +216,16 @@ class _RegisterPageState extends State<RegisterPage>{
                     child: Text(
                       "View T&Cs",
                       style: TextStyle(
-                        fontFamily: 'Inter',
+                        fontFamily: AppFonts.body,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                 ),
   
-                SizedBox(
-                  width: 400,
-                  height:70,
-                  child: FloatingActionButton(
-                    onPressed: () async {
+                PrimaryButton(
+                  label: "Register Account",
+                  onPressed: () async {
                       final ctx = context;
                       if (!_formKey.currentState!.validate()) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
@@ -409,28 +257,12 @@ class _RegisterPageState extends State<RegisterPage>{
                         ),
                       );
                     },
-
-                    backgroundColor: Colors.orangeAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                    child: Text(
-                      "Register Account",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
                 ),
               ],
             ),
           ),
         ),
       ),
-      backgroundColor: Color(0xFF192536),
     );
   }
 

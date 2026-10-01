@@ -2,7 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'citizen_store.dart';
-import 'app_styles.dart';
+import '../theme/app_theme.dart';
+import '../theme/argus_widgets.dart';
 
 /// Displays editable contact details and saves them to the session store.
 class ProfilePage extends StatefulWidget {
@@ -66,85 +67,57 @@ class _ProfilePageState extends State<ProfilePage>
     // Keeps this page alive during tab changes.
     super.build(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 25, 22, 35),
+      padding: AppSpacing.page,
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'MY PROFILE',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 10),
+            const Text('My profile', style: AppText.sectionTitle),
+            const SizedBox(height: AppSpacing.small),
             const Text(
               'Keep your contact information up to date so an authorised '
               'investigator can reach you if they need more information.',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 15,
-                height: 1.3,
-              ),
+              style: AppText.bodyMuted,
             ),
-            const SizedBox(height: 26),
-            const FormLabel('FULL NAME'),
-            const SizedBox(height: 5),
+            const SizedBox(height: AppSpacing.large),
+            const FieldLabel('Full name'),
             TextFormField(
               controller: _nameController,
-              style: const TextStyle(color: Colors.white),
               textCapitalization: TextCapitalization.words,
-              decoration: fieldDecoration('Enter your full name'),
+              decoration: const InputDecoration(hintText: 'Enter your full name'),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Enter your full name'
                   : null,
             ),
-            const SizedBox(height: 18),
-            const FormLabel('EMAIL ADDRESS'),
-            const SizedBox(height: 5),
+            const SizedBox(height: AppSpacing.medium),
+            const FieldLabel('Email address'),
             TextFormField(
               controller: _emailController,
-              style: const TextStyle(color: Colors.white),
               keyboardType: TextInputType.emailAddress,
-              decoration: fieldDecoration('Enter your email address'),
+              decoration:
+                  const InputDecoration(hintText: 'Enter your email address'),
               // Basic presence check only; a server must verify real email ownership.
               validator: (value) => value == null || !value.trim().contains('@')
                   ? 'Enter a valid email address'
                   : null,
             ),
-            const SizedBox(height: 18),
-            const FormLabel('PHONE NUMBER'),
-            const SizedBox(height: 5),
+            const SizedBox(height: AppSpacing.medium),
+            const FieldLabel('Phone number'),
             TextFormField(
               controller: _phoneController,
-              style: const TextStyle(color: Colors.white),
               keyboardType: TextInputType.phone,
-              decoration: fieldDecoration('Enter your phone number'),
+              decoration:
+                  const InputDecoration(hintText: 'Enter your phone number'),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Enter your phone number'
                   : null,
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: AppSpacing.large),
             Center(
-              child: SizedBox(
-                width: 245,
-                height: 47,
-                child: ElevatedButton(
-                  onPressed: _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: argusGold,
-                    foregroundColor: Colors.white,
-                    shape: const RoundedRectangleBorder(),
-                  ),
-                  child: const Text(
-                    'SAVE CHANGES',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
+              child: PrimaryButton(
+                label: 'Save Changes',
+                onPressed: _saveProfile,
               ),
             ),
           ],

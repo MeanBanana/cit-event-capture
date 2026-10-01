@@ -1,8 +1,8 @@
 // submissions_page.dart — live session report list and its card helper.
 
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'citizen_store.dart';
-import 'app_styles.dart';
 
 /// Builds report cards from the shared store rather than fixed sample records.
 class SubmissionsPage extends StatelessWidget {
@@ -18,29 +18,18 @@ class SubmissionsPage extends StatelessWidget {
       builder: (context, child) {
         final submissions = store.submissions;
         return ListView(
-          padding: const EdgeInsets.fromLTRB(22, 25, 22, 35),
+          padding: AppSpacing.page,
           children: [
-            const Text(
-              'MY SUBMISSIONS',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 10),
+            const Text('My submissions', style: AppText.sectionTitle),
+            const SizedBox(height: AppSpacing.small),
             const Text(
               'Track the reports you have submitted to Argus Shield.',
-              style: TextStyle(color: Colors.white70, fontSize: 15),
+              style: AppText.bodyMuted,
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.large),
             // An empty state is shown until the citizen adds the first report.
             if (submissions.isEmpty)
-              const Text(
-                'No reports added yet.',
-                style: TextStyle(color: Colors.white70, fontSize: 16),
-              ),
+              const Text('No reports added yet.', style: AppText.bodyMuted),
             // ... inserts each card and spacing widget into the children list.
             for (final submission in submissions) ...[
               SubmissionCard(
@@ -48,11 +37,11 @@ class SubmissionsPage extends StatelessWidget {
                 location: submission.location,
                 date: _formatDate(submission.createdAt),
                 status: 'Draft demo',
-                statusColor: argusGold,
+                statusColor: AppColors.accent,
                 description: '${submission.description}\n\n'
                     'File: ${submission.attachment.name}',
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpacing.medium),
             ],
           ],
         );
@@ -89,49 +78,33 @@ class SubmissionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: argusField,
-        border: Border.all(color: argusBorder, width: 2),
+        border: Border.all(color: AppColors.fieldBorder),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  reference,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+              Expanded(child: Text(reference, style: AppText.cardTitle)),
               Text(
-                status,
-                style: TextStyle(
-                  color: statusColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
+                status.toUpperCase(),
+                style: AppText.caption.copyWith(color: statusColor),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
             location,
-            style: const TextStyle(
-              color: Colors.white,
+            style: AppText.body.copyWith(
               fontSize: 17,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 5),
-          Text(date, style: const TextStyle(color: Colors.white60)),
+          Text(date, style: AppText.bodyMuted),
           const SizedBox(height: 12),
-          Text(
-            description,
-            style: const TextStyle(color: Colors.white70, height: 1.3),
-          ),
+          Text(description, style: AppText.bodyMuted),
         ],
       ),
     );

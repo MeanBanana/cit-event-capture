@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 
 class LoadingScreen extends StatefulWidget {
   final String resultMessage;   // message shown only here
@@ -31,23 +32,23 @@ class _LoadingScreenState extends State<LoadingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blueGrey,
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Show result message here
-            Text(
-              widget.resultMessage,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
+        child: Padding(
+          padding: AppSpacing.page,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Show result message here
+              Text(
+                widget.resultMessage,
+                textAlign: TextAlign.center,
+                style: AppText.body.copyWith(fontSize: 20),
               ),
-            ),
-            const SizedBox(height: 20),
-            // Spinner below
-            const CircularProgressIndicator(),
-          ],
+              const SizedBox(height: AppSpacing.medium),
+              // Spinner below (orange from the theme)
+              const CircularProgressIndicator(),
+            ],
+          ),
         ),
       ),
     );

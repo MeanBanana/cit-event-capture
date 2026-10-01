@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'register_citizen.dart';
 import 'supabase_service.dart';
+import 'citizen/citizen_home.dart';
+import 'theme/app_theme.dart';
+import 'theme/argus_widgets.dart';
 
 class LoginPage extends StatefulWidget{
-  const LoginPage({super.key});
+  /// Optional so tests can pass in a fake; the app uses the real service.
+  final SupabaseService? service;
+
+  const LoginPage({super.key, this.service});
 
   @override
   State<LoginPage>  createState() => _LoginPageState();
@@ -13,7 +19,7 @@ class _LoginPageState extends State<LoginPage>{
   final TextEditingController userNameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
-  final service = SupabaseService();
+  late final SupabaseService service = widget.service ?? SupabaseService();
   bool isLoading = false;
 
   @override
@@ -41,24 +47,37 @@ class _LoginPageState extends State<LoginPage>{
     setState(() => isLoading = false);
 
     if (result["success"] == true) {
-      final role = result["profile"]["role"]; // 'citizen' | 'investigator' | 'admin'
+      // "User".role in the database: 'citizen' | 'investigator' | 'admin'
+      final role = result["profile"]["role"];
 
-      // TODO: open the right dashboard once those pages exist, e.g.
-      // Navigator.pushReplacement(ctx, MaterialPageRoute(builder: (_) =>
-      //   role == 'admin' ? const AdminDashboard()
-      //   : role == 'investigator' ? const InvestigatorDashboard()
-      //   : const CitizenDashboard()));
+      if (role == 'citizen') {
+        // Look this up before navigating: the login page is about to go away.
+        final messenger = ScaffoldMessenger.of(ctx);
+        // pushReplacement so the back button does not return to the login form
+        Navigator.of(ctx).pushReplacement(
+          MaterialPageRoute(builder: (_) => const CitizenHome()),
+        );
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(result["message"]),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        return;
+      }
+
+      // TODO: open the investigator / admin dashboards once they are wired up.
       ScaffoldMessenger.of(ctx).showSnackBar(
         SnackBar(
           content: Text("${result["message"]} (logged in as $role)"),
-          backgroundColor: Colors.green,
+          backgroundColor: AppColors.success,
         ),
       );
     } else {
       ScaffoldMessenger.of(ctx).showSnackBar(
         SnackBar(
           content: Text(result["message"]),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.danger,
         ),
       );
     }
@@ -67,183 +86,80 @@ class _LoginPageState extends State<LoginPage>{
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      appBar: const ArgusAppBar(),
+      // Scrolls so the form still fits when the keyboard is open
+      body: SingleChildScrollView(
+        padding: AppSpacing.page,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Align(
-              alignment: Alignment.center,
-              child: Text(
-                  "Argus Shield",
-                  style: TextStyle(
-                    fontSize: 30,
-                    color: Colors.white,
-                    fontFamily: 'CourierPrime',
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+            const Text("Login", style: AppText.pageTitle),
+
+            const SizedBox(height: AppSpacing.large),
+
+            const FieldLabel("Username"),
+            TextField(
+              controller: userNameController,
+              decoration: const InputDecoration(),
             ),
 
+            const SizedBox(height: AppSpacing.large),
+
+            const FieldLabel("Password"),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(),
+            ),
+
+            const SizedBox(height: AppSpacing.small),
+
             Align(
-              alignment: Alignment.center,
-                child:Text(
-                  "CIT Intelligence System",
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () {},         //Add functionality for the forgot password button
+                child: const Text("Forgot password?"),
+              ),
+            ),
+
+            const SizedBox(height: 60),
+
+            TextButton(
+              onPressed: (){
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const RegisterPage()),
+                );
+              },
+              child: const Text(
+                "Register as citizen",
                 style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.white,
-                  fontFamily: 'CourierPrime',
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppColors.accent,
+                  decorationThickness: 2,
                 ),
               ),
+            ),
+
+            const SizedBox(height: AppSpacing.medium),
+
+            PrimaryButton(
+              label: "Access System",
+              onPressed: isLoading ? null : _login,
+            ),
+
+            const SizedBox(height: 15),
+
+            const Text(
+              "Argus Shield . Secure Access . SAPS Authorised",
+              textAlign: TextAlign.center,
+              style: AppText.footer,
             ),
           ],
         ),
-        backgroundColor: Color(0xFF11192A) ,
       ),
-      body:
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 30, horizontal: 30),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                "Login",
-                style: TextStyle(
-                  fontSize: 50,
-                  color: Colors.white,
-                  fontFamily: 'CourierPrime',
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Username",
-                  style: TextStyle(
-                    fontSize: 20,
-                    color: Colors.white,
-                    fontFamily: 'CourierPrime',
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              TextField(
-                controller: userNameController,
-                style: TextStyle(
-                  color: Colors.white,
-                ),
-                decoration: InputDecoration(
-                 border: OutlineInputBorder(),
-               ),
-              ),
-
-              const SizedBox(height: 30),
-
-
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Password",
-                  style: TextStyle(
-                    fontSize: 20,
-                    color: Colors.white,
-                    fontFamily: 'CourierPrime',
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                style: TextStyle(
-                  color: Colors.white,
-                ),
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(),
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                    onPressed: () {},         //Add functionality for the forgot password button
-                    child: Text(
-                        "Forgot password?",
-                        style: TextStyle(
-                          fontSize: 20,
-                          color: Colors.orangeAccent,
-                          fontFamily: 'Inter',
-                        ),
-                    ),
-                ),
-              ),
-
-              const SizedBox(height:60),
-
-              TextButton(
-                onPressed: (){
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => RegisterPage()),
-                  );
-                },
-                child: Text(
-                  "Register as citizen",
-                  style: TextStyle(
-                    fontSize: 20,
-                    color: Colors.orangeAccent,
-                    decoration: TextDecoration.underline,
-                    decorationColor: Colors.orangeAccent,
-                    decorationThickness: 2,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ),
-
-              const SizedBox(height:20),
-
-              SizedBox(
-                width: 400,
-                height:70,
-                child: FloatingActionButton(
-                  onPressed: isLoading ? null : _login,
-                  backgroundColor: Colors.orangeAccent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
-                  ),
-                    child: Text(
-                      "Access System",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              Text(
-                "Argus Shield . Secure Access . SAPS Authorised",
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.black,
-                )
-              )
-            ],
-          ),
-        ),
-        backgroundColor: Color(0xFF192536),
     );
   }
 
 }
-
