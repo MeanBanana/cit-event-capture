@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'supabase_service.dart';
+import 'login.dart';
+import 'loadingscreen.dart';
 
 
 class RegisterPage extends StatefulWidget{
@@ -395,19 +397,17 @@ class _RegisterPageState extends State<RegisterPage>{
                       if (!ctx.mounted) return;
 
                       final success = result["success"] == true;
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(success
-                              ? "${result["message"]}. You can now log in."
-                              : result["message"]),
-                          backgroundColor: success ? Colors.green : Colors.red,
-                          duration: const Duration(seconds: 4),
-                          behavior: SnackBarBehavior.floating,
+                      Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                          builder: (_) => LoadingScreen(
+                            resultMessage: success
+                                ? "${result["message"]}. You can now log in."
+                                : result["message"],
+                            nextScreen: const LoginPage(), // or any screen you want
+                          ),
                         ),
                       );
-
-                      // Back to the login page after a successful registration
-                      if (success) Navigator.of(ctx).pop();
                     },
 
                     backgroundColor: Colors.orangeAccent,
