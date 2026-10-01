@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'login.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'login.dart';
+import 'theme/app_theme.dart';
 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-   await Supabase.initialize(
-     url: 'https://tnydrlxptqegzhbvwpcq.supabase.co',
-     anonKey: 'sb_publishable_qyDg3_F69Cy2rpoWDvR-7A_Z3AXR8h3',
+  await Supabase.initialize(
+    url: 'https://tnydrlxptqegzhbvwpcq.supabase.co',
+    anonKey: 'sb_publishable_qyDg3_F69Cy2rpoWDvR-7A_Z3AXR8h3',
   );
   runApp(const RootApp());
 }
@@ -18,13 +19,11 @@ class RootApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: LoginPage(),
+      title: 'Argus Shield',
+      debugShowCheckedModeBanner: false,
+      // All colours, fonts and widget styles come from theme/app_theme.dart
+      theme: buildArgusTheme(),
+      home: const LoginPage(),
     );
   }
-
-
 }
-
-
-
-

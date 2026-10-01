@@ -2,8 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../theme/app_theme.dart';
+import '../theme/argus_widgets.dart';
 import 'citizen_store.dart';
-import 'app_styles.dart';
 
 /// Lets a citizen select media and describe an incident before adding a demo report.
 class UploadPage extends StatefulWidget {
@@ -134,43 +135,31 @@ class _UploadPageState extends State<UploadPage>
     super.build(context);
     // Scrolling accommodates a small screen and the on-screen keyboard.
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 25, 22, 35),
+      padding: AppSpacing.page,
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'SUBMIT FOOTAGE',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 10),
+            const Text('Submit footage', style: AppText.sectionTitle),
+            const SizedBox(height: AppSpacing.small),
             const Text(
               'If you have witnessed or recorded a cash-in-transit '
-                  'robbery, select your footage here.',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                height: 1.25,
-              ),
+              'robbery, select your footage here.',
+              style: AppText.body,
             ),
-            const SizedBox(height: 19),
+            const SizedBox(height: AppSpacing.medium),
 
             // Footage box from the mock-up.
             InkWell(
               onTap: _chooseFromGallery,
+              borderRadius: BorderRadius.circular(4),
               child: Container(
                 width: double.infinity,
                 height: 110,
                 decoration: BoxDecoration(
-                  color: argusField,
-                  border: Border.all(color: argusBorder, width: 2),
+                  border: Border.all(color: AppColors.fieldBorder),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -181,118 +170,87 @@ class _UploadPageState extends State<UploadPage>
                           : _selectedFile!.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white),
+                      style: AppText.body,
                     ),
                     const SizedBox(height: 7),
                     const Icon(
                       Icons.photo_camera_outlined,
                       size: 42,
-                      color: argusGold,
+                      color: AppColors.accent,
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: AppSpacing.medium),
 
+            // Recording live is the urgent action, so it uses the danger colour;
+            // shape and text colour come from the theme.
             Center(
               child: ElevatedButton(
                 onPressed: _recordVideo,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: argusCoral,
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppColors.danger,
+                  textStyle: AppText.buttonSmall,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 19,
+                    horizontal: 20,
                     vertical: 15,
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(9),
-                  ),
                 ),
-                child: const Text(
-                  'RECORD LIVE FOOTAGE',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.4,
-                  ),
-                ),
+                child: const Text('Record Live Footage'),
               ),
             ),
-            const SizedBox(height: 21),
+            const SizedBox(height: AppSpacing.large),
 
-            const FormLabel('INCIDENT LOCATION'),
-            const SizedBox(height: 5),
+            const FieldLabel('Incident location'),
             TextFormField(
               controller: _locationController,
-              style: const TextStyle(color: Colors.white),
-              decoration: fieldDecoration('e.g. N1 Southbound'),
+              decoration: const InputDecoration(hintText: 'e.g. N1 Southbound'),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Enter the incident location'
                   : null,
             ),
-            const SizedBox(height: 17),
+            const SizedBox(height: AppSpacing.medium),
 
-            const FormLabel('DESCRIPTION*'),
-            const SizedBox(height: 5),
+            const FieldLabel('Description*'),
             TextFormField(
               controller: _descriptionController,
-              style: const TextStyle(color: Colors.white),
               maxLines: 4,
-              decoration: fieldDecoration(
-                'Briefly describe what you witnessed - number of '
+              decoration: const InputDecoration(
+                hintText: 'Briefly describe what you witnessed - number of '
                     'vehicles, suspects, direction of travel...',
               ),
               validator: (value) => value == null || value.trim().isEmpty
                   ? 'Enter a description'
                   : null,
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: AppSpacing.large),
 
-            const Text(
-              'PRIVACY NOTICE',
-              style: TextStyle(
-                color: argusGold,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-              ),
+            Text(
+              'Privacy notice',
+              style: AppText.fieldLabel.copyWith(color: AppColors.accent),
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 4),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                border: Border.all(color: argusGold, width: 2),
+                border: Border.all(color: AppColors.accent, width: 2),
+                borderRadius: BorderRadius.circular(4),
               ),
               child: const Text(
                 'Demo mode: reports stay in memory during this app session. '
-                    'Footage is not uploaded to law enforcement yet.',
+                'Footage is not uploaded to law enforcement yet.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  height: 1.3,
-                ),
+                style: AppText.bodyMuted,
               ),
             ),
-            const SizedBox(height: 27),
+            const SizedBox(height: AppSpacing.large),
 
             Center(
-              child: SizedBox(
-                width: 245,
-                height: 47,
-                child: ElevatedButton(
-                  onPressed: _submitReport,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: argusGold,
-                    foregroundColor: Colors.white,
-                    shape: const RoundedRectangleBorder(),
-                  ),
-                  child: const Text(
-                    'SUBMIT REPORT',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
+              child: PrimaryButton(
+                label: 'Submit Report',
+                onPressed: _submitReport,
               ),
             ),
           ],

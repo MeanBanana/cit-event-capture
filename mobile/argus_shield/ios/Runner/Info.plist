@@ -68,5 +68,11 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
-	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Argus Shield needs access to your photo library so you can upload photos and videos of incidents.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Argus Shield needs camera access so you can record video of incidents.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Argus Shield needs microphone access to record audio with incident videos.</string>
+</dict>
 </plist>
