@@ -135,5 +135,5 @@ class SupabaseService {
   }
 
   // ------------------------------------------------------------------ LOGOUT
-  Future<void> logout() => supabase.auth.signOut();
+  //Future<void> logout() => supabase.auth.signOut();
 }

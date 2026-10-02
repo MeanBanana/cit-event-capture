@@ -4,6 +4,8 @@ import 'supabase_service.dart';
 import 'citizen/citizen_home.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
+import 'loadingscreen.dart';
+import 'citizen/argus_app.dart';
 
 class LoginPage extends StatefulWidget{
   /// Optional so tests can pass in a fake; the app uses the real service.
@@ -31,56 +33,50 @@ class _LoginPageState extends State<LoginPage>{
 
   Future<void> _login() async {
     final ctx = context;
+
     if (userNameController.text.trim().isEmpty || passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('Enter your username and password')),
+      Navigator.push(
+        ctx,
+        MaterialPageRoute(
+          builder: (_) => LoadingScreen(
+            resultMessage: "Enter your username and password",
+            nextScreen: const LoginPage(),
+          ),
+        ),
       );
       return;
     }
 
     setState(() => isLoading = true);
+
     final result = await service.loginUser(
       username: userNameController.text,
       password: passwordController.text,
     );
+
     if (!ctx.mounted) return;
+
+    final success = result["success"] == true;
+
+    // Decide next screen based on role or success
+    final role = result["profile"]?["role"];
+    final nextScreen = success
+        ? (role == 'citizen'
+        ? const CitizenHome()
+        : const LoginPage()) // adjust for investigator/admin later
+        : const LoginPage();
+
+    Navigator.push(
+      ctx,
+      MaterialPageRoute(
+        builder: (_) => LoadingScreen(
+          resultMessage: result["message"],
+          nextScreen: nextScreen,
+        ),
+      ),
+    );
+
     setState(() => isLoading = false);
-
-    if (result["success"] == true) {
-      // "User".role in the database: 'citizen' | 'investigator' | 'admin'
-      final role = result["profile"]["role"];
-
-      if (role == 'citizen') {
-        // Look this up before navigating: the login page is about to go away.
-        final messenger = ScaffoldMessenger.of(ctx);
-        // pushReplacement so the back button does not return to the login form
-        Navigator.of(ctx).pushReplacement(
-          MaterialPageRoute(builder: (_) => const CitizenHome()),
-        );
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(result["message"]),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        return;
-      }
-
-      // TODO: open the investigator / admin dashboards once they are wired up.
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        SnackBar(
-          content: Text("${result["message"]} (logged in as $role)"),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        SnackBar(
-          content: Text(result["message"]),
-          backgroundColor: AppColors.danger,
-        ),
-      );
-    }
   }
 
   @override

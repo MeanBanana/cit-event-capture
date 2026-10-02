@@ -45,7 +45,7 @@ class _LoadingScreenState extends State<LoadingScreen> {
                 style: AppText.body.copyWith(fontSize: 20),
               ),
               const SizedBox(height: AppSpacing.medium),
-              // Spinner below (orange from the theme)
+
               const CircularProgressIndicator(),
             ],
           ),
