@@ -3,7 +3,7 @@
 class SystemStats {
   final int totalCases; // every case
   final int activeCases; // cases 'open' or 'under_review'
-  final int pendingCases; // active cases with no investigator assigned
+  final int pendingCases; // submissions not in a case yet ("unassigned")
   final int investigators; // registered investigators
 
   const SystemStats({

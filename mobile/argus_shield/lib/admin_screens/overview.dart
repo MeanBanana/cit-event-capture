@@ -9,10 +9,10 @@
 // Like the citizen pages, this file returns only a body. AdminDashboard
 // draws the Scaffold, header and tabs.
 //
-// Live from Supabase: the SYSTEM STATUS numbers (getAdminStats) and the
-// newest investigators (getRecentInvestigators). Pull down to refresh.
-// Still sample data: RECENT ACTIVITY (no table yet) and RECENT SUBMISSIONS
-// (to be connected with the Submissions tab).
+// Everything is live from Supabase: the SYSTEM STATUS numbers
+// (getAdminStats), RECENT ACTIVITY (getRecentActivity), the newest
+// investigators (getRecentInvestigators) and the newest submissions
+// (getRecentSubmissions). Pull down to refresh.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -21,20 +21,14 @@ import 'package:argus_shield/admin_screens/investigators.dart';
 import 'package:argus_shield/admin_screens/submissions.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/system_stats.dart';
+import 'package:argus_shield/models/activity_item.dart';
+import 'package:argus_shield/admin_screens/review_actions.dart';
+import 'package:argus_shield/admin_screens/submission_detail.dart';
 
 /// Tab positions in AdminDashboard, used by the "see more" links.
 /// Keep these in step with the order of tabs in admin_dashboard.dart.
-const int _investigatorsTabIndex = 1;
-const int _submissionsTabIndex = 2;
-
-/// One line in the Recent Activity feed.
-class ActivityItem {
-  final String tag; // short label in the box, e.g. 'NEW', 'VER'
-  final String text;
-  final DateTime at;
-
-  const ActivityItem({required this.tag, required this.text, required this.at});
-}
+const int _investigatorsTabIndex = 2;
+const int _submissionsTabIndex = 3;
 
 class AdminOverview extends StatefulWidget {
   /// Optional so tests can pass in a fake; the app uses the real service.
@@ -44,6 +38,12 @@ class AdminOverview extends StatefulWidget {
 
   /// How many investigators the "Recent active investigators" section shows.
   static const int recentInvestigatorCount = 3;
+
+  /// How many submissions the "Recent submissions" section shows.
+  static const int recentSubmissionCount = 2;
+
+  /// How many events the "Recent activity" section shows.
+  static const int recentActivityCount = 5;
 
   @override
   State<AdminOverview> createState() => _AdminOverviewState();
@@ -55,6 +55,8 @@ class _AdminOverviewState extends State<AdminOverview> {
   // Live data. Null / empty while loading or if loading failed.
   SystemStats? _stats;
   List<InvestigatorSummary> _investigators = const [];
+  List<CrimeSceneSummary> _submissions = const [];
+  List<ActivityItem> _activity = const [];
   bool _loading = true;
   String? _error;
 
@@ -66,18 +68,24 @@ class _AdminOverviewState extends State<AdminOverview> {
     _fetch();
   }
 
-  /// Loads the stat numbers and the newest investigators at the same time.
+  /// Loads the stat numbers, activity feed, newest investigators and newest
+  /// submissions at the same time.
   Future<void> _fetch() async {
     try {
       final results = await Future.wait([
         _service.getAdminStats(),
         _service.getRecentInvestigators(
             limit: AdminOverview.recentInvestigatorCount),
+        _service.getRecentSubmissions(
+            limit: AdminOverview.recentSubmissionCount),
+        _service.getRecentActivity(limit: AdminOverview.recentActivityCount),
       ]);
       if (!mounted) return;
       setState(() {
         _stats = results[0] as SystemStats;
         _investigators = results[1] as List<InvestigatorSummary>;
+        _submissions = results[2] as List<CrimeSceneSummary>;
+        _activity = results[3] as List<ActivityItem>;
         _error = null;
         _loading = false;
       });
@@ -90,41 +98,26 @@ class _AdminOverviewState extends State<AdminOverview> {
     }
   }
 
-  // ---- Sample data — not connected to the database yet -----------------
-  // Recent activity has no table behind it yet; recent submissions will be
-  // connected together with the Submissions tab.
+  /// Opens a submission's details page; reloads afterwards in case it was
+  /// accepted / rejected there.
+  Future<void> _openSubmission(CrimeSceneSummary s) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SubmissionDetailPage(submission: s, service: _service),
+      ),
+    );
+    if (mounted) _fetch();
+  }
 
-  static List<ActivityItem> get _activity => [
-        ActivityItem(
-          tag: 'NEW',
-          text: 'New citizen submission on INC-0042',
-          at: DateTime.now().subtract(const Duration(hours: 2)),
-        ),
-        ActivityItem(
-          tag: 'VER',
-          text: 'Inv. Mokoena verified detection D-001 on INC-0042',
-          at: DateTime.now().subtract(const Duration(hours: 6)),
-        ),
-      ];
-
-  // Same sample incident as the Submissions tab.
-  static List<CrimeSceneSummary> get _submissions => [
-        CrimeSceneSummary(
-          incidentId: 42,
-          location: 'R21 Highway, near OR Tambo off-ramp, Kempton Park',
-          dateTime: DateTime(2026, 9, 28, 14, 35),
-          attackType: 'Vehicle ambush',
-          status: 'open',
-          description:
-              'Cash van forced off the road by two sedans. Armed suspects '
-              'fled north with cash cases. Dashcam and phone footage submitted.',
-          reportedBy: 7,
-          reporterName: 'Lerato Dlamini',
-          mediaCount: 3,
-        ),
-      ];
-
-  // -----------------------------------------------------------------------
+  /// Accept / Reject straight from the card, then reload the numbers.
+  Future<void> _runReview(
+      Future<bool> Function(BuildContext, SupabaseService, CrimeSceneSummary)
+          action,
+      CrimeSceneSummary s) async {
+    final changed = await action(context, _service, s);
+    if (changed && mounted) _fetch();
+  }
 
   /// Switches AdminDashboard to another tab (used by "see more").
   void _goToTab(BuildContext context, int index) =>
@@ -202,8 +195,22 @@ class _AdminOverviewState extends State<AdminOverview> {
           ),
           const SizedBox(height: AppSpacing.large),
 
-          // 2. Recent activity (sample) -----------------------------------
+          // 2. Recent activity (live) -------------------------------------
           const _SectionHeading('Recent activity'),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(AppSpacing.medium),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_activity.isEmpty && _error == null)
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.small),
+              child: Text(
+                'No activity yet.',
+                textAlign: TextAlign.center,
+                style: AppText.bodyMuted,
+              ),
+            ),
           for (final item in _activity) _ActivityRow(item: item),
           _SeeMore(onTap: () => _notReady(context, 'Full activity log')),
           const SizedBox(height: AppSpacing.medium),
@@ -234,12 +241,28 @@ class _AdminOverviewState extends State<AdminOverview> {
           _SeeMore(onTap: () => _goToTab(context, _investigatorsTabIndex)),
           const SizedBox(height: AppSpacing.medium),
 
-          // 4. Recent submissions (sample) --------------------------------
+          // 4. Recent submissions (live) ----------------------------------
           const _SectionHeading('Recent submissions'),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(AppSpacing.medium),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_submissions.isEmpty && _error == null)
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.small),
+              child: Text(
+                'No incidents have been reported yet.',
+                textAlign: TextAlign.center,
+                style: AppText.bodyMuted,
+              ),
+            ),
           for (final s in _submissions) ...[
             _SubmissionReviewCard(
               submission: s,
-              onView: () => _notReady(context, 'View submission'),
+              onView: () => _openSubmission(s),
+              onAccept: () => _runReview(acceptSubmission, s),
+              onReject: () => _runReview(rejectSubmission, s),
             ),
             const SizedBox(height: AppSpacing.small),
           ],
@@ -535,10 +558,14 @@ class _InvestigatorMiniCard extends StatelessWidget {
 class _SubmissionReviewCard extends StatelessWidget {
   final CrimeSceneSummary submission;
   final VoidCallback onView;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
 
   const _SubmissionReviewCard({
     required this.submission,
     required this.onView,
+    required this.onAccept,
+    required this.onReject,
   });
 
   /// 2026-09-28 / 14:35 — formatted without adding the intl package.
@@ -562,7 +589,7 @@ class _SubmissionReviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Every submission shown here is waiting for an admin decision.
+          // The admin's review decision on this submission.
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
@@ -570,7 +597,13 @@ class _SubmissionReviewCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
             child: Text(
-              'PENDING REVIEW',
+              switch (s.reviewStatus) {
+                'pending' => 'PENDING REVIEW',
+                'accepted' => 'ADDED TO ${s.caseReference ?? 'CASE'}',
+                'rejected' => 'REJECTED',
+                'duplicate' => 'DUPLICATE',
+                _ => s.reviewStatus.toUpperCase(),
+              },
               style: AppText.caption.copyWith(fontSize: 10),
             ),
           ),
@@ -604,19 +637,50 @@ class _SubmissionReviewCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // Single action, bottom-right of the card.
-          Align(
-            alignment: Alignment.centerRight,
-            child: SizedBox(
-              width: 110,
-              child: _OutlineAction(
-                label: 'View',
-                color: AppColors.fieldBorder,
-                textColor: AppColors.textPrimary,
-                onPressed: onView,
+          // Pending: Reject · View · Accept (as in the wireframe).
+          // Already reviewed: only View, bottom-right.
+          if (s.isPending)
+            Row(
+              children: [
+                Expanded(
+                  child: _OutlineAction(
+                    label: 'Reject',
+                    color: AppColors.danger,
+                    onPressed: onReject,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.small),
+                Expanded(
+                  child: _OutlineAction(
+                    label: 'View',
+                    color: AppColors.fieldBorder,
+                    textColor: AppColors.textPrimary,
+                    onPressed: onView,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.small),
+                Expanded(
+                  child: _OutlineAction(
+                    label: 'Accept',
+                    color: AppColors.success,
+                    onPressed: onAccept,
+                  ),
+                ),
+              ],
+            )
+          else
+            Align(
+              alignment: Alignment.centerRight,
+              child: SizedBox(
+                width: 110,
+                child: _OutlineAction(
+                  label: 'View',
+                  color: AppColors.fieldBorder,
+                  textColor: AppColors.textPrimary,
+                  onPressed: onView,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/argus_widgets.dart';
 import 'package:argus_shield/admin_screens/overview.dart';
+import 'package:argus_shield/admin_screens/cases.dart';
 import 'package:argus_shield/admin_screens/investigators.dart';
 import 'package:argus_shield/admin_screens/submissions.dart';
 
@@ -20,7 +21,7 @@ class AdminDashboard extends StatelessWidget {
     // If you reorder tabs, update the tab indexes at the top of overview.dart
     // (used by its "see more" links).
     return const DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         // Same two-line header as the citizen pages, with a diamond for admin.
         appBar: RoleAppBar(
@@ -29,6 +30,7 @@ class AdminDashboard extends StatelessWidget {
           bottom: TabBar(
             tabs: [
               Tab(text: 'Overview'),
+              Tab(text: 'Cases'),
               Tab(text: 'Investigators'),
               Tab(text: 'Submissions'),
             ],
@@ -38,6 +40,7 @@ class AdminDashboard extends StatelessWidget {
         body: TabBarView(
           children: [
             AdminOverview(),
+            AdminCases(),
             Investigators(),
             AdminSubmissions(),
           ],
