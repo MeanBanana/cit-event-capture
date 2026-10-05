@@ -9,42 +9,23 @@
 // Like the citizen pages, this file returns only a body. AdminDashboard
 // draws the Scaffold, header and tabs.
 //
-// Everything below uses hard-coded sample data so the layout can be reviewed.
-// It reuses the same model classes (and the same sample people) as the
-// Investigators and Submissions tabs, so when the Supabase fetch is ready the
-// same rows can feed all three tabs.
+// Live from Supabase: the SYSTEM STATUS numbers (getAdminStats) and the
+// newest investigators (getRecentInvestigators). Pull down to refresh.
+// Still sample data: RECENT ACTIVITY (no table yet) and RECENT SUBMISSIONS
+// (to be connected with the Submissions tab).
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/theme/argus_widgets.dart';
 import 'package:argus_shield/admin_screens/investigators.dart';
 import 'package:argus_shield/admin_screens/submissions.dart';
+import 'package:argus_shield/supabase_service.dart';
+import 'package:argus_shield/models/system_stats.dart';
 
 /// Tab positions in AdminDashboard, used by the "see more" links.
 /// Keep these in step with the order of tabs in admin_dashboard.dart.
 const int _investigatorsTabIndex = 1;
 const int _submissionsTabIndex = 2;
-
-/// Numbers for the four stat tiles.
-///
-/// Where each one will come from in the database:
-///   totalCases    count of crimescene rows
-///   activeCases   crimescene rows with status 'open' or 'under_review'
-///   pendingCases  crimescene rows with no active caseassignment
-///   investigators count of investigator rows
-class SystemStats {
-  final int totalCases;
-  final int activeCases;
-  final int pendingCases;
-  final int investigators;
-
-  const SystemStats({
-    required this.totalCases,
-    required this.activeCases,
-    required this.pendingCases,
-    required this.investigators,
-  });
-}
 
 /// One line in the Recent Activity feed.
 class ActivityItem {
@@ -55,17 +36,63 @@ class ActivityItem {
   const ActivityItem({required this.tag, required this.text, required this.at});
 }
 
-class AdminOverview extends StatelessWidget {
-  const AdminOverview({super.key});
+class AdminOverview extends StatefulWidget {
+  /// Optional so tests can pass in a fake; the app uses the real service.
+  final SupabaseService? service;
 
-  // ---- Sample data — swap for Supabase results later --------------------
+  const AdminOverview({super.key, this.service});
 
-  static const SystemStats _stats = SystemStats(
-    totalCases: 5,
-    activeCases: 2,
-    pendingCases: 1,
-    investigators: 4,
-  );
+  /// How many investigators the "Recent active investigators" section shows.
+  static const int recentInvestigatorCount = 3;
+
+  @override
+  State<AdminOverview> createState() => _AdminOverviewState();
+}
+
+class _AdminOverviewState extends State<AdminOverview> {
+  late final SupabaseService _service = widget.service ?? SupabaseService();
+
+  // Live data. Null / empty while loading or if loading failed.
+  SystemStats? _stats;
+  List<InvestigatorSummary> _investigators = const [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Loads every time the tab is opened (TabBarView rebuilds it), so the
+    // numbers are current whenever the admin comes back to Overview.
+    _fetch();
+  }
+
+  /// Loads the stat numbers and the newest investigators at the same time.
+  Future<void> _fetch() async {
+    try {
+      final results = await Future.wait([
+        _service.getAdminStats(),
+        _service.getRecentInvestigators(
+            limit: AdminOverview.recentInvestigatorCount),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _stats = results[0] as SystemStats;
+        _investigators = results[1] as List<InvestigatorSummary>;
+        _error = null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load live data. Pull down to try again.';
+        _loading = false;
+      });
+    }
+  }
+
+  // ---- Sample data — not connected to the database yet -----------------
+  // Recent activity has no table behind it yet; recent submissions will be
+  // connected together with the Submissions tab.
 
   static List<ActivityItem> get _activity => [
         ActivityItem(
@@ -79,35 +106,6 @@ class AdminOverview extends StatelessWidget {
           at: DateTime.now().subtract(const Duration(hours: 6)),
         ),
       ];
-
-  // Same sample investigator as the Investigators tab, plus a second one.
-  static const List<InvestigatorSummary> _investigators = [
-    InvestigatorSummary(
-      userId: 1,
-      firstName: 'Thabo',
-      surname: 'Mokoena',
-      rank: 'Sgt.',
-      badgeNumber: 'JHB-4471',
-      station: 'Kempton Park SAPS',
-      unit: 'CIT Task Force',
-      dutyStatus: 'on_duty',
-      email: 'thabo.mokoena@saps.gov.za',
-      phoneNumber: '082 555 0147',
-      activeCases: 3,
-    ),
-    InvestigatorSummary(
-      userId: 2,
-      firstName: 'Anri',
-      surname: 'Pieterse',
-      rank: 'Sgt.',
-      badgeNumber: 'JHB-4483',
-      station: 'Kempton Park SAPS',
-      unit: 'CIT Task Force',
-      dutyStatus: 'available',
-      email: 'anri.pieterse@saps.gov.za',
-      activeCases: 2,
-    ),
-  ];
 
   // Same sample incident as the Submissions tab.
   static List<CrimeSceneSummary> get _submissions => [
@@ -141,84 +139,113 @@ class AdminOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: AppSpacing.page,
-      children: [
-        // 1. System status ------------------------------------------------
-        const _SectionHeading('System status — live'),
-        Row(
-          children: [
-            Expanded(
-              child: _StatTile(
-                title: 'Total cases',
-                value: _stats.totalCases,
-                subtitle: 'all time',
-              ),
+    final stats = _stats; // null shows "—" in the tiles
+
+    // Pull down to refresh the live numbers.
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      child: ListView(
+        padding: AppSpacing.page,
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          // 1. System status ----------------------------------------------
+          const _SectionHeading('System status — live'),
+          if (_error != null) ...[
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: AppText.bodyMuted.copyWith(color: AppColors.danger),
             ),
-            const SizedBox(width: AppSpacing.medium),
-            Expanded(
-              child: _StatTile(
-                title: 'Active',
-                value: _stats.activeCases,
-                subtitle: 'ongoing',
-                color: AppColors.danger,
-                animatedBorder: true, // red stripes run round the box
-              ),
-            ),
+            const SizedBox(height: AppSpacing.small),
           ],
-        ),
-        const SizedBox(height: AppSpacing.medium),
-        Row(
-          children: [
-            Expanded(
-              child: _StatTile(
-                title: 'Pending',
-                value: _stats.pendingCases,
-                subtitle: 'unassigned',
-                color: AppColors.accent,
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  title: 'Total cases',
+                  value: stats?.totalCases,
+                  subtitle: 'all time',
+                ),
+              ),
+              const SizedBox(width: AppSpacing.medium),
+              Expanded(
+                child: _StatTile(
+                  title: 'Active',
+                  value: stats?.activeCases,
+                  subtitle: 'ongoing',
+                  color: AppColors.danger,
+                  animatedBorder: true, // red stripes run round the box
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.medium),
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  title: 'Pending',
+                  value: stats?.pendingCases,
+                  subtitle: 'unassigned',
+                  color: AppColors.accent,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.medium),
+              Expanded(
+                child: _StatTile(
+                  title: 'Investigators',
+                  value: stats?.investigators,
+                  subtitle: 'registered',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.large),
+
+          // 2. Recent activity (sample) -----------------------------------
+          const _SectionHeading('Recent activity'),
+          for (final item in _activity) _ActivityRow(item: item),
+          _SeeMore(onTap: () => _notReady(context, 'Full activity log')),
+          const SizedBox(height: AppSpacing.medium),
+
+          // 3. Recent active investigators (live) -------------------------
+          const _SectionHeading('Recent active investigators'),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(AppSpacing.medium),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_investigators.isEmpty && _error == null)
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.small),
+              child: Text(
+                'No investigators have been added yet.',
+                textAlign: TextAlign.center,
+                style: AppText.bodyMuted,
               ),
             ),
-            const SizedBox(width: AppSpacing.medium),
-            Expanded(
-              child: _StatTile(
-                title: 'Investigators',
-                value: _stats.investigators,
-                subtitle: 'registered',
-              ),
+          for (final inv in _investigators) ...[
+            _InvestigatorMiniCard(
+              investigator: inv,
+              onProfile: () => _notReady(context, 'Investigator profile'),
             ),
+            const SizedBox(height: AppSpacing.small),
           ],
-        ),
-        const SizedBox(height: AppSpacing.large),
+          _SeeMore(onTap: () => _goToTab(context, _investigatorsTabIndex)),
+          const SizedBox(height: AppSpacing.medium),
 
-        // 2. Recent activity ----------------------------------------------
-        const _SectionHeading('Recent activity'),
-        for (final item in _activity) _ActivityRow(item: item),
-        _SeeMore(onTap: () => _notReady(context, 'Full activity log')),
-        const SizedBox(height: AppSpacing.medium),
-
-        // 3. Recent active investigators ----------------------------------
-        const _SectionHeading('Recent active investigators'),
-        for (final inv in _investigators) ...[
-          _InvestigatorMiniCard(
-            investigator: inv,
-            onProfile: () => _notReady(context, 'Investigator profile'),
-          ),
-          const SizedBox(height: AppSpacing.small),
+          // 4. Recent submissions (sample) --------------------------------
+          const _SectionHeading('Recent submissions'),
+          for (final s in _submissions) ...[
+            _SubmissionReviewCard(
+              submission: s,
+              onView: () => _notReady(context, 'View submission'),
+            ),
+            const SizedBox(height: AppSpacing.small),
+          ],
+          _SeeMore(onTap: () => _goToTab(context, _submissionsTabIndex)),
         ],
-        _SeeMore(onTap: () => _goToTab(context, _investigatorsTabIndex)),
-        const SizedBox(height: AppSpacing.medium),
-
-        // 4. Recent submissions -------------------------------------------
-        const _SectionHeading('Recent submissions'),
-        for (final s in _submissions) ...[
-          _SubmissionReviewCard(
-            submission: s,
-            onView: () => _notReady(context, 'View submission'),
-          ),
-          const SizedBox(height: AppSpacing.small),
-        ],
-        _SeeMore(onTap: () => _goToTab(context, _submissionsTabIndex)),
-      ],
+      ),
     );
   }
 }
@@ -277,7 +304,7 @@ class _SeeMore extends StatelessWidget {
 /// (AnimatedStripeBorder in theme/argus_widgets.dart).
 class _StatTile extends StatelessWidget {
   final String title;
-  final int value;
+  final int? value; // null while loading (or if loading failed) shows "—"
   final String subtitle;
   final Color? color;
   final bool animatedBorder;
@@ -307,7 +334,7 @@ class _StatTile extends StatelessWidget {
           ),
         ),
         Text(
-          '$value',
+          value?.toString() ?? '—',
           style: AppText.body.copyWith(
             fontSize: 30,
             fontWeight: FontWeight.bold,

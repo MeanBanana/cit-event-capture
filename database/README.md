@@ -191,6 +191,8 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 | `set_case_dateclosed()` | trigger on `cases` insert/update | Sets `dateclosed` when a case is closed and clears it if reopened |
 | `check_weapondetail()` | trigger on `weapondetail` insert/update | The detection must be a `weapon` detection, and a linked suspect must be from the same incident |
 | `email_for_username(username)` | callable before login | Returns the email for a username (any case), or null |
+| `list_investigators(p_search, p_limit)` | callable by logged-in users | Investigators with their `"User"` details and active case count, newest account first (default 20, max 100). With `p_search`, only those whose badge number or name contains it (any case). Normal RLS applies, so citizens get nothing |
+| `admin_overview_stats()` | callable by logged-in users | One row for the admin Overview tiles: `totalcases`, `activecases` (open/under review), `pendingcases` (active with no active assignment), `investigators`. Normal RLS applies, so only admins get the full totals |
 | `username_available(username)` | callable before login | True if nobody has that username yet (any case) |
 | `rls_auto_enable()` | event trigger | Turns RLS on for every new table in `public` (the table still needs policies before the app can use it) |
 
@@ -294,6 +296,8 @@ await supabase.auth.updateUser(UserAttributes(password: newPassword));
 | `20261005141600_cases_table.sql` | Adds `cases`; `crimescene.caseid` links incidents to a case; `caseassignment` now points at `caseid` (existing assignments become one case per incident); `is_assigned_to_case()` helper; only admins set `caseid`; `dateclosed` set automatically; RLS policies for `cases` |
 | `20261005142800_weapon_detail.sql` | Adds `weapondetail` (weapon type, description, optional suspect) for `weapon` detections, with the same RLS as `vehicledetail` |
 | `20261005143300_drop_suspect_behaviour.sql` | Removes the unused `suspect.behaviouralindicators` column |
+| `20261005152000_list_investigators.sql` | Adds `list_investigators()` for the admin Investigators screen (recent list + search by name or badge number) |
+| `20261005153500_admin_overview_stats.sql` | Adds `admin_overview_stats()` for the admin Overview SYSTEM STATUS tiles |
 
 ---
 

@@ -1,105 +1,125 @@
 // investigators.dart — System Administrator view of every investigator.
 //
-// Shows a search bar (name or badge number) and a
-// scrollable list of investigator cards.
+// Shows a search bar (name or badge number) and a scrollable list of
+// investigator cards.
 //
-// For now the list holds ONE hard-coded sample investigator so the layout can
-// be reviewed. When the Supabase fetch is ready, replace `_investigators`
-// with the rows returned from SupabaseService — the search and cards will
-// keep working unchanged because they only read from that list.
+// Data comes from SupabaseService:
+//   * on opening: getRecentInvestigators()  -> the 20 newest accounts
+//   * while searching: searchInvestigators() -> matches by name/badge number
+// The search runs in the database (not on the phone), so it finds any
+// investigator, not only the 20 already on screen.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
+import 'package:argus_shield/supabase_service.dart';
+import 'package:argus_shield/models/investigator_summary.dart';
 
-/// One investigator as the card needs it.
-///
-/// Field names follow the database: public."User" (firstname, surname,
-/// email, phonenumber) joined with public.investigator (rank, badgenumber,
-/// station, unit, dutystatus).
-class InvestigatorSummary {
-  final int userId;
-  final String firstName;
-  final String surname;
-  final String? rank; // e.g. 'Sgt.' — nullable in the database
-  final String badgeNumber; // e.g. 'JHB-4471'
-  final String station; // e.g. 'Kempton Park SAPS'
-  final String? unit; // e.g. 'CIT Task Force' — nullable in the database
-  final String dutyStatus; // 'on_duty' | 'available' | 'off_duty'
-  final String email;
-  final String? phoneNumber;
-  final int activeCases; // count of active rows in caseassignment
-
-  const InvestigatorSummary({
-    required this.userId,
-    required this.firstName,
-    required this.surname,
-    this.rank,
-    required this.badgeNumber,
-    required this.station,
-    this.unit,
-    required this.dutyStatus,
-    required this.email,
-    this.phoneNumber,
-    this.activeCases = 0,
-  });
-
-  String get fullName => '$firstName $surname';
-
-  /// "Sgt. Thabo Mokoena", or just the name when no rank is stored.
-  String get displayName => rank == null ? fullName : '$rank $fullName';
-}
+// Other screens (e.g. overview.dart) import InvestigatorSummary from here.
+export 'package:argus_shield/models/investigator_summary.dart';
 
 /// Body of the Investigators tab. Like the citizen pages, it has no Scaffold
 /// or header of its own — AdminDashboard draws those.
 class Investigators extends StatefulWidget {
-  const Investigators({super.key});
+  /// Optional so tests can pass in a fake; the app uses the real service.
+  final SupabaseService? service;
+
+  const Investigators({super.key, this.service});
+
+  /// How long to wait after the last key press before searching, so typing
+  /// "JHB-4471" sends one request instead of eight.
+  static const searchDelay = Duration(milliseconds: 400);
 
   @override
   State<Investigators> createState() => _InvestigatorsState();
 }
 
 class _InvestigatorsState extends State<Investigators> {
+  late final SupabaseService _service = widget.service ?? SupabaseService();
   final _searchController = TextEditingController();
-  String _query = '';
+  Timer? _searchTimer;
 
-  // Sample data only — swap for the Supabase results later.
-  final List<InvestigatorSummary> _investigators = const [
-    InvestigatorSummary(
-      userId: 1,
-      firstName: 'Thabo',
-      surname: 'Mokoena',
-      rank: 'Sgt.',
-      badgeNumber: 'JHB-4471',
-      station: 'Kempton Park SAPS',
-      unit: 'CIT Task Force',
-      dutyStatus: 'on_duty',
-      email: 'thabo.mokoena@saps.gov.za',
-      phoneNumber: '082 555 0147',
-      activeCases: 3,
-    ),
-  ];
+  String _query = '';
+  List<InvestigatorSummary> _investigators = const [];
+  bool _loading = true;
+  String? _error;
+
+  // Each request gets a number; only the newest one may update the screen,
+  // so a slow old search cannot overwrite a newer result.
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch(); // _loading already starts as true
+  }
 
   @override
   void dispose() {
+    _searchTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  /// Investigators whose name or badge number contains the search text.
-  /// Case-insensitive, so "jhb" finds "JHB-4471" and "thabo" finds "Thabo".
-  List<InvestigatorSummary> get _filtered {
-    final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return _investigators;
-    return _investigators.where((inv) {
-      return inv.fullName.toLowerCase().contains(q) ||
-          inv.badgeNumber.toLowerCase().contains(q);
-    }).toList();
+  /// Loads the recent investigators, or the search results when there is
+  /// search text.
+  Future<void> _fetch() async {
+    final id = ++_requestId;
+    final query = _query.trim();
+    try {
+      final rows = query.isEmpty
+          ? await _service.getRecentInvestigators()
+          : await _service.searchInvestigators(query);
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _investigators = rows;
+        _error = null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _error = 'Could not load investigators. Check your connection.';
+        _loading = false;
+      });
+    }
+  }
+
+  /// Shows the spinner and loads again (search changed, or "Try again").
+  void _reload() {
+    _searchTimer?.cancel();
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    _fetch();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _query = value);
+    _searchTimer?.cancel();
+    _searchTimer = Timer(Investigators.searchDelay, _reload);
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _query = '';
+    _reload();
+  }
+
+  String get _countText {
+    final n = _investigators.length;
+    if (_query.trim().isEmpty) {
+      return n == 1
+          ? 'Showing the most recently added investigator'
+          : 'Showing the $n most recently added investigators';
+    }
+    return '$n ${n == 1 ? 'match' : 'matches'} for "${_query.trim()}"';
   }
 
   @override
   Widget build(BuildContext context) {
-    final results = _filtered;
-
     return Padding(
       padding: AppSpacing.page,
       child: Column(
@@ -118,7 +138,8 @@ class _InvestigatorsState extends State<Investigators> {
             controller: _searchController,
             style: AppText.body,
             textInputAction: TextInputAction.search,
-            onChanged: (value) => setState(() => _query = value),
+            onChanged: _onSearchChanged,
+            onSubmitted: (_) => _reload(), // search now, don't wait
             decoration: InputDecoration(
               hintText: 'Search by name/badge number',
               prefixIcon: const Icon(Icons.search, color: AppColors.accent),
@@ -127,38 +148,63 @@ class _InvestigatorsState extends State<Investigators> {
                   : IconButton(
                       icon: const Icon(Icons.close, color: AppColors.textMuted),
                       tooltip: 'Clear search',
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _query = '');
-                      },
+                      onPressed: _clearSearch,
                     ),
             ),
           ),
           const SizedBox(height: AppSpacing.small),
-          Text(
-            '${results.length} of ${_investigators.length} investigators',
-            style: AppText.caption.copyWith(color: AppColors.textMuted),
-          ),
+          if (!_loading && _error == null)
+            Text(
+              _countText,
+              style: AppText.caption.copyWith(color: AppColors.textMuted),
+            ),
           const SizedBox(height: AppSpacing.medium),
 
           // Only the list scrolls; the title and search bar stay in place.
-          Expanded(
-            child: results.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No investigators match your search.',
-                      style: AppText.bodyMuted,
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: results.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.medium),
-                    itemBuilder: (context, index) =>
-                        InvestigatorCard(investigator: results[index]),
-                  ),
-          ),
+          Expanded(child: _buildList()),
         ],
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!, style: AppText.bodyMuted, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.small),
+            TextButton(onPressed: _reload, child: const Text('Try again')),
+          ],
+        ),
+      );
+    }
+
+    if (_investigators.isEmpty) {
+      return Center(
+        child: Text(
+          _query.trim().isEmpty
+              ? 'No investigators have been added yet.'
+              : 'No investigators match your search.',
+          style: AppText.bodyMuted,
+        ),
+      );
+    }
+
+    // Pull down to refresh.
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _investigators.length,
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.medium),
+        itemBuilder: (context, index) =>
+            InvestigatorCard(investigator: _investigators[index]),
       ),
     );
   }

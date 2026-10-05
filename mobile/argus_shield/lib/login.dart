@@ -6,7 +6,6 @@ import 'admin_screens/admin_dashboard.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
 import 'loadingscreen.dart';
-import 'citizen/argus_app.dart';
 
 class LoginPage extends StatefulWidget{
   /// Optional so tests can pass in a fake; the app uses the real service.
