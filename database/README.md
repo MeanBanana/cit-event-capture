@@ -93,7 +93,8 @@ The sub-tables point at `"User"` using **both** `userid` and `role`. Because of 
 | `media` | Footage/photos uploaded to an incident: type (`image`, `video`, `audio`), storage path, file hash/size, timestamps, processing status (`pending`, `processing`, `completed`, `failed`) | `incidentid` → crimescene, `uploadedby` → User |
 | `detection` | What the AI found in a media file: type (`vehicle`, `person`, `weapon`), frame time, bounding box, confidence, model version | `mediaid` → media |
 | `vehicledetail` | Vehicle details for a vehicle detection: make, model, colour, number plate, plate confidence | `detectionid` → detection (one-to-one) |
-| `suspect` | A person detection that an admin has confirmed as a suspect: physical/clothing description, behaviour | `detectionid` → detection, `incidentid` → crimescene, `confirmedby` → User |
+| `weapondetail` | Weapon details for a weapon detection: type (`handgun`, `rifle`, `shotgun`, `knife`, `explosive`, `other`, `unknown`), description, and optionally the suspect carrying it (must be from the same incident) | `detectionid` → detection (one-to-one), `suspectid` → suspect |
+| `suspect` | A person detection that an admin has confirmed as a suspect: physical and clothing description (weapons are in `weapondetail`) | `detectionid` → detection, `incidentid` → crimescene, `confirmedby` → User |
 | `correctionlog` | Audit trail of corrections to AI results (original and corrected value) | `detectionid` → detection, `correctedby` → User |
 | `caseassignment` | Which investigator is assigned to which case, by whom, and the status (`active`, `reassigned`, `closed`). An investigator can have only one `active` assignment per case | `caseid` → cases, `assignedto` / `assignedby` → User |
 | `crossreferencelink` | Links the same vehicle or suspect across different incidents, with match confidence and verification status | `linkedby` → User |
@@ -161,6 +162,7 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 | `media` | Upload to incidents they reported; see own uploads | See and upload to assigned cases | All |
 | `detection` | — | Assigned cases (read-only) | All (read) |
 | `vehicledetail` | — | Assigned cases; may correct details | All |
+| `weapondetail` | — | Assigned cases; may correct details | All |
 | `suspect` | — | Assigned cases (read-only) | Create, confirm, edit, delete |
 | `correctionlog` | — | Assigned cases; add corrections as themselves (no edits/deletes) | All; add corrections |
 | `caseassignment` | — | Own assignments | Assign, reassign, close |
@@ -187,6 +189,7 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 | `protect_investigator_columns()` | trigger on `investigator` update | Non-admins may only change `dutystatus` |
 | `protect_crimescene_caseid()` | trigger on `crimescene` insert/update | Only admins may add an incident to a case or move it between cases |
 | `set_case_dateclosed()` | trigger on `cases` insert/update | Sets `dateclosed` when a case is closed and clears it if reopened |
+| `check_weapondetail()` | trigger on `weapondetail` insert/update | The detection must be a `weapon` detection, and a linked suspect must be from the same incident |
 | `email_for_username(username)` | callable before login | Returns the email for a username (any case), or null |
 | `username_available(username)` | callable before login | True if nobody has that username yet (any case) |
 | `rls_auto_enable()` | event trigger | Turns RLS on for every new table in `public` (the table still needs policies before the app can use it) |
@@ -289,6 +292,8 @@ await supabase.auth.updateUser(UserAttributes(password: newPassword));
 | `20260929114152_auth_and_rls.sql` | Links `"User"` to Supabase Auth (`authid`), removes `passwordhash`, adds the helper functions, the sign-up trigger, column protection and all RLS policies |
 | `20260929221626_user_role_tables.sql` | `role` becomes the `user_role` enum; adds `username`, `firstname`, `surname`, `phonenumber`; removes `fullname` and `badgenumber`; creates `citizen` and `investigator`; username helpers; email sync; investigator duty-status rule; their RLS policies |
 | `20261005141600_cases_table.sql` | Adds `cases`; `crimescene.caseid` links incidents to a case; `caseassignment` now points at `caseid` (existing assignments become one case per incident); `is_assigned_to_case()` helper; only admins set `caseid`; `dateclosed` set automatically; RLS policies for `cases` |
+| `20261005142800_weapon_detail.sql` | Adds `weapondetail` (weapon type, description, optional suspect) for `weapon` detections, with the same RLS as `vehicledetail` |
+| `20261005143300_drop_suspect_behaviour.sql` | Removes the unused `suspect.behaviouralindicators` column |
 
 ---
 
