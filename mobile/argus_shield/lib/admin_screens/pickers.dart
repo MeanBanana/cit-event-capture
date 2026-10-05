@@ -126,11 +126,16 @@ class CasePicker extends StatefulWidget {
   /// Hidden from the list, e.g. the case the incident is already in.
   final int? excludeCaseId;
 
+  /// When set, a "Case not listed? Create a new case" button is shown at
+  /// the bottom and calls this.
+  final VoidCallback? onNotListed;
+
   const CasePicker({
     super.key,
     required this.service,
     required this.onSelected,
     this.excludeCaseId,
+    this.onNotListed,
   });
 
   @override
@@ -216,9 +221,8 @@ class _CasePickerState extends State<CasePicker> {
                   title: Text('${c.reference} · ${c.title}',
                       style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
                   subtitle: Text(
-                    '${c.incidentCount} '
-                    '${c.incidentCount == 1 ? 'incident' : 'incidents'} · '
-                    '$people ${people == 1 ? 'investigator' : 'investigators'}',
+                    '${plural(c.incidentCount, 'submission')} · '
+                    '${plural(people, 'investigator')}',
                     style: AppText.bodyMuted.copyWith(fontSize: 13),
                   ),
                   trailing: StatusTag(label: label, color: color),
@@ -228,6 +232,19 @@ class _CasePickerState extends State<CasePicker> {
             ),
           ),
         ),
+        if (widget.onNotListed != null) ...[
+          const SizedBox(height: AppSpacing.small),
+          OutlinedButton.icon(
+            onPressed: widget.onNotListed,
+            icon: const Icon(Icons.create_new_folder_outlined),
+            label: const Text('Case not listed? Create a new case'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              side: const BorderSide(color: AppColors.accent),
+              minimumSize: const Size.fromHeight(48),
+            ),
+          ),
+        ],
       ],
     );
   }

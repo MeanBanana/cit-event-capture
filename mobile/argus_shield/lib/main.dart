@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login.dart';
 import 'theme/app_theme.dart';
+import 'theme/argus_widgets.dart';
 
 // The app starts on the login page. After logging in, login.dart sends each
 // user to their own dashboard: citizens to CitizenHome, admins to
@@ -27,6 +28,8 @@ class RootApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       // All colours, fonts and widget styles come from theme/app_theme.dart
       theme: buildArgusTheme(),
+      // keeps every page above the phone's navigation buttons
+      builder: keepAboveSystemBars,
       home: const LoginPage(),
     );
   }

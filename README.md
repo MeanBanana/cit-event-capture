@@ -124,10 +124,22 @@ database/
 └── supabase/
     ├── config.toml
     └── migrations/
-        ├── 20260929072508_remote_schema.sql     ← baseline schema pulled from Supabase Cloud
-        ├── 20260929114152_auth_and_rls.sql      ← Supabase Auth link + role-based RLS policies
-        └── 20260929221626_user_role_tables.sql  ← role enum, citizen/investigator tables, usernames
+        ├── 20260929072508_remote_schema.sql            ← baseline schema pulled from Supabase Cloud
+        ├── 20260929114152_auth_and_rls.sql             ← Supabase Auth link + role-based RLS policies
+        ├── 20260929221626_user_role_tables.sql         ← role enum, citizen/investigator tables, usernames
+        ├── 20261005141600_cases_table.sql              ← cases; assignments point at cases
+        ├── 20261005142800_weapon_detail.sql            ← weapondetail for weapon detections
+        ├── 20261005143300_drop_suspect_behaviour.sql
+        ├── 20261005152000_list_investigators.sql       ← Investigators screen
+        ├── 20261005153500_admin_overview_stats.sql     ← Overview tiles
+        ├── 20261005154500_submissions.sql              ← datereported, list_submissions
+        ├── 20261005161500_overview_activity.sql        ← Recent activity feed
+        ├── 20261005163000_review_and_cases.sql         ← accept / reject / duplicate, case actions
+        ├── 20261005203000_case_events_and_leads.sql    ← case history, lead investigator, case status rules
+        └── 20261005203100_submission_views_and_ai.sql  ← AI fields, paging, grouping, suggestions, one-tap review
 ```
+
+The full list with what each migration does is in [`database/README.md`](./database/README.md#migrations).
 
 **See [`database/README.md`](./database/README.md)** for the full schema, how accounts and login work, who can see what, Flutter examples, and troubleshooting.
 
@@ -406,11 +418,24 @@ Every table has RLS enabled. The mobile app uses the **publishable key** and the
 | Role | Access |
 |---|---|
 | **Citizen** | Report incidents and upload footage as themselves; view only their own submissions and profile; edit their own username, name, phone number and residence |
-| **Investigator** | View only cases they are actively assigned to, plus that footage, detections and vehicle details; update case status; log corrections; view cross-incident links and other investigators; change their own duty status |
-| **Admin** | Full access; assign cases; confirm suspects; manage users and investigator details |
+| **Investigator** | View only cases they are actively assigned to, plus that footage, detections, vehicle details and the case history; move a case between open and under review; confirm (verify) AI detections; log corrections; view cross-incident links and other investigators; change their own duty status |
+| **Admin** | Full access; review submissions (accept into a case, reject, mark duplicate); accept suggested matches; create, edit, close and reopen cases; assign investigators and choose the lead; confirm suspects; manage users and investigator details |
 | **Not logged in** | No access to any table (only the username lookup used by the login screen) |
 
-The Python AI/CV pipeline uses the **service role (secret) key**, which bypasses RLS, to write detections and update processing status. This key must **never** be placed in the mobile app or committed to Git.
+The Python AI/CV pipeline uses the **service role (secret) key**, which bypasses RLS, to write detections and update processing status. Only that key can write the AI fields (per-clip descriptions, the combined summary, capture times); the database refuses them from the app. This key must **never** be placed in the mobile app or committed to Git. What the pipeline must write, and in which order, is in [`database/README.md`](./database/README.md#the-ai-pipeline-what-it-writes).
+
+## From submission to case
+
+**A citizen submits, the AI analyses, the admin decides.**
+
+1. A citizen reports an incident and uploads footage. It starts as **Pending review**.
+2. The AI pipeline (to be built) describes each clip, writes one combined summary, reads plates and links the same vehicle or suspect across reports.
+3. The admin works through the **Submissions** tab: Newest / Oldest, grouped by Location, Status, Case, or Linked (submissions the AI connected). Each card shows the citizen's description **and** the AI summary.
+4. The database suggests which case a submission belongs to (AI links, same or nearly the same plate, distance, time from the footage's own metadata), with the reasons. The admin reviews the **Suggested matches** list and accepts the right ones in one tap, or accepts a submission into a new or existing case by hand. **Nothing joins a case without an admin accepting it.**
+5. Inside a case the admin assigns investigators (the first becomes the lead), sees recommended submissions, and can remove a submission again: it goes back to Pending and is never deleted.
+6. Every step is recorded in the case history (`caseevent`).
+
+Details: [`database/README.md`](./database/README.md#how-a-submission-becomes-a-case).
 
 ## Using it from Flutter (`supabase_flutter`)
 
@@ -553,10 +578,11 @@ Testing should be appropriate to the component being modified.
 
 Examples include:
 
-* Flutter widget and unit testing
+* Flutter widget and unit testing: run `flutter analyze` and `flutter test` in `mobile/argus_shield/` (the admin screens are tested against an in-memory fake, so no Supabase project is needed)
 * Supabase/API integration testing
 * AI model testing
 * Database testing, including RLS policy testing: log in as a citizen, an investigator, and an admin and confirm each only sees what it should
+* Demo data: a SQL script with demo submissions, a demo case, footage, AI descriptions and AI links (kept outside the repository; see [`database/README.md`](./database/README.md#testing))
 * Integration testing across mobile app, Supabase, and AI component
 
 Test results should be documented where appropriate.

@@ -1,13 +1,22 @@
-// case_detail.dart — full page for one case (opened from the Cases tab, a
-// submission's "Open case" button, or after creating a case).
+// case_detail.dart — full page for one case (opened from the Cases tab, the
+// Submissions tab's Case view, a submission's "Open case" button, or after
+// creating a case).
 //
 // The admin can:
 //   * change the status (Open / Under review / Closed) and edit the title
 //     and description
-//   * assign investigators and remove them (past assignments are kept)
-//   * add pending submissions to the case, open an incident, move it to
-//     another case or remove it from this one
-// A closed case can't get new incidents or investigators until reopened.
+//   * assign investigators, choose the lead, remove them (past
+//     assignments are kept)
+//   * see every submission in the case (30 at a time, "Load more"), each
+//     with the citizen's and the AI's descriptions
+//   * add submissions: pick pending ones, or one tap on a RECOMMENDED one
+//     (the database scores pending submissions against the case: AI links,
+//     same plate, distance, time ...)
+//   * open a submission, move it to another case, or remove it from this
+//     one. Removing never deletes it: it goes back to "Pending review" and
+//     keeps all its footage and history.
+//   * read the case history (who did what, when)
+// A closed case can't get new submissions or investigators until reopened.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -16,10 +25,13 @@ import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/case_summary.dart';
 import 'package:argus_shield/models/case_assignment_info.dart';
 import 'package:argus_shield/models/crime_scene_summary.dart';
+import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/review_actions.dart';
 import 'package:argus_shield/admin_screens/submission_detail.dart';
+import 'package:argus_shield/admin_screens/submissions.dart'
+    show CrimeSceneCard;
 
 class CaseDetailPage extends StatefulWidget {
   final int caseId;
@@ -36,6 +48,9 @@ class CaseDetailPage extends StatefulWidget {
     ('Closed', 'closed'),
   ];
 
+  /// How many history lines show before "Show more".
+  static const historyPageSize = 10;
+
   @override
   State<CaseDetailPage> createState() => _CaseDetailPageState();
 }
@@ -45,7 +60,12 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
 
   CaseSummary? _case;
   List<CrimeSceneSummary> _incidents = const [];
+  bool _moreIncidents = false; // another page of submissions exists
+  bool _loadingMore = false;
   List<CaseAssignmentInfo> _assignments = const [];
+  List<(IncidentSuggestion, CrimeSceneSummary)> _suggestions = const [];
+  List<CaseEvent> _history = const [];
+  bool _moreHistory = false;
   bool _loading = true;
   bool _busy = false; // an action is running
   String? _error;
@@ -56,20 +76,30 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     _load();
   }
 
-  /// Loads the case, its incidents and its investigators together.
+  /// Loads the case, the first page of its submissions, its investigators,
+  /// suggestions and history together.
   Future<void> _load() async {
     try {
       final results = await Future.wait([
         _service.getCase(widget.caseId),
-        _service.getCaseIncidents(widget.caseId),
+        _service.listSubmissionsPage(caseId: widget.caseId),
         _service.getCaseAssignments(widget.caseId),
+        _loadSuggestions(),
+        _loadHistory(),
       ]);
       if (!mounted) return;
       final c = results[0] as CaseSummary?;
+      final incidents = results[1] as List<CrimeSceneSummary>;
+      final history = results[4] as List<CaseEvent>;
       setState(() {
         _case = c;
-        _incidents = results[1] as List<CrimeSceneSummary>;
+        _incidents = incidents;
+        _moreIncidents = incidents.length >= SupabaseService.pageSize;
         _assignments = results[2] as List<CaseAssignmentInfo>;
+        _suggestions =
+            results[3] as List<(IncidentSuggestion, CrimeSceneSummary)>;
+        _history = history;
+        _moreHistory = history.length >= CaseDetailPage.historyPageSize;
         _error = c == null ? 'This case no longer exists.' : null;
         _loading = false;
       });
@@ -79,6 +109,65 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
         _error = 'Could not load this case. Pull down to try again.';
         _loading = false;
       });
+    }
+  }
+
+  /// Suggested submissions with their details. Never fails the page.
+  Future<List<(IncidentSuggestion, CrimeSceneSummary)>> _loadSuggestions() async {
+    try {
+      final found = await _service.suggestIncidentsForCase(widget.caseId);
+      if (found.isEmpty) return const [];
+      final rows = await _service.listSubmissionsPage(
+          ids: [for (final f in found) f.incidentId], limit: found.length);
+      final byId = {for (final r in rows) r.incidentId: r};
+      return [
+        for (final f in found)
+          if (byId[f.incidentId] != null) (f, byId[f.incidentId]!),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<CaseEvent>> _loadHistory() async {
+    try {
+      return await _service.getCaseEvents(widget.caseId,
+          limit: CaseDetailPage.historyPageSize);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _loadMoreIncidents() async {
+    if (_loadingMore || _incidents.isEmpty) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await _service.listSubmissionsPage(
+          caseId: widget.caseId, after: _incidents.last);
+      if (!mounted) return;
+      setState(() {
+        _incidents = [..._incidents, ...page];
+        _moreIncidents = page.length >= SupabaseService.pageSize;
+      });
+    } catch (e) {
+      if (mounted) showSnack(context, errorText(e));
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_history.isEmpty) return;
+    try {
+      final page = await _service.getCaseEvents(widget.caseId,
+          before: _history.last, limit: CaseDetailPage.historyPageSize);
+      if (!mounted) return;
+      setState(() {
+        _history = [..._history, ...page];
+        _moreHistory = page.length >= CaseDetailPage.historyPageSize;
+      });
+    } catch (e) {
+      if (mounted) showSnack(context, errorText(e));
     }
   }
 
@@ -105,7 +194,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
         context,
         title: 'Close ${c.reference}?',
         message: 'Assigned investigators keep access to it. You can\'t add '
-            'incidents or investigators until it is reopened.',
+            'submissions or investigators until it is reopened.',
         confirmLabel: 'Close case',
       );
       if (!ok || !mounted) return;
@@ -175,7 +264,8 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
       context,
       title: 'Remove ${a.name}?',
       message: '${a.name} will no longer see ${c.reference}. '
-          'The assignment stays in the case history.',
+          'The assignment stays in the case history.'
+          '${a.isLead ? '\n\nThey are the lead: choose a new lead afterwards.' : ''}',
       confirmLabel: 'Remove',
       destructive: true,
     );
@@ -184,7 +274,14 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
         () => _service.unassignInvestigator(a.assignmentId));
   }
 
-  // ---- Incidents -------------------------------------------------------------
+  Future<void> _makeLead(CaseAssignmentInfo a) async {
+    final c = _case;
+    if (c == null || a.isLead) return;
+    await _run('${a.name} is now the lead on ${c.reference}',
+        () => _service.setCaseLead(a.assignmentId));
+  }
+
+  // ---- Submissions -----------------------------------------------------------
 
   Future<void> _addIncidents() async {
     final c = _case;
@@ -209,9 +306,16 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     );
     if (added != null && mounted) {
       showSnack(context,
-          '$added ${added == 1 ? 'incident' : 'incidents'} added to ${c.reference}');
+          '${plural(added, 'submission')} added to ${c.reference}');
       await _load();
     }
+  }
+
+  Future<void> _addSuggested(CrimeSceneSummary s) async {
+    final c = _case;
+    if (c == null) return;
+    await _run('${s.reference} added to ${c.reference}',
+        () => _service.addIncidentsToCase(c.caseId, [s.incidentId]));
   }
 
   Future<void> _openIncident(CrimeSceneSummary s) async {
@@ -224,10 +328,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     if (mounted) await _load();
   }
 
-  Future<void> _incidentAction(
-      Future<bool> Function(BuildContext, SupabaseService, CrimeSceneSummary)
-          action,
-      CrimeSceneSummary s) async {
+  Future<void> _incidentAction(ReviewAction action, CrimeSceneSummary s) async {
     final changed = await action(context, _service, s);
     if (changed && mounted) await _load();
   }
@@ -261,6 +362,10 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     final (statusLabel, statusColor) = statusStyle(c.status);
     final active = _assignments.where((a) => a.isActive).toList();
     final past = _assignments.where((a) => !a.isActive).toList();
+    final noLead = active.isNotEmpty && !active.any((a) => a.isLead);
+    final total = c.incidentCount > _incidents.length
+        ? c.incidentCount
+        : _incidents.length;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -290,6 +395,19 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
           DetailLine(
               icon: Icons.lock_outline,
               text: 'Closed ${formatDateTime(c.dateClosed!)}'),
+        if (c.plates.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final plate in c.plates)
+                  FactChip(plate,
+                      icon: Icons.pin_outlined, color: AppColors.accent),
+              ],
+            ),
+          ),
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
@@ -341,10 +459,17 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
             style: AppText.bodyMuted.copyWith(
                 color: c.isClosed ? AppColors.textMuted : AppColors.accent),
           ),
+        if (noLead)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('No lead investigator: tap ☆ to choose one.',
+                style: AppText.bodyMuted.copyWith(color: AppColors.accent)),
+          ),
         for (final a in active)
           _AssignmentRow(
             assignment: a,
             onRemove: _busy ? null : () => _unassign(a),
+            onMakeLead: _busy || a.isLead ? null : () => _makeLead(a),
           ),
         if (past.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -359,9 +484,34 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
             ),
         ],
 
-        // ---- Incidents -------------------------------------------------------
+        // ---- Recommended -----------------------------------------------------
+        if (!c.isClosed && _suggestions.isNotEmpty) ...[
+          const SectionLabel('Recommended for this case'),
+          Text(
+            'Pending submissions that look like the same incident. '
+            'Check them before adding.',
+            style: AppText.bodyMuted.copyWith(fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          for (final (suggestion, s) in _suggestions) ...[
+            SuggestionTile(
+              title: '${s.reference} · ${s.location}',
+              score: suggestion.score,
+              reasons: [
+                ...suggestion.reasons,
+                'matches ${incidentReference(suggestion.matchedIncidentId)}',
+              ],
+              actionLabel: 'Add',
+              onAction: _busy ? null : () => _addSuggested(s),
+              onTap: () => _openIncident(s),
+            ),
+            const SizedBox(height: AppSpacing.small),
+          ],
+        ],
+
+        // ---- Submissions -----------------------------------------------------
         SectionLabel(
-          'Incidents (${_incidents.length})',
+          'Submissions ($total)',
           trailing: SmallActionButton(
             label: '+ Add',
             color: AppColors.accent,
@@ -369,33 +519,70 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
           ),
         ),
         if (_incidents.isEmpty)
-          const Text('No incidents in this case yet.',
+          const Text('No submissions in this case yet.',
               style: AppText.bodyMuted),
         for (final s in _incidents)
-          _IncidentRow(
-            incident: s,
-            onOpen: () => _openIncident(s),
-            onMove: s.isDuplicate || c.isClosed
-                ? null
-                : () => _incidentAction(moveToCase, s),
-            onRemove: () => _incidentAction(removeFromCase, s),
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.small),
+            child: CrimeSceneCard(
+              submission: s,
+              onTap: () => _openIncident(s),
+              menu: _IncidentMenu(
+                onOpen: () => _openIncident(s),
+                onMove: s.isDuplicate || c.isClosed
+                    ? null
+                    : () => _incidentAction(moveToCase, s),
+                onRemove: () => _incidentAction(removeFromCase, s),
+              ),
+            ),
           ),
+        if (_moreIncidents)
+          Center(
+            child: _loadingMore
+                ? const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: CircularProgressIndicator(),
+                  )
+                : TextButton(
+                    onPressed: _loadMoreIncidents,
+                    child: Text(
+                        'Load more (${total - _incidents.length} not shown)'),
+                  ),
+          ),
+
+        // ---- History ---------------------------------------------------------
+        if (_history.isNotEmpty) ...[
+          const SectionLabel('History'),
+          for (final e in _history) _HistoryRow(event: e),
+          if (_moreHistory)
+            Center(
+              child: TextButton(
+                  onPressed: _loadMoreHistory,
+                  child: const Text('Show older history')),
+            ),
+        ],
       ],
     );
   }
 }
 
-/// One assigned investigator, with a remove button.
+/// One assigned investigator: lead star, details, remove button.
 class _AssignmentRow extends StatelessWidget {
   final CaseAssignmentInfo assignment;
   final VoidCallback? onRemove;
+  final VoidCallback? onMakeLead; // null for the lead itself
 
-  const _AssignmentRow({required this.assignment, this.onRemove});
+  const _AssignmentRow({
+    required this.assignment,
+    this.onRemove,
+    this.onMakeLead,
+  });
 
   @override
   Widget build(BuildContext context) {
     final a = assignment;
     final details = [
+      if (a.isLead) 'Lead',
       if (a.badgeNumber != null) a.badgeNumber!,
       if (a.station != null) a.station!,
       'since ${formatDate(a.dateAssigned)}',
@@ -403,7 +590,7 @@ class _AssignmentRow extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
       decoration: BoxDecoration(
         color: AppColors.header,
         border: Border.all(color: AppColors.accent),
@@ -411,8 +598,12 @@ class _AssignmentRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.badge_outlined, color: AppColors.accent),
-          const SizedBox(width: AppSpacing.small),
+          IconButton(
+            icon: Icon(a.isLead ? Icons.star : Icons.star_border,
+                color: AppColors.accent),
+            tooltip: a.isLead ? 'Lead investigator' : 'Make lead',
+            onPressed: onMakeLead,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,15 +626,13 @@ class _AssignmentRow extends StatelessWidget {
   }
 }
 
-/// One incident in the case: tap to open; menu to move or remove.
-class _IncidentRow extends StatelessWidget {
-  final CrimeSceneSummary incident;
+/// ⋮ menu on a submission in the case: view, move, remove.
+class _IncidentMenu extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback? onMove; // null hides "Move" (duplicates, closed case)
   final VoidCallback onRemove;
 
-  const _IncidentRow({
-    required this.incident,
+  const _IncidentMenu({
     required this.onOpen,
     required this.onMove,
     required this.onRemove,
@@ -451,64 +640,69 @@ class _IncidentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = incident;
-    final (statusLabel, statusColor) = statusStyle(s.status);
+    return PopupMenuButton<String>(
+      tooltip: 'More',
+      icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
+      color: AppColors.header,
+      onSelected: (value) {
+        if (value == 'open') {
+          onOpen();
+        } else if (value == 'move') {
+          onMove?.call();
+        } else {
+          onRemove();
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+            value: 'open', child: Text('View', style: AppText.body)),
+        if (onMove != null)
+          const PopupMenuItem(
+              value: 'move',
+              child: Text('Move to another case', style: AppText.body)),
+        PopupMenuItem(
+          value: 'remove',
+          child: Text('Remove from case',
+              style: AppText.body.copyWith(color: AppColors.danger)),
+        ),
+      ],
+    );
+  }
+}
 
-    // Material (not a coloured Container) so the ListTile's tap ripple
-    // shows on top of the card colour
+/// One line of the case history.
+class _HistoryRow extends StatelessWidget {
+  final CaseEvent event;
+
+  const _HistoryRow({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    final e = event;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-      color: AppColors.header,
-      shape: RoundedRectangleBorder(
-        side: const BorderSide(color: AppColors.fieldBorder),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        contentPadding: const EdgeInsets.only(left: 12, right: 0),
-        onTap: onOpen,
-        title: Text(
-          s.isDuplicate && s.duplicateOf != null
-              ? '${s.reference} · duplicate of ${incidentReference(s.duplicateOf!)}'
-              : s.reference,
-          style: AppText.cardTitle.copyWith(fontSize: 15),
-        ),
-        subtitle: Text(
-          '${s.location}\n'
-          'Happened ${formatDateTime(s.dateTime)} · $statusLabel',
-          style: AppText.bodyMuted.copyWith(fontSize: 13),
-        ),
-        isThreeLine: true,
-        leading: Icon(Icons.description_outlined, color: statusColor),
-        trailing: PopupMenuButton<String>(
-          tooltip: 'More',
-          icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
-          color: AppColors.header,
-          onSelected: (value) {
-            if (value == 'open') {
-              onOpen();
-            } else if (value == 'move') {
-              onMove?.call();
-            } else {
-              onRemove();
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-                value: 'open', child: Text('View', style: AppText.body)),
-            if (onMove != null)
-              const PopupMenuItem(
-                  value: 'move',
-                  child: Text('Move to another case', style: AppText.body)),
-            PopupMenuItem(
-              value: 'remove',
-              child: Text('Remove from case',
-                  style: AppText.body.copyWith(color: AppColors.danger)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Icon(Icons.circle, size: 8, color: AppColors.accent),
+          ),
+          const SizedBox(width: AppSpacing.small),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.text, style: AppText.body.copyWith(fontSize: 14)),
+                Text(
+                  '${formatDateTime(e.occurredAt)}'
+                  '${e.actorName == null ? '' : ' · ${e.actorName}'}',
+                  style: AppText.bodyMuted.copyWith(fontSize: 12),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        ],
       ),
     );
   }

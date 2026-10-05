@@ -6,11 +6,15 @@ class CaseInvestigator {
   final int userId;
   final String name; // e.g. 'Sgt. Thabo Mokoena'
   final String? badgeNumber;
+  final int? assignmentId;
+  final bool isLead; // the case's lead investigator
 
   const CaseInvestigator({
     required this.userId,
     required this.name,
     this.badgeNumber,
+    this.assignmentId,
+    this.isLead = false,
   });
 
   factory CaseInvestigator.fromMap(Map<String, dynamic> row) {
@@ -18,8 +22,45 @@ class CaseInvestigator {
       userId: (row['userid'] as num).toInt(),
       name: row['name'] as String,
       badgeNumber: row['badgenumber'] as String?,
+      assignmentId: (row['assignmentid'] as num?)?.toInt(),
+      isLead: (row['islead'] as bool?) ?? false,
     );
   }
+}
+
+/// One of the newest submissions in a case, shown on the case card so the
+/// admin can see what's inside without opening it.
+class CasePreviewItem {
+  final int incidentId;
+  final String location;
+  final DateTime? dateReported;
+  final String reviewStatus; // 'accepted' or 'duplicate'
+  final String? description; // the citizen's
+  final String? aiSummary;
+
+  const CasePreviewItem({
+    required this.incidentId,
+    required this.location,
+    this.dateReported,
+    this.reviewStatus = 'accepted',
+    this.description,
+    this.aiSummary,
+  });
+
+  factory CasePreviewItem.fromMap(Map<String, dynamic> row) {
+    final reported = row['datereported'] as String?;
+    return CasePreviewItem(
+      incidentId: (row['incidentid'] as num).toInt(),
+      location: row['location'] as String,
+      dateReported: reported == null ? null : DateTime.parse(reported).toLocal(),
+      reviewStatus: (row['reviewstatus'] as String?) ?? 'accepted',
+      description: row['description'] as String?,
+      aiSummary: row['aisummary'] as String?,
+    );
+  }
+
+  /// 42 → "INC-0042".
+  String get reference => 'INC-${incidentId.toString().padLeft(4, '0')}';
 }
 
 class CaseSummary {
@@ -30,9 +71,12 @@ class CaseSummary {
   final DateTime dateCreated;
   final DateTime? dateClosed;
   final String? createdByName;
-  final int incidentCount;
-  final List<CaseInvestigator> investigators; // active assignments only
-  final DateTime? lastActivity; // created, or an incident added
+  final int incidentCount; // submissions in the case
+  final List<CaseInvestigator> investigators; // active assignments, lead first
+  final DateTime? lastActivity; // newest event on the case
+  final int mediaCount; // clips / photos across all its submissions
+  final List<String> plates; // number plates the AI read, max 3
+  final List<CasePreviewItem> preview; // the 3 newest submissions
 
   const CaseSummary({
     required this.caseId,
@@ -45,6 +89,9 @@ class CaseSummary {
     this.incidentCount = 0,
     this.investigators = const [],
     this.lastActivity,
+    this.mediaCount = 0,
+    this.plates = const [],
+    this.preview = const [],
   });
 
   factory CaseSummary.fromMap(Map<String, dynamic> row) {
@@ -65,11 +112,27 @@ class CaseSummary {
           .map((i) => CaseInvestigator.fromMap(i as Map<String, dynamic>))
           .toList(),
       lastActivity: time('lastactivity'),
+      mediaCount: (row['mediacount'] as num?)?.toInt() ?? 0,
+      plates: ((row['plates'] as List?) ?? const []).cast<String>(),
+      preview: ((row['preview'] as List?) ?? const [])
+          .map((p) => CasePreviewItem.fromMap(p as Map<String, dynamic>))
+          .toList(),
     );
   }
 
   /// Display reference, e.g. case 3 → "CASE-0003".
-  String get reference => 'CASE-${caseId.toString().padLeft(4, '0')}';
+  String get reference => caseReference(caseId);
 
   bool get isClosed => status == 'closed';
+
+  /// The lead investigator, or null when there is none.
+  CaseInvestigator? get lead {
+    for (final i in investigators) {
+      if (i.isLead) return i;
+    }
+    return null;
+  }
 }
+
+/// 3 → "CASE-0003".
+String caseReference(int caseId) => 'CASE-${caseId.toString().padLeft(4, '0')}';

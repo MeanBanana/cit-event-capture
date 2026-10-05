@@ -9,23 +9,81 @@ import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/crime_scene_summary.dart';
+import 'package:argus_shield/models/case_summary.dart';
+import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
+import 'package:argus_shield/admin_screens/case_detail.dart';
 
-/// Accept: put the submission in a NEW case or an EXISTING one.
+/// The shape of every action below: returns true when something changed.
+typedef ReviewAction = Future<bool> Function(
+    BuildContext context, SupabaseService service, CrimeSceneSummary submission);
+
+/// Accept: put the submission in a NEW case or an EXISTING one. The panel
+/// suggests the cases it most likely belongs to first.
 Future<bool> acceptSubmission(
   BuildContext context,
   SupabaseService service,
   CrimeSceneSummary submission,
+) =>
+    acceptSubmissions(context, service, [submission]);
+
+/// Accept several submissions at once (e.g. a linked group) into one new
+/// or existing case.
+Future<bool> acceptSubmissions(
+  BuildContext context,
+  SupabaseService service,
+  List<CrimeSceneSummary> submissions,
 ) async {
-  final done = await showAdminSheet<String>(
+  if (submissions.isEmpty) return false;
+  final title = submissions.length == 1
+      ? 'Accept ${submissions.first.reference}'
+      : 'Accept ${submissions.length} submissions';
+  final result = await showAdminSheet<_AcceptResult>(
     context,
-    title: 'Accept ${submission.reference}',
+    title: title,
     builder: (sheetContext) =>
-        _AcceptChoice(service: service, submission: submission),
+        _AcceptChoice(service: service, submissions: submissions),
   );
-  if (done != null && context.mounted) showSnack(context, done);
-  return done != null;
+  if (result == null) return false;
+  if (!context.mounted) return true;
+
+  if (result.openCase) {
+    // "The case isn't listed" -> it was just created; go to its page
+    showSnack(context, result.message);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CaseDetailPage(caseId: result.caseId, service: service),
+      ),
+    );
+  } else {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(result.message),
+        action: SnackBarAction(
+          label: 'OPEN CASE',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  CaseDetailPage(caseId: result.caseId, service: service),
+            ),
+          ),
+        ),
+      ));
+  }
+  return true;
+}
+
+/// What the Accept panel did.
+class _AcceptResult {
+  final String message;
+  final int caseId;
+  final bool openCase; // go to the case page now
+
+  const _AcceptResult(this.message, this.caseId, {this.openCase = false});
 }
 
 /// Reject: ask for an optional reason, then reject. It stays on record.
@@ -164,8 +222,9 @@ Future<bool> removeFromCase(
   final ok = await confirmAction(
     context,
     title: 'Remove from ${submission.caseReference ?? 'case'}?',
-    message: '${submission.reference} goes back to Pending review. '
-        'Duplicates of it leave the case too.',
+    message: '${submission.reference} is not deleted: it goes back to '
+        'Pending review with all its footage, and you can add it to a case '
+        'again. Duplicates of it leave the case too.',
     confirmLabel: 'Remove',
     destructive: true,
   );
@@ -220,36 +279,132 @@ Future<void> _addToCase(BuildContext sheetContext, SupabaseService service,
   }
 }
 
-/// The Accept panel: first "New case" or "Existing case", then the form
-/// or the case list.
+/// "INC-0042" or "3 submissions".
+String _what(List<CrimeSceneSummary> submissions) => submissions.length == 1
+    ? submissions.first.reference
+    : '${submissions.length} submissions';
+
+/// The Accept panel: suggested cases first, then "New case" or "Existing
+/// case", then the form or the case list. The case list has a "not
+/// listed? create it" button that creates the case and opens its page.
 class _AcceptChoice extends StatefulWidget {
   final SupabaseService service;
-  final CrimeSceneSummary submission;
+  final List<CrimeSceneSummary> submissions;
 
-  const _AcceptChoice({required this.service, required this.submission});
+  const _AcceptChoice({required this.service, required this.submissions});
 
   @override
   State<_AcceptChoice> createState() => _AcceptChoiceState();
 }
 
-enum _AcceptMode { choose, newCase, existingCase }
+enum _AcceptMode { choose, newCase, existingCase, newCaseThenOpen }
 
 class _AcceptChoiceState extends State<_AcceptChoice> {
   _AcceptMode _mode = _AcceptMode.choose;
 
+  /// Suggested cases (with their details) for the first submission.
+  late final Future<List<(CaseSuggestion, CaseSummary)>> _suggestions =
+      _loadSuggestions();
+
+  Future<List<(CaseSuggestion, CaseSummary)>> _loadSuggestions() async {
+    try {
+      final found = await widget.service
+          .suggestCasesForIncident(widget.submissions.first.incidentId);
+      final cases =
+          await Future.wait(found.map((f) => widget.service.getCase(f.caseId)));
+      return [
+        for (var i = 0; i < found.length; i++)
+          if (cases[i] != null) (found[i], cases[i]!),
+      ];
+    } catch (_) {
+      return const []; // suggestions are a bonus; never block accepting
+    }
+  }
+
+  List<int> get _ids => [for (final s in widget.submissions) s.incidentId];
+
+  Future<void> _addTo(int caseId, String reference) async {
+    try {
+      await widget.service.addIncidentsToCase(caseId, _ids);
+      if (mounted) {
+        Navigator.pop(
+            context,
+            _AcceptResult(
+                '${_what(widget.submissions)} added to $reference', caseId));
+      }
+    } catch (e) {
+      if (mounted) showSnack(context, errorText(e));
+    }
+  }
+
+  Future<void> _create(String title, String description,
+      {required bool open}) async {
+    final caseId = await widget.service.createCase(
+      title: title,
+      description: description,
+      incidentIds: _ids,
+    );
+    if (mounted) {
+      Navigator.pop(
+          context,
+          _AcceptResult(
+              '${_what(widget.submissions)} added to new case '
+              '${caseReference(caseId)}',
+              caseId,
+              openCase: open));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final s = widget.submission;
+    final first = widget.submissions.first;
     switch (_mode) {
       case _AcceptMode.choose:
         return ListView(
           children: [
-            Text(s.location, style: AppText.bodyMuted),
+            Text(
+              widget.submissions.length == 1
+                  ? first.location
+                  : widget.submissions.map((s) => s.reference).join(', '),
+              style: AppText.bodyMuted,
+            ),
             const SizedBox(height: AppSpacing.medium),
+            FutureBuilder<List<(CaseSuggestion, CaseSummary)>>(
+              future: _suggestions,
+              builder: (context, snap) {
+                final items = snap.data ?? const [];
+                if (items.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('SUGGESTED CASES',
+                        style:
+                            AppText.caption.copyWith(color: AppColors.textHint)),
+                    const SizedBox(height: 6),
+                    for (final (suggestion, c) in items) ...[
+                      SuggestionTile(
+                        title: '${c.reference} · ${c.title}',
+                        score: suggestion.score,
+                        reasons: [
+                          ...suggestion.reasons,
+                          'matches ${incidentReference(suggestion.matchedIncidentId)}',
+                        ],
+                        actionLabel: 'Add',
+                        onAction: () => _addTo(c.caseId, c.reference),
+                      ),
+                      const SizedBox(height: AppSpacing.small),
+                    ],
+                    const SizedBox(height: AppSpacing.small),
+                  ],
+                );
+              },
+            ),
             _ChoiceTile(
               icon: Icons.create_new_folder_outlined,
               title: 'Create a new case',
-              subtitle: 'Start a new investigation with this incident in it.',
+              subtitle: widget.submissions.length == 1
+                  ? 'Start a new investigation with this incident in it.'
+                  : 'Start a new investigation with these submissions in it.',
               onTap: () => setState(() => _mode = _AcceptMode.newCase),
             ),
             const SizedBox(height: AppSpacing.small),
@@ -262,29 +417,83 @@ class _AcceptChoiceState extends State<_AcceptChoice> {
           ],
         );
       case _AcceptMode.newCase:
+      case _AcceptMode.newCaseThenOpen:
+        final open = _mode == _AcceptMode.newCaseThenOpen;
         return NewCaseForm(
-          initialTitle: s.location,
-          initialDescription: s.description ?? '',
-          buttonLabel: 'Create case with ${s.reference}',
-          onCreate: (title, description) async {
-            final caseId = await widget.service.createCase(
-              title: title,
-              description: description,
-              incidentIds: [s.incidentId],
-            );
-            if (context.mounted) {
-              Navigator.pop(context,
-                  '${s.reference} added to new case CASE-${caseId.toString().padLeft(4, '0')}');
-            }
-          },
+          initialTitle: first.location,
+          initialDescription: first.description ?? '',
+          buttonLabel: open
+              ? 'Create case and open it'
+              : 'Create case with ${_what(widget.submissions)}',
+          onCreate: (title, description) =>
+              _create(title, description, open: open),
         );
       case _AcceptMode.existingCase:
         return CasePicker(
           service: widget.service,
-          onSelected: (c) =>
-              _addToCase(context, widget.service, s, c.caseId, c.reference),
+          onSelected: (c) => _addTo(c.caseId, c.reference),
+          onNotListed: () =>
+              setState(() => _mode = _AcceptMode.newCaseThenOpen),
         );
     }
+  }
+}
+
+/// A suggestion: title, how strong the match is, why, and one action.
+class SuggestionTile extends StatelessWidget {
+  final String title;
+  final int score;
+  final List<String> reasons;
+  final String actionLabel;
+  final VoidCallback? onAction;
+  final VoidCallback? onTap;
+
+  const SuggestionTile({
+    super.key,
+    required this.title,
+    required this.score,
+    required this.reasons,
+    required this.actionLabel,
+    this.onAction,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      onTap: onTap,
+      borderColor: AppColors.success,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome_outlined,
+                  color: AppColors.success, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(title,
+                    style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 6),
+              SmallActionButton(
+                  label: actionLabel,
+                  color: AppColors.success,
+                  onPressed: onAction),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(suggestionStrength(score).toUpperCase(),
+              style: AppText.caption.copyWith(color: AppColors.success)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [for (final r in reasons) FactChip(r)],
+          ),
+        ],
+      ),
+    );
   }
 }
 

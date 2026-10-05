@@ -1,17 +1,71 @@
-# argus_shield
+# Argus Shield — mobile app
 
-Argus shield application for real-time data about CIT heists for investigators.
+Flutter app for Argus Shield, used by **citizens** (report CIT incidents and upload footage), **admins** (review submissions, run cases, manage investigators) and, later, **investigators** (work their assigned cases). Data, login and access rules come from Supabase; see [`../../database/README.md`](../../database/README.md).
 
-## Getting Started
+## Running it
 
-This project is a starting point for a Flutter application.
+```bash
+flutter pub get
+flutter run            # on an emulator or a connected phone
+```
 
-A few resources to get you started if this is your first Flutter project:
+The app starts on the login page. Log in with a citizen account for the citizen screens or an admin account for the admin dashboard (how to create an admin: `database/README.md`, "Creating an admin").
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Before pushing:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter analyze        # must say "No issues found!"
+flutter test           # every test must pass
+```
+
+The Supabase project URL and **publishable** key are in `lib/main.dart`. That key is safe to ship because row-level security protects the data. The service role key must never be in the app.
+
+## Folder layout
+
+```text
+lib/
+├── main.dart                   ← starts Supabase and the app (login page first)
+├── login.dart, register_citizen.dart, loadingscreen.dart
+├── supabase_service.dart       ← EVERY call to Supabase goes through here
+├── theme/
+│   ├── app_theme.dart          ← colours, fonts, text styles, spacing, ThemeData
+│   └── argus_widgets.dart      ← shared widgets (app bars, buttons, keepAboveSystemBars)
+├── models/                     ← plain data classes built from database rows
+│   ├── crime_scene_summary.dart   a submission (incident): review, AI summary, chips, filmed time
+│   ├── case_summary.dart          a case with investigators (lead first) and a preview
+│   ├── case_assignment_info.dart  an investigator on a case
+│   ├── submission_groups.dart     location / linked groups, suggestions, clips, case history
+│   └── investigator_summary.dart, system_stats.dart, activity_item.dart
+├── citizen/                    ← citizen dashboard: upload, my submissions, profile
+└── admin_screens/
+    ├── admin_dashboard.dart    ← tabs: Overview · Cases · Detectives · Submissions
+    ├── overview.dart           ← status tiles, recent submissions, recent activity
+    ├── submissions.dart        ← Newest/Oldest/Location/Status/Case/Linked views + cards
+    ├── suggested_matches.dart  ← "N submissions match existing cases" bar + one-tap review
+    ├── submission_detail.dart  ← one submission: descriptions, each clip, review actions
+    ├── cases.dart              ← Cases tab (case cards with a submissions preview)
+    ├── case_detail.dart        ← one case: status, investigators, recommended, submissions, history
+    ├── investigators.dart      ← Detectives tab
+    ├── review_actions.dart     ← Accept / Reject / Duplicate / Move / Remove flows
+    ├── pickers.dart            ← slide-up panels to choose a case, submission or investigator
+    ├── paged_list.dart         ← list that loads 30 rows at a time as you scroll
+    └── admin_ui.dart           ← small shared pieces (cards, tags, chips, date formats)
+test/
+├── admin_fake_service.dart     ← in-memory stand-in for SupabaseService (no network)
+└── *_test.dart                 ← widget and model tests
+```
+
+## How the admin screens work
+
+* **Submissions** loads 30 at a time and fetches more as you scroll (`PagedList`). The database pages with a cursor, so long lists stay fast.
+* Each submission card shows the **citizen's description and the AI summary**, chips for what the AI saw (vehicles, people, "weapon seen", plates), and when it was **filmed** (from the footage's metadata) with a warning when that disagrees with the time the citizen typed.
+* **Suggested matches**: the green bar above the list opens a review list of submissions that probably belong to an existing case, with the reasons. The admin unticks anything wrong and accepts the rest in one tap. Nothing joins a case before that.
+* **Accept** on a pending submission suggests cases first; "Case not listed? Create a new case" creates one and opens it.
+* **Case page**: submissions as cards, recommended submissions with one-tap Add, remove (never deletes, goes back to Pending), lead investigator (star), and the case history.
+* Every page stays above the phone's navigation buttons (`keepAboveSystemBars` in `main.dart`).
+
+## Conventions
+
+* Screens never call Supabase directly: add a method to `SupabaseService`, then override it in `test/admin_fake_service.dart` so the tests keep working without a network.
+* Colours, fonts and spacing come from `theme/app_theme.dart`, never hard-coded.
+* Each admin tab returns only its body; `AdminDashboard` draws the Scaffold, header and tabs.
