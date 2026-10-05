@@ -9,7 +9,9 @@ flutter pub get
 flutter run            # on an emulator or a connected phone
 ```
 
-The app starts on the login page. Log in with a citizen account for the citizen screens or an admin account for the admin dashboard (how to create an admin: `database/README.md`, "Creating an admin").
+The app starts on the login page. Log in with a citizen account for the citizen screens or an admin account for the admin dashboard (how to create an admin: `database/README.md`, "Creating an admin"). Investigator screens are not built yet: an investigator who logs in is told so and signed out.
+
+What is live and what is still a demo: see "Current status" in [`database/README.md`](../../database/README.md#current-status).
 
 Before pushing:
 
@@ -37,6 +39,8 @@ lib/
 │   ├── submission_groups.dart     location / linked groups, suggestions, clips, case history
 │   └── investigator_summary.dart, system_stats.dart, activity_item.dart
 ├── citizen/                    ← citizen dashboard: upload, my submissions, profile
+│                                  (LOCAL DEMO: citizen_store.dart keeps reports in memory;
+│                                   they are not saved to Supabase yet)
 └── admin_screens/
     ├── admin_dashboard.dart    ← tabs: Overview · Cases · Detectives · Submissions
     ├── overview.dart           ← status tiles, recent submissions, recent activity
