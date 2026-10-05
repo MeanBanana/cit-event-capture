@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:argus_shield/admin_screens/cases.dart';
 import 'package:argus_shield/admin_screens/case_detail.dart';
 import 'package:argus_shield/models/case_summary.dart';
+import 'package:argus_shield/models/investigator_summary.dart';
+import 'package:argus_shield/models/submission_groups.dart';
 
 import 'admin_fake_service.dart';
 
@@ -55,7 +57,7 @@ void main() {
       expect(find.byType(CaseCard), findsOneWidget);
       expect(find.text('CASE-0001'), findsOneWidget);
       expect(find.text('Existing robbery'), findsOneWidget);
-      expect(find.text('1 incident'), findsOneWidget);
+      expect(find.text('1 submission'), findsOneWidget);
       expect(find.text('No investigator assigned'), findsOneWidget);
     });
 
@@ -147,7 +149,81 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fake.calls, contains('addIncidents:1:[42]'));
-      expect(find.text('Incidents (2)'.toUpperCase()), findsOneWidget);
+      expect(find.text('Submissions (2)'.toUpperCase()), findsOneWidget);
+    });
+
+    testWidgets('the first investigator is lead; the star changes the lead',
+        (tester) async {
+      final fake = makeService()
+        ..investigators.add(const InvestigatorSummary(
+          userId: 3,
+          firstName: 'Lerato',
+          surname: 'Dlamini',
+          badgeNumber: 'JHB-5120',
+          station: 'Kempton Park SAPS',
+          dutyStatus: 'available',
+          email: 'ldlamini@argus.test',
+        ));
+      await fake.assignInvestigator(1, 2);
+      await fake.assignInvestigator(1, 3);
+      await tester.pumpWidget(MaterialApp(
+        home: CaseDetailPage(caseId: 1, service: fake),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.star), findsOneWidget); // Thabo, the lead
+      expect(find.byIcon(Icons.star_border), findsOneWidget); // Lerato
+
+      await tester.tap(find.byTooltip('Make lead'));
+      await tester.pumpAndSettle();
+      expect(fake.calls, contains('lead:2'));
+      expect(find.text('Lerato Dlamini is now the lead on CASE-0001'),
+          findsOneWidget);
+    });
+
+    testWidgets('recommended submissions can be added with one tap',
+        (tester) async {
+      final fake = makeService()
+        ..incidentSuggestions = const [
+          IncidentSuggestion(
+            incidentId: 42,
+            score: 70,
+            reasons: ['40 min apart', 'Same location'],
+            matchedIncidentId: 41,
+          ),
+        ];
+      await tester.pumpWidget(MaterialApp(
+        home: CaseDetailPage(caseId: 1, service: fake),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('RECOMMENDED FOR THIS CASE'), findsOneWidget);
+      expect(find.text('LIKELY MATCH'), findsOneWidget);
+      expect(find.text('40 min apart'), findsOneWidget);
+
+      await tester.tap(find.text('Add'));
+      await tester.pumpAndSettle();
+      expect(fake.calls, contains('addIncidents:1:[42]'));
+      expect(find.text('Submissions (2)'.toUpperCase()), findsOneWidget);
+    });
+
+    testWidgets('remove from case keeps the submission (back to pending)',
+        (tester) async {
+      final fake = await open(tester);
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove from case'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('goes back to Pending review'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Remove'));
+      await tester.pumpAndSettle();
+
+      expect(fake.calls, contains('reopen:41'));
+      // still there, just not in the case
+      expect(fake.submissions.any((s) => s.incidentId == 41 && s.isPending),
+          isTrue);
+      expect(find.text('No submissions in this case yet.'), findsOneWidget);
     });
 
     testWidgets('closing asks first, then locks assigning and adding',

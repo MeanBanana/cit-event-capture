@@ -12,6 +12,7 @@ class CaseAssignmentInfo {
   final DateTime dateAssigned;
   final DateTime? dateUnassigned;
   final String? assignedByName;
+  final bool isLead; // the case's lead investigator
 
   const CaseAssignmentInfo({
     required this.assignmentId,
@@ -25,6 +26,7 @@ class CaseAssignmentInfo {
     required this.dateAssigned,
     this.dateUnassigned,
     this.assignedByName,
+    this.isLead = false,
   });
 
   factory CaseAssignmentInfo.fromMap(Map<String, dynamic> row) {
@@ -44,6 +46,7 @@ class CaseAssignmentInfo {
       dateAssigned: time('dateassigned')!,
       dateUnassigned: time('dateunassigned'),
       assignedByName: row['assignedbyname'] as String?,
+      isLead: (row['islead'] as bool?) ?? false,
     );
   }
 

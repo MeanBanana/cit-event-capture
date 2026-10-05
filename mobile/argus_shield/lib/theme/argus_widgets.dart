@@ -368,3 +368,24 @@ class _StripeBorderPainter extends CustomPainter {
       old.gapLength != gapLength ||
       old.borderRadius != borderRadius;
 }
+
+/// MaterialApp `builder` that keeps every screen above the phone's own
+/// navigation buttons / gesture bar (and clear of side notches in
+/// landscape). Newer Android versions draw apps edge-to-edge, so without
+/// this, content at the very bottom of a page, bottom sheets and bottom
+/// buttons end up underneath the system buttons.
+///
+/// The strip behind the system bar gets the page background colour, so it
+/// looks like part of the app. The top is left alone: the app bar already
+/// handles the status bar.
+///
+///   MaterialApp(builder: keepAboveSystemBars, ...)
+Widget keepAboveSystemBars(BuildContext context, Widget? child) {
+  return ColoredBox(
+    color: AppColors.background,
+    child: SafeArea(
+      top: false,
+      child: child ?? const SizedBox.shrink(),
+    ),
+  );
+}

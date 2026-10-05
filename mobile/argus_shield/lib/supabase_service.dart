@@ -5,6 +5,10 @@ import 'models/crime_scene_summary.dart';
 import 'models/activity_item.dart';
 import 'models/case_summary.dart';
 import 'models/case_assignment_info.dart';
+import 'models/submission_groups.dart';
+
+/// Sort order for submission lists (by date reported).
+enum SubmissionOrder { newest, oldest }
 
 /// All Supabase calls for accounts (register, login, logout).
 ///
@@ -201,53 +205,170 @@ class SupabaseService {
   }
 
   // ------------------------------------------------------------- SUBMISSIONS
-  // All three call the list_submissions database function: incidents
-  // (crimescene) newest REPORTED first, with reporter name, media count and
-  // review details. Database rules decide what comes back (admins see every
-  // submission).
+  // All of these call the list_submissions database function: incidents
+  // (crimescene) with reporter name, media count, review details, the AI
+  // summary and what the AI saw. Database rules decide what comes back
+  // (admins see every submission).
   //
   // [review] filters on the admin's decision: null = all, or 'pending',
   // 'accepted', 'rejected', 'duplicate'.
 
-  /// The [limit] most recently reported incidents, newest first.
+  /// How many rows one page of a list loads.
+  static const int pageSize = 30;
+
+  /// One page of submissions, for lists that load more as you scroll.
+  ///
+  /// Pass the last submission you already have as [after] to get the next
+  /// page (null = first page). A page shorter than [limit] is the last one.
+  /// The database pages with this cursor instead of skipping rows, so page
+  /// 100 is as fast as page 1.
+  ///
+  /// Filters (all optional): [search] (incident number like "42" /
+  /// "INC-0042", or text in the location), [review], [caseId], [locationKey]
+  /// (a group from listLocationGroups) and [ids] (only these incidents).
+  Future<List<CrimeSceneSummary>> listSubmissionsPage({
+    String? search,
+    String? review,
+    int? caseId,
+    String? locationKey,
+    List<int>? ids,
+    SubmissionOrder order = SubmissionOrder.newest,
+    CrimeSceneSummary? after,
+    int limit = pageSize,
+  }) async {
+    final text = search?.trim() ?? '';
+    final rows = await supabase.rpc('list_submissions', params: {
+      'p_search': text.isEmpty ? null : text,
+      'p_limit': limit,
+      'p_review': review,
+      'p_caseid': caseId,
+      'p_order': order.name,
+      'p_after_time': after?.dateReported?.toUtc().toIso8601String(),
+      'p_after_id': after?.incidentId,
+      'p_locationkey': locationKey,
+      'p_ids': ids,
+    });
+    return (rows as List)
+        .map((row) => CrimeSceneSummary.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// One submission, or null if it doesn't exist (or may not be seen).
+  Future<CrimeSceneSummary?> getSubmission(int incidentId) async {
+    final rows = await listSubmissionsPage(ids: [incidentId], limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// The [limit] most recently reported incidents, newest first (used by
+  /// the Overview).
   Future<List<CrimeSceneSummary>> getRecentSubmissions({
     int limit = 20,
     String? review,
   }) =>
-      _listSubmissions(limit: limit, review: review);
+      listSubmissionsPage(limit: limit, review: review);
 
   /// Incidents matching [query]: an incident number ("42", "INC-0042",
   /// "inc 42") or text in the location (any case). An empty [query] returns
-  /// the most recent submissions.
+  /// the most recent submissions. Used by the pickers.
   Future<List<CrimeSceneSummary>> searchSubmissions(
     String query, {
     int limit = 20,
     String? review,
   }) =>
-      _listSubmissions(search: query, limit: limit, review: review);
+      listSubmissionsPage(search: query, limit: limit, review: review);
 
-  /// Every incident in a case (accepted ones and their duplicates).
+  /// The first 100 incidents in a case (accepted ones and their duplicates).
   Future<List<CrimeSceneSummary>> getCaseIncidents(int caseId) =>
-      _listSubmissions(limit: 100, caseId: caseId);
+      listSubmissionsPage(caseId: caseId, limit: 100);
 
-  Future<List<CrimeSceneSummary>> _listSubmissions({
+  /// The clips / photos of a submission with what the AI saw in each.
+  Future<List<MediaItem>> getIncidentMedia(int incidentId) async {
+    final rows = await supabase
+        .rpc('list_incident_media', params: {'p_incidentid': incidentId}) as List;
+    return rows
+        .map((row) => MediaItem.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  // --------------------------------------------------------------- GROUPING
+
+  /// Submissions grouped by location, most recently reported first.
+  /// [search] filters on the location text; [offset] = groups already
+  /// loaded (groups are few, so plain offset paging is fine here).
+  Future<List<LocationGroup>> listLocationGroups({
     String? search,
-    required int limit,
     String? review,
-    int? caseId,
+    int offset = 0,
+    int limit = pageSize,
   }) async {
     final text = search?.trim() ?? '';
-    final rows = await supabase.rpc(
-      'list_submissions',
-      params: {
-        'p_search': text.isEmpty ? null : text,
-        'p_limit': limit,
-        'p_review': review,
-        'p_caseid': caseId,
-      },
-    );
-    return (rows as List)
-        .map((row) => CrimeSceneSummary.fromMap(row as Map<String, dynamic>))
+    final rows = await supabase.rpc('list_location_groups', params: {
+      'p_search': text.isEmpty ? null : text,
+      'p_review': review,
+      'p_limit': limit,
+      'p_offset': offset,
+    }) as List;
+    return rows
+        .map((row) => LocationGroup.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Groups of submissions joined by AI cross-reference links (the same
+  /// vehicle or suspect in different reports). Groups with something still
+  /// pending come first.
+  Future<List<LinkedGroup>> listLinkedGroups({
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    final rows = await supabase.rpc('list_linked_groups',
+        params: {'p_limit': limit, 'p_offset': offset}) as List;
+    return rows
+        .map((row) => LinkedGroup.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  // ------------------------------------------------------------ SUGGESTIONS
+
+  /// Pending submissions that probably belong in the case, best first.
+  Future<List<IncidentSuggestion>> suggestIncidentsForCase(int caseId,
+      {int limit = 5}) async {
+    final rows = await supabase.rpc('suggest_incidents_for_case',
+        params: {'p_caseid': caseId, 'p_limit': limit}) as List;
+    return rows
+        .map((row) => IncidentSuggestion.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Pending submissions that most likely belong in an existing open case
+  /// (score >= [minScore]), each with its best case, strongest first. For
+  /// the "Suggested matches" review list.
+  Future<List<SuggestedMatch>> listSuggestedMatches(
+      {int minScore = 60, int limit = 50}) async {
+    final rows = await supabase.rpc('list_suggested_matches',
+        params: {'p_minscore': minScore, 'p_limit': limit}) as List;
+    return rows
+        .map((row) => SuggestedMatch.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Accepts the matches the admin ticked, in one transaction. Ones that
+  /// were reviewed by someone else meanwhile are skipped. Returns how many
+  /// submissions were added to cases.
+  Future<int> acceptSuggestedMatches(List<SuggestedMatch> matches) async {
+    final added = await supabase.rpc('accept_suggested_matches', params: {
+      'p_incidentids': [for (final m in matches) m.incidentId],
+      'p_caseids': [for (final m in matches) m.caseId],
+    });
+    return (added as num).toInt();
+  }
+
+  /// Open cases the submission probably belongs to, best first.
+  Future<List<CaseSuggestion>> suggestCasesForIncident(int incidentId,
+      {int limit = 3}) async {
+    final rows = await supabase.rpc('suggest_cases_for_incident',
+        params: {'p_incidentid': incidentId, 'p_limit': limit}) as List;
+    return rows
+        .map((row) => CaseSuggestion.fromMap(row as Map<String, dynamic>))
         .toList();
   }
 
@@ -305,12 +426,26 @@ class SupabaseService {
     String? query,
     String? status,
     int limit = 20,
+  }) =>
+      listCasesPage(query: query, status: status, limit: limit);
+
+  /// One page of cases for lists that load more as you scroll: pass the
+  /// last case you already have as [after] (null = first page).
+  Future<List<CaseSummary>> listCasesPage({
+    String? query,
+    String? status,
+    CaseSummary? after,
+    int limit = 20,
   }) async {
     final text = query?.trim() ?? '';
     final rows = await supabase.rpc('list_cases', params: {
       'p_search': text.isEmpty ? null : text,
       'p_status': status,
       'p_limit': limit,
+      'p_after_time': after == null
+          ? null
+          : (after.lastActivity ?? after.dateCreated).toUtc().toIso8601String(),
+      'p_after_id': after?.caseId,
     });
     return (rows as List)
         .map((row) => CaseSummary.fromMap(row as Map<String, dynamic>))
@@ -328,6 +463,9 @@ class SupabaseService {
 
   /// Changes a case's title, description and/or status. Only the values
   /// passed are changed. Closing sets the closed date automatically.
+  ///
+  /// The status goes through the set_case_status database function: admins
+  /// may set any status, assigned investigators only open <-> under review.
   Future<void> updateCase(
     int caseId, {
     String? title,
@@ -338,10 +476,28 @@ class SupabaseService {
       if (title != null) 'title': title.trim(),
       if (description != null)
         'description': description.trim().isEmpty ? null : description.trim(),
-      'status': ?status, // only added when not null
     };
-    if (changes.isEmpty) return;
-    await supabase.from('cases').update(changes).eq('caseid', caseId);
+    if (changes.isNotEmpty) {
+      await supabase.from('cases').update(changes).eq('caseid', caseId);
+    }
+    if (status != null) {
+      await supabase.rpc('set_case_status',
+          params: {'p_caseid': caseId, 'p_status': status});
+    }
+  }
+
+  /// A case's history, newest first, 30 at a time: pass the last event you
+  /// have as [before] for the next page.
+  Future<List<CaseEvent>> getCaseEvents(int caseId,
+      {CaseEvent? before, int limit = 30}) async {
+    final rows = await supabase.rpc('list_case_events', params: {
+      'p_caseid': caseId,
+      'p_limit': limit,
+      'p_before': before?.eventId,
+    }) as List;
+    return rows
+        .map((row) => CaseEvent.fromMap(row as Map<String, dynamic>))
+        .toList();
   }
 
   /// Investigators on a case: active first, then past assignments.
@@ -354,11 +510,18 @@ class SupabaseService {
   }
 
   /// Assigns an investigator ([userId]) to a case. Does nothing if they are
-  /// already assigned. Returns the assignment id.
+  /// already assigned. The first investigator on a case becomes its lead.
+  /// Returns the assignment id.
   Future<int> assignInvestigator(int caseId, int userId) async {
     final id = await supabase.rpc('assign_investigator',
         params: {'p_caseid': caseId, 'p_userid': userId});
     return (id as num).toInt();
+  }
+
+  /// Makes an active assignment the case's lead investigator (the old lead
+  /// stays on the case).
+  Future<void> setCaseLead(int assignmentId) async {
+    await supabase.rpc('set_case_lead', params: {'p_assignmentid': assignmentId});
   }
 
   /// Ends an assignment (kept as history).

@@ -3,6 +3,7 @@
 // Scaffold, header and tabs; each page file only returns its body.
 
 import 'package:flutter/material.dart';
+import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/theme/argus_widgets.dart';
 import 'package:argus_shield/admin_screens/overview.dart';
 import 'package:argus_shield/admin_screens/cases.dart';
@@ -27,12 +28,30 @@ class AdminDashboard extends StatelessWidget {
         appBar: RoleAppBar(
           roleLabel: 'System Administrator',
           marker: RoleMarker.diamond,
+          // Four tabs share a phone's width, so the labels are a little
+          // smaller than the app default and the padding around them is
+          // narrow. _TabLabel shrinks a word further only if it still
+          // wouldn't fit (very small phones, large system text), so no
+          // label is ever cut off.
           bottom: TabBar(
+            labelPadding: EdgeInsets.symmetric(horizontal: 4),
+            labelStyle: TextStyle(
+              fontFamily: AppFonts.body,
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+            ),
+            unselectedLabelStyle: TextStyle(
+              fontFamily: AppFonts.body,
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+            ),
             tabs: [
-              Tab(text: 'Overview'),
-              Tab(text: 'Cases'),
-              Tab(text: 'Investigators'),
-              Tab(text: 'Submissions'),
+              Tab(child: _TabLabel('Overview')),
+              Tab(child: _TabLabel('Cases')),
+              // "Detectives": shorter than "Investigators", same meaning
+              // (SAPS detectives investigate the cases)
+              Tab(child: _TabLabel('Detectives')),
+              Tab(child: _TabLabel('Submissions')),
             ],
           ),
         ),
@@ -46,6 +65,21 @@ class AdminDashboard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A tab's word on one line, scaled down (never cut off) when space is short.
+class _TabLabel extends StatelessWidget {
+  final String text;
+
+  const _TabLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(text, maxLines: 1, softWrap: false),
     );
   }
 }

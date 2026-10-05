@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../theme/argus_widgets.dart';
 import 'citizen_home.dart';
 
 class ArgusApp extends StatelessWidget {
@@ -14,6 +15,8 @@ class ArgusApp extends StatelessWidget {
       title: 'Argus Shield',
       debugShowCheckedModeBanner: false,
       theme: buildArgusTheme(),
+      // keeps every page above the phone's navigation buttons
+      builder: keepAboveSystemBars,
       // CitizenHome owns the shared CitizenStore for the three tabs.
       home: const CitizenHome(),
     );

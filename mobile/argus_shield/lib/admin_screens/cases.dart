@@ -1,14 +1,16 @@
 // cases.dart — System Administrator view of every case (the "Cases" tab).
 //
-// A case groups one or more incidents (submissions) into one investigation
-// and has investigators assigned to it. Here the admin can:
-//   * see all cases, most recently active first
+// A case groups one or more submissions into one investigation and has
+// investigators assigned to it. Here the admin can:
+//   * see all cases as cards, most recently active first (20 at a time,
+//     more load as you scroll)
 //   * search by case number ("3", "CASE-0003") or title
 //   * filter by status (Open / Under review / Closed)
 //   * create a new case
-//   * tap a case to open CaseDetailPage (incidents, investigators, status)
+//   * tap a case to open CaseDetailPage (submissions, investigators,
+//     status, suggestions, history)
 //
-// Data comes from SupabaseService.listCases (the list_cases function).
+// Data comes from SupabaseService.listCasesPage (the list_cases function).
 
 import 'dart:async';
 
@@ -17,6 +19,7 @@ import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/case_summary.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
+import 'package:argus_shield/admin_screens/paged_list.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/case_detail.dart';
 
@@ -49,17 +52,9 @@ class _AdminCasesState extends State<AdminCases> {
   Timer? _searchTimer;
 
   String _query = '';
+  String _activeQuery = '';
   String? _status; // current filter chip (null = all)
-  List<CaseSummary> _cases = const [];
-  bool _loading = true;
-  String? _error;
-  int _requestId = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch(); // _loading already starts as true
-  }
+  int _generation = 0; // bump to reload from the top
 
   @override
   void dispose() {
@@ -68,32 +63,12 @@ class _AdminCasesState extends State<AdminCases> {
     super.dispose();
   }
 
-  Future<void> _fetch() async {
-    final id = ++_requestId;
-    try {
-      final rows = await _service.listCases(query: _query, status: _status);
-      if (!mounted || id != _requestId) return;
-      setState(() {
-        _cases = rows;
-        _error = null;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted || id != _requestId) return;
-      setState(() {
-        _error = 'Could not load cases. Check your connection.';
-        _loading = false;
-      });
-    }
-  }
-
   void _reload() {
     _searchTimer?.cancel();
     setState(() {
-      _loading = true;
-      _error = null;
+      _activeQuery = _query.trim();
+      _generation++;
     });
-    _fetch();
   }
 
   void _onSearchChanged(String value) {
@@ -124,7 +99,7 @@ class _AdminCasesState extends State<AdminCases> {
     if (mounted) _reload();
   }
 
-  /// New case (no incidents yet), then open it to add incidents.
+  /// New case (no submissions yet), then open it to add some.
   Future<void> _newCase() async {
     final caseId = await showAdminSheet<int>(
       context,
@@ -138,20 +113,13 @@ class _AdminCasesState extends State<AdminCases> {
       ),
     );
     if (caseId == null || !mounted) return;
-    showSnack(context, 'CASE-${caseId.toString().padLeft(4, '0')} created');
+    showSnack(context, '${caseReference(caseId)} created');
     await _openCase(caseId);
-  }
-
-  String get _countText {
-    final n = _cases.length;
-    if (_query.trim().isEmpty) {
-      return n == 1 ? '1 case' : '$n cases';
-    }
-    return '$n ${n == 1 ? 'match' : 'matches'} for "${_query.trim()}"';
   }
 
   @override
   Widget build(BuildContext context) {
+    final q = _activeQuery;
     return Padding(
       padding: AppSpacing.page,
       child: Column(
@@ -196,151 +164,209 @@ class _AdminCasesState extends State<AdminCases> {
           ),
           const SizedBox(height: AppSpacing.small),
 
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final (label, value) in AdminCases.filters) ...[
-                  ChoiceChip(
-                    label: Text(label),
-                    selected: _status == value,
-                    onSelected: (_) => _onFilter(value),
-                    selectedColor: AppColors.accent,
-                    backgroundColor: AppColors.header,
-                    labelStyle: AppText.body.copyWith(
-                      fontSize: 13,
-                      color: _status == value
-                          ? AppColors.header
-                          : AppColors.textPrimary,
-                    ),
-                    showCheckmark: false,
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ],
-            ),
+          ChipRow<String?>(
+            options: AdminCases.filters,
+            selected: _status,
+            onSelected: _onFilter,
           ),
-          const SizedBox(height: AppSpacing.small),
-          if (!_loading && _error == null)
-            Text(
-              _countText,
-              style: AppText.caption.copyWith(color: AppColors.textMuted),
-            ),
           const SizedBox(height: AppSpacing.medium),
 
-          Expanded(child: _buildList()),
+          Expanded(
+            child: PagedList<CaseSummary>(
+              key: ValueKey('$_status/$q/$_generation'),
+              pageSize: 20,
+              idOf: (c) => c.caseId,
+              loadPage: (loaded) => _service.listCasesPage(
+                query: q,
+                status: _status,
+                after: loaded.isEmpty ? null : loaded.last,
+              ),
+              errorText: 'Could not load cases. Check your connection.',
+              emptyText: q.isNotEmpty
+                  ? 'No cases match your search.'
+                  : _status == null
+                      ? 'No cases yet. Accept a submission or tap "+ New case".'
+                      : 'No cases with this status.',
+              itemBuilder: (context, c) => CaseCard(
+                caseSummary: c,
+                showPreview: true,
+                onTap: () => _openCase(c.caseId),
+                onViewCase: () => _openCase(c.caseId),
+              ),
+            ),
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildList() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: AppText.bodyMuted, textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.small),
-            TextButton(onPressed: _reload, child: const Text('Try again')),
-          ],
-        ),
-      );
-    }
-    if (_cases.isEmpty) {
-      return Center(
-        child: Text(
-          _query.trim().isNotEmpty
-              ? 'No cases match your search.'
-              : _status == null
-                  ? 'No cases yet. Accept a submission or tap "+ New case".'
-                  : 'No cases with this status.',
-          style: AppText.bodyMuted,
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-    return RefreshIndicator(
-      onRefresh: _fetch,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: _cases.length,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.medium),
-        itemBuilder: (context, index) {
-          final c = _cases[index];
-          return CaseCard(caseSummary: c, onTap: () => _openCase(c.caseId));
-        },
       ),
     );
   }
 }
 
-/// One case in the list: reference, status, title, incidents, who is on it.
+/// One case, in the same card style as a submission: reference and
+/// status, title and description, what's inside (submissions, footage,
+/// plates), who is on it, and optionally a preview of its newest
+/// submissions with a "View case" button.
 class CaseCard extends StatelessWidget {
   final CaseSummary caseSummary;
   final VoidCallback? onTap;
 
-  const CaseCard({super.key, required this.caseSummary, this.onTap});
+  /// Shows the newest submissions (citizen + AI descriptions) in the card.
+  final bool showPreview;
+
+  /// When set, a "View case" button at the bottom calls it.
+  final VoidCallback? onViewCase;
+
+  const CaseCard({
+    super.key,
+    required this.caseSummary,
+    this.onTap,
+    this.showPreview = false,
+    this.onViewCase,
+  });
 
   @override
   Widget build(BuildContext context) {
     final c = caseSummary;
     final (statusLabel, statusColor) = statusStyle(c.status);
     final unassigned = c.investigators.isEmpty && !c.isClosed;
+    final lead = c.lead;
+    final others = c.investigators.where((i) => !i.isLead).toList();
 
-    return Material(
-      color: AppColors.header,
-      shape: RoundedRectangleBorder(
-        side: const BorderSide(color: AppColors.fieldBorder),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+    return AdminCard(
+      onTap: onTap,
+      borderColor: unassigned ? AppColors.accent : AppColors.fieldBorder,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: Text(c.reference, style: AppText.cardTitle)),
-                  const SizedBox(width: AppSpacing.small),
-                  StatusTag(label: statusLabel, color: statusColor),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(c.title,
-                  style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              const Divider(color: AppColors.fieldBorder, height: 1),
-              const SizedBox(height: 12),
-              DetailLine(
-                icon: Icons.description_outlined,
-                text: '${c.incidentCount} '
-                    '${c.incidentCount == 1 ? 'incident' : 'incidents'}',
-              ),
-              DetailLine(
-                icon: Icons.badge_outlined,
-                text: unassigned
-                    ? 'No investigator assigned'
-                    : c.investigators.isEmpty
-                        ? 'No investigators'
-                        : c.investigators.map((i) => i.name).join(', '),
-                color: unassigned ? AppColors.accent : null,
-              ),
-              DetailLine(
-                icon: Icons.event,
-                text: 'Created ${formatDate(c.dateCreated)}'
-                    '${c.dateClosed == null ? '' : ' · closed ${formatDate(c.dateClosed!)}'}',
-              ),
+              Expanded(child: Text(c.reference, style: AppText.cardTitle)),
+              const SizedBox(width: AppSpacing.small),
+              StatusTag(label: statusLabel, color: statusColor),
             ],
           ),
-        ),
+          const SizedBox(height: 6),
+          Text(c.title,
+              style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
+          if (c.description != null) ...[
+            const SizedBox(height: 4),
+            Text(c.description!,
+                style: AppText.bodyMuted,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+          ],
+          const SizedBox(height: 12),
+          const Divider(color: AppColors.fieldBorder, height: 1),
+          const SizedBox(height: 12),
+          DetailLine(
+            icon: Icons.description_outlined,
+            text: [
+              plural(c.incidentCount, 'submission'),
+              if (c.mediaCount > 0) '${c.mediaCount} media '
+                  '${c.mediaCount == 1 ? 'file' : 'files'}',
+            ].join(' · '),
+          ),
+          DetailLine(
+            icon: Icons.badge_outlined,
+            text: unassigned
+                ? 'No investigator assigned'
+                : c.investigators.isEmpty
+                    ? 'No investigators'
+                    : [
+                        if (lead != null) '${lead.name} (lead)',
+                        ...others.map((i) => i.name),
+                      ].join(', '),
+            color: unassigned ? AppColors.accent : null,
+          ),
+          DetailLine(
+            icon: Icons.event,
+            text: 'Created ${formatDate(c.dateCreated)}'
+                '${c.dateClosed == null ? '' : ' · closed ${formatDate(c.dateClosed!)}'}'
+                '${c.lastActivity == null || c.dateClosed != null ? '' : ' · active ${formatDate(c.lastActivity!)}'}',
+          ),
+          if (c.plates.isNotEmpty)
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final plate in c.plates)
+                  FactChip(plate,
+                      icon: Icons.pin_outlined, color: AppColors.accent),
+              ],
+            ),
+
+          if (showPreview && c.preview.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Divider(color: AppColors.fieldBorder, height: 1),
+            const SizedBox(height: 8),
+            Text(
+              c.incidentCount > c.preview.length
+                  ? 'NEWEST ${c.preview.length} OF ${c.incidentCount} SUBMISSIONS'
+                  : 'SUBMISSIONS',
+              style: AppText.caption.copyWith(color: AppColors.textHint),
+            ),
+            for (final p in c.preview) _PreviewRow(item: p),
+          ],
+          if (showPreview && c.preview.isEmpty) ...[
+            const SizedBox(height: 4),
+            const Text('No submissions in this case yet.',
+                style: AppText.bodyMuted),
+          ],
+
+          if (onViewCase != null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: SmallActionButton(
+                label: c.incidentCount > c.preview.length
+                    ? 'View case (all ${c.incidentCount} submissions)'
+                    : 'View case',
+                color: AppColors.accent,
+                onPressed: onViewCase,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One submission inside a case card's preview.
+class _PreviewRow extends StatelessWidget {
+  final CasePreviewItem item;
+
+  const _PreviewRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = item;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${p.reference} · ${p.location}'
+            '${p.reviewStatus == 'duplicate' ? ' (duplicate)' : ''}',
+            style: AppText.body.copyWith(fontSize: 14, fontWeight: FontWeight.bold),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (p.description != null)
+            Text('Citizen: ${p.description}',
+                style: AppText.bodyMuted.copyWith(fontSize: 13),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+          Text(
+            p.aiSummary == null ? 'AI: no analysis yet' : 'AI: ${p.aiSummary}',
+            style: AppText.bodyMuted.copyWith(
+                fontSize: 13,
+                color: p.aiSummary == null ? AppColors.textHint : null),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

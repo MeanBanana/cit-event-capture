@@ -3,10 +3,12 @@
 
 /// Field names follow public.crimescene (incidentid, location, datetime,
 /// attacktype, status, description, reportedby, datereported, caseid,
-/// reviewstatus, reviewedat, reviewnote, duplicateof). The
-/// reporter's name comes from public."User" via reportedby, and the media
-/// count from public.media. Rows come from the list_submissions database
-/// function (see SupabaseService.getRecentSubmissions).
+/// reviewstatus, reviewedat, reviewnote, duplicateof, latitude, longitude,
+/// locationkey, aisummary, aisummarystatus, aisummaryat). The
+/// reporter's name comes from public."User" via reportedby, the media
+/// count from public.media, and the vehicle / person / weapon counts and
+/// plates from the AI's detections. Rows come from the list_submissions
+/// database function (see SupabaseService.listSubmissionsPage).
 class CrimeSceneSummary {
   final int incidentId;
   final String location;
@@ -28,6 +30,37 @@ class CrimeSceneSummary {
   final String? reviewNote; // e.g. why it was rejected
   final int? duplicateOf; // incidentid of the original
 
+  final double? latitude; // from the phone's GPS, when it was shared
+  final double? longitude;
+
+  /// The location in a standard form ("N1, Midrand" -> "n1 midrand"),
+  /// used to group submissions by location.
+  final String? locationKey;
+
+  /// The AI's short summary of all this submission's footage (null until
+  /// the AI pipeline has written one).
+  final String? aiSummary;
+
+  /// 'none' (not analysed), 'processing', 'ready', 'outdated' (new footage
+  /// added since the summary) or 'failed'.
+  final String aiSummaryStatus;
+  final DateTime? aiSummaryAt;
+
+  /// What the AI saw: the most vehicles / people / weapons in any one clip,
+  /// and up to 3 number plates it read.
+  final int vehicleCount;
+  final int personCount;
+  final int weaponCount;
+  final List<String> plates;
+
+  /// Earliest capture time in the footage's own metadata (null when no
+  /// clip has one). Better evidence than the time the citizen typed.
+  final DateTime? capturedAt;
+
+  /// True when [capturedAt] and the typed [dateTime] are more than 3 hours
+  /// apart: the admin should check which one is right.
+  final bool timeMismatch;
+
   const CrimeSceneSummary({
     required this.incidentId,
     required this.location,
@@ -45,6 +78,18 @@ class CrimeSceneSummary {
     this.reviewedAt,
     this.reviewNote,
     this.duplicateOf,
+    this.latitude,
+    this.longitude,
+    this.locationKey,
+    this.aiSummary,
+    this.aiSummaryStatus = 'none',
+    this.aiSummaryAt,
+    this.vehicleCount = 0,
+    this.personCount = 0,
+    this.weaponCount = 0,
+    this.plates = const [],
+    this.capturedAt,
+    this.timeMismatch = false,
   });
 
   /// Builds one from a row returned by list_submissions
@@ -73,8 +118,27 @@ class CrimeSceneSummary {
       reviewedAt: time('reviewedat'),
       reviewNote: row['reviewnote'] as String?,
       duplicateOf: (row['duplicateof'] as num?)?.toInt(),
+      latitude: _toDouble(row['latitude']),
+      longitude: _toDouble(row['longitude']),
+      locationKey: row['locationkey'] as String?,
+      aiSummary: row['aisummary'] as String?,
+      aiSummaryStatus: (row['aisummarystatus'] as String?) ?? 'none',
+      aiSummaryAt: time('aisummaryat'),
+      vehicleCount: (row['vehiclecount'] as num?)?.toInt() ?? 0,
+      personCount: (row['personcount'] as num?)?.toInt() ?? 0,
+      weaponCount: (row['weaponcount'] as num?)?.toInt() ?? 0,
+      plates: ((row['plates'] as List?) ?? const []).cast<String>(),
+      capturedAt: time('capturedat'),
+      timeMismatch: (row['timemismatch'] as bool?) ?? false,
     );
   }
+
+  /// numeric columns arrive as a number, or as text for large precision
+  static double? _toDouble(Object? value) => switch (value) {
+        num n => n.toDouble(),
+        String s => double.tryParse(s),
+        _ => null,
+      };
 
   /// Display reference, e.g. incident 42 → "INC-0042".
   String get reference => incidentReference(incidentId);
@@ -87,6 +151,16 @@ class CrimeSceneSummary {
   bool get isAccepted => reviewStatus == 'accepted';
   bool get isRejected => reviewStatus == 'rejected';
   bool get isDuplicate => reviewStatus == 'duplicate';
+
+  bool get hasGps => latitude != null && longitude != null;
+
+  /// The best time we have for when it happened: the footage's capture
+  /// time, otherwise the time the citizen typed.
+  DateTime get bestTime => capturedAt ?? dateTime;
+
+  /// True when the AI found anything worth showing as a chip.
+  bool get hasAiFacts =>
+      vehicleCount > 0 || personCount > 0 || weaponCount > 0 || plates.isNotEmpty;
 }
 
 /// 42 → "INC-0042".

@@ -208,3 +208,225 @@ Future<bool> confirmAction(
   );
   return result ?? false;
 }
+
+/// Small filled chip for a fact the AI found, e.g. "2 vehicles" or a
+/// number plate. Optional [icon] in front.
+class FactChip extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final Color color;
+
+  const FactChip(this.label,
+      {super.key, this.icon, this.color = AppColors.textMuted});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+          ],
+          // Flexible + ellipsis: a long reason never overflows the chip
+          Flexible(
+            child: Text(label,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.bodyMuted.copyWith(fontSize: 12, color: color)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "1 vehicle" / "2 vehicles".
+String plural(int n, String one, [String? many]) =>
+    '$n ${n == 1 ? one : (many ?? '${one}s')}';
+
+/// What to say about the AI summary when there isn't a usable one yet.
+/// Returns null when [summary] should be shown as it is.
+String? aiStatusNote(String status, {required bool hasSummary, int mediaCount = 1}) {
+  if (mediaCount == 0 && !hasSummary) return 'No footage to analyse';
+  switch (status) {
+    case 'processing':
+      return hasSummary ? 'Updating…' : 'AI analysis in progress…';
+    case 'outdated':
+      return 'New footage not analysed yet';
+    case 'failed':
+      return 'AI analysis failed';
+    case 'ready':
+      return hasSummary ? null : 'AI found nothing to report';
+    default: // 'none'
+      return hasSummary ? null : 'No AI analysis yet';
+  }
+}
+
+/// The two descriptions of a submission: the citizen's own words and the
+/// AI's summary of the footage. [maxLines] shortens both on cards.
+class SubmissionDescriptions extends StatelessWidget {
+  final String? citizen;
+  final String? ai;
+  final String aiStatus;
+  final int mediaCount;
+  final int? maxLines;
+
+  const SubmissionDescriptions({
+    super.key,
+    required this.citizen,
+    required this.ai,
+    this.aiStatus = 'none',
+    this.mediaCount = 1,
+    this.maxLines,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final note = aiStatusNote(aiStatus, hasSummary: ai != null, mediaCount: mediaCount);
+    final overflow = maxLines == null ? null : TextOverflow.ellipsis;
+
+    Widget block(String label, IconData icon, Widget text) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 18, color: AppColors.accent),
+              const SizedBox(width: AppSpacing.small),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: AppText.caption
+                            .copyWith(color: AppColors.textHint, fontSize: 11)),
+                    const SizedBox(height: 2),
+                    text,
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        block(
+          'CITIZEN',
+          Icons.record_voice_over_outlined,
+          Text(
+            citizen == null || citizen!.trim().isEmpty
+                ? 'No description given'
+                : citizen!,
+            style: citizen == null
+                ? AppText.bodyMuted.copyWith(fontStyle: FontStyle.italic)
+                : AppText.body.copyWith(fontSize: 15),
+            maxLines: maxLines,
+            overflow: overflow,
+          ),
+        ),
+        block(
+          'AI SUMMARY',
+          Icons.auto_awesome_outlined,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (ai != null)
+                Text(ai!,
+                    style: AppText.body.copyWith(fontSize: 15),
+                    maxLines: maxLines,
+                    overflow: overflow),
+              if (note != null)
+                Text(note,
+                    style: AppText.bodyMuted.copyWith(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        color: aiStatus == 'failed'
+                            ? AppColors.danger
+                            : AppColors.textHint)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A row of choice chips (used for the view and filter rows). Scrolls
+/// sideways on narrow phones.
+class ChipRow<T> extends StatelessWidget {
+  final List<(String, T)> options;
+  final T selected;
+  final ValueChanged<T> onSelected;
+
+  const ChipRow({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (label, value) in options) ...[
+            ChoiceChip(
+              label: Text(label),
+              selected: selected == value,
+              onSelected: (_) => onSelected(value),
+              selectedColor: AppColors.accent,
+              backgroundColor: AppColors.header,
+              labelStyle: AppText.body.copyWith(
+                fontSize: 13,
+                color: selected == value
+                    ? AppColors.header
+                    : AppColors.textPrimary,
+              ),
+              showCheckmark: false,
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The card frame every admin list uses (dark box, thin border, ripple).
+class AdminCard extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final Color borderColor;
+
+  const AdminCard({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.borderColor = AppColors.fieldBorder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.header,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: borderColor),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(padding: const EdgeInsets.all(16), child: child),
+      ),
+    );
+  }
+}

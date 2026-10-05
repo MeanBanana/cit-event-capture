@@ -11,6 +11,7 @@ import 'package:argus_shield/models/crime_scene_summary.dart';
 import 'package:argus_shield/models/case_summary.dart';
 import 'package:argus_shield/models/case_assignment_info.dart';
 import 'package:argus_shield/models/investigator_summary.dart';
+import 'package:argus_shield/models/submission_groups.dart';
 
 CrimeSceneSummary fakeIncident(
   int id,
@@ -20,12 +21,15 @@ CrimeSceneSummary fakeIncident(
   String? caseTitle,
   int? duplicateOf,
   String? note,
+  String? aiSummary,
+  List<String> plates = const [],
+  DateTime? reported,
 }) =>
     CrimeSceneSummary(
       incidentId: id,
       location: location,
       dateTime: DateTime(2026, 10, 5, 9, 15),
-      dateReported: DateTime(2026, 10, 5, 9, 30),
+      dateReported: reported ?? DateTime(2026, 10, 5, 9, 30),
       status: 'open',
       description: 'Report $id',
       reportedBy: 4,
@@ -35,6 +39,10 @@ CrimeSceneSummary fakeIncident(
       caseTitle: caseTitle,
       duplicateOf: duplicateOf,
       reviewNote: note,
+      locationKey: location.toLowerCase(),
+      aiSummary: aiSummary,
+      aiSummaryStatus: aiSummary == null ? 'none' : 'ready',
+      plates: plates,
     );
 
 const fakeInvestigator = InvestigatorSummary(
@@ -55,13 +63,21 @@ class AdminFakeService extends SupabaseService {
     List<InvestigatorSummary>? investigators,
   })  : submissions = submissions ?? [],
         cases = cases ?? [],
-        investigators = investigators ?? [fakeInvestigator];
+        investigators = investigators ?? [fakeInvestigator] {
+    _recount();
+  }
 
   final List<CrimeSceneSummary> submissions;
   final List<CaseSummary> cases;
   final List<InvestigatorSummary> investigators;
   final List<CaseAssignmentInfo> assignments = [];
   final List<String> calls = [];
+
+  /// What the suggestion functions return (tests fill these in).
+  List<IncidentSuggestion> incidentSuggestions = [];
+  List<CaseSuggestion> caseSuggestions = [];
+  List<LinkedGroup> linkedGroups = [];
+  List<SuggestedMatch> suggestedMatches = [];
 
   // ---- helpers ---------------------------------------------------------------
 
@@ -79,14 +95,18 @@ class AdminFakeService extends SupabaseService {
         caseId: caseId,
         caseTitle: title,
         duplicateOf: duplicateOf,
-        note: note);
+        note: note,
+        aiSummary: old.aiSummary,
+        plates: old.plates,
+        reported: old.dateReported);
     _recount();
   }
 
-  /// Keeps each case's incident count and investigators in step.
+  /// Keeps each case's submission count, preview and investigators in step.
   void _recount() {
     for (var i = 0; i < cases.length; i++) {
       final c = cases[i];
+      final inCase = submissions.where((s) => s.caseId == c.caseId).toList();
       cases[i] = CaseSummary(
         caseId: c.caseId,
         title: c.title,
@@ -95,17 +115,47 @@ class AdminFakeService extends SupabaseService {
         dateCreated: c.dateCreated,
         dateClosed: c.status == 'closed' ? DateTime(2026, 10, 6) : null,
         createdByName: c.createdByName,
-        incidentCount:
-            submissions.where((s) => s.caseId == c.caseId).length,
+        incidentCount: inCase.length,
         investigators: [
           for (final a in assignments)
             if (a.caseId == c.caseId && a.isActive)
               CaseInvestigator(
-                  userId: a.userId, name: a.name, badgeNumber: a.badgeNumber),
+                  userId: a.userId,
+                  name: a.name,
+                  badgeNumber: a.badgeNumber,
+                  assignmentId: a.assignmentId,
+                  isLead: a.isLead),
+        ],
+        preview: [
+          for (final s in inCase.take(3))
+            CasePreviewItem(
+              incidentId: s.incidentId,
+              location: s.location,
+              dateReported: s.dateReported,
+              reviewStatus: s.reviewStatus,
+              description: s.description,
+              aiSummary: s.aiSummary,
+            ),
         ],
       );
     }
   }
+
+  CaseAssignmentInfo _copyAssignment(CaseAssignmentInfo a,
+          {String? status, DateTime? unassigned, bool? isLead}) =>
+      CaseAssignmentInfo(
+        assignmentId: a.assignmentId,
+        userId: a.userId,
+        name: a.name,
+        badgeNumber: a.badgeNumber,
+        station: a.station,
+        dutyStatus: a.dutyStatus,
+        status: status ?? a.status,
+        dateAssigned: a.dateAssigned,
+        dateUnassigned: unassigned ?? a.dateUnassigned,
+        caseId: a.caseId,
+        isLead: isLead ?? a.isLead,
+      );
 
   // ---- submissions -------------------------------------------------------------
 
@@ -118,6 +168,39 @@ class AdminFakeService extends SupabaseService {
             s.location.toLowerCase().contains(q) ||
             s.incidentId.toString() == q)
         .toList();
+  }
+
+  @override
+  Future<List<CrimeSceneSummary>> listSubmissionsPage({
+    String? search,
+    String? review,
+    int? caseId,
+    String? locationKey,
+    List<int>? ids,
+    SubmissionOrder order = SubmissionOrder.newest,
+    CrimeSceneSummary? after,
+    int limit = SupabaseService.pageSize,
+  }) async {
+    calls.add('listSubmissions:$review:${search ?? ''}:${order.name}');
+    var rows = _subs(review, search ?? '')
+        .where((s) => caseId == null || s.caseId == caseId)
+        .where((s) => locationKey == null || s.locationKey == locationKey)
+        .where((s) => ids == null || ids.contains(s.incidentId))
+        .toList();
+    if (order == SubmissionOrder.oldest) rows = rows.reversed.toList();
+    if (after != null) {
+      final i = rows.indexWhere((s) => s.incidentId == after.incidentId);
+      rows = i < 0 ? [] : rows.sublist(i + 1);
+    }
+    return rows.take(limit).toList();
+  }
+
+  @override
+  Future<CrimeSceneSummary?> getSubmission(int incidentId) async {
+    for (final s in submissions) {
+      if (s.incidentId == incidentId) return s;
+    }
+    return null;
   }
 
   @override
@@ -137,6 +220,79 @@ class AdminFakeService extends SupabaseService {
   @override
   Future<List<CrimeSceneSummary>> getCaseIncidents(int caseId) async =>
       submissions.where((s) => s.caseId == caseId).toList();
+
+  @override
+  Future<List<MediaItem>> getIncidentMedia(int incidentId) async => const [];
+
+  @override
+  Future<List<LocationGroup>> listLocationGroups({
+    String? search,
+    String? review,
+    int offset = 0,
+    int limit = SupabaseService.pageSize,
+  }) async {
+    calls.add('locationGroups:${search ?? ''}');
+    final groups = <String, List<CrimeSceneSummary>>{};
+    for (final s in _subs(review)) {
+      if (search != null &&
+          search.isNotEmpty &&
+          !s.location.toLowerCase().contains(search.toLowerCase())) {
+        continue;
+      }
+      groups.putIfAbsent(s.locationKey ?? s.location, () => []).add(s);
+    }
+    return [
+      for (final e in groups.entries)
+        LocationGroup(
+          locationKey: e.key,
+          label: e.value.first.location,
+          submissionCount: e.value.length,
+          pendingCount: e.value.where((s) => s.isPending).length,
+          latestReported: e.value.first.dateReported,
+        ),
+    ].skip(offset).take(limit).toList();
+  }
+
+  @override
+  Future<List<LinkedGroup>> listLinkedGroups(
+      {int offset = 0, int limit = 20}) async {
+    calls.add('linkedGroups');
+    return linkedGroups.skip(offset).take(limit).toList();
+  }
+
+  @override
+  Future<List<IncidentSuggestion>> suggestIncidentsForCase(int caseId,
+          {int limit = 5}) async =>
+      incidentSuggestions;
+
+  @override
+  Future<List<CaseSuggestion>> suggestCasesForIncident(int incidentId,
+          {int limit = 3}) async =>
+      caseSuggestions;
+
+  @override
+  Future<List<SuggestedMatch>> listSuggestedMatches(
+          {int minScore = 60, int limit = 50}) async =>
+      suggestedMatches
+          .where((m) => submissions
+              .any((s) => s.incidentId == m.incidentId && s.isPending))
+          .toList();
+
+  @override
+  Future<int> acceptSuggestedMatches(List<SuggestedMatch> matches) async {
+    calls.add('acceptSuggested:'
+        '${[for (final m in matches) '${m.incidentId}->${m.caseId}']}');
+    var added = 0;
+    for (final m in matches) {
+      final pending =
+          submissions.any((s) => s.incidentId == m.incidentId && s.isPending);
+      if (pending) {
+        _setReview(m.incidentId, status: 'accepted', caseId: m.caseId);
+        added++;
+      }
+    }
+    return added;
+  }
 
   @override
   Future<void> rejectSubmission(int incidentId, {String? note}) async {
@@ -208,6 +364,19 @@ class AdminFakeService extends SupabaseService {
   }
 
   @override
+  Future<List<CaseSummary>> listCasesPage({
+    String? query,
+    String? status,
+    CaseSummary? after,
+    int limit = 20,
+  }) async {
+    final all = await listCases(query: query, status: status, limit: limit);
+    if (after == null) return all.take(limit).toList();
+    final i = all.indexWhere((c) => c.caseId == after.caseId);
+    return i < 0 ? [] : all.sublist(i + 1).take(limit).toList();
+  }
+
+  @override
   Future<CaseSummary?> getCase(int caseId) async {
     for (final c in cases) {
       if (c.caseId == caseId) return c;
@@ -233,6 +402,11 @@ class AdminFakeService extends SupabaseService {
   }
 
   @override
+  Future<List<CaseEvent>> getCaseEvents(int caseId,
+          {CaseEvent? before, int limit = 30}) async =>
+      const [];
+
+  @override
   Future<List<CaseAssignmentInfo>> getCaseAssignments(int caseId) async =>
       assignments.where((a) => a.caseId == caseId).toList();
 
@@ -241,6 +415,8 @@ class AdminFakeService extends SupabaseService {
     calls.add('assign:$caseId:$userId');
     final person = investigators.firstWhere((p) => p.userId == userId);
     final id = assignments.length + 1;
+    final hasLead =
+        assignments.any((a) => a.caseId == caseId && a.isActive && a.isLead);
     assignments.add(CaseAssignmentInfo(
       assignmentId: id,
       userId: userId,
@@ -251,28 +427,32 @@ class AdminFakeService extends SupabaseService {
       status: 'active',
       dateAssigned: DateTime(2026, 10, 5, 11),
       caseId: caseId,
+      isLead: !hasLead, // the first investigator becomes lead
     ));
     _recount();
     return id;
   }
 
   @override
+  Future<void> setCaseLead(int assignmentId) async {
+    calls.add('lead:$assignmentId');
+    final target = assignments.firstWhere((a) => a.assignmentId == assignmentId);
+    for (var i = 0; i < assignments.length; i++) {
+      final a = assignments[i];
+      if (a.caseId == target.caseId && a.isActive) {
+        assignments[i] =
+            _copyAssignment(a, isLead: a.assignmentId == assignmentId);
+      }
+    }
+    _recount();
+  }
+
+  @override
   Future<void> unassignInvestigator(int assignmentId) async {
     calls.add('unassign:$assignmentId');
     final i = assignments.indexWhere((a) => a.assignmentId == assignmentId);
-    final a = assignments[i];
-    assignments[i] = CaseAssignmentInfo(
-      assignmentId: a.assignmentId,
-      userId: a.userId,
-      name: a.name,
-      badgeNumber: a.badgeNumber,
-      station: a.station,
-      dutyStatus: a.dutyStatus,
-      status: 'closed',
-      dateAssigned: a.dateAssigned,
-      dateUnassigned: DateTime(2026, 10, 5, 12),
-      caseId: a.caseId,
-    );
+    assignments[i] = _copyAssignment(assignments[i],
+        status: 'closed', unassigned: DateTime(2026, 10, 5, 12));
     _recount();
   }
 
