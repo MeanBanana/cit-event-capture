@@ -37,7 +37,7 @@ These components work together to provide an end-to-end system for processing an
 cit-event-capture/
 │
 ├── mobile/
-│   └── Flutter (Dart) application — iOS and Android
+│   └── argus_shield/             ← Flutter (Dart) app — iOS and Android (see its README)
 │
 ├── backend/
 │   └── Integration glue between the app, Supabase and the AI/CV component
@@ -53,7 +53,7 @@ cit-event-capture/
 │   └── supabase/                 ← run Supabase CLI commands from database/
 │       ├── config.toml           ← Supabase CLI project configuration
 │       ├── migrations/           ← SQL migrations (schema, users/roles, RLS policies)
-│       └── functions/            ← Supabase Edge Functions (TypeScript)
+│       └── functions/            ← Supabase Edge Functions (planned, not created yet)
 │
 ├── diagrams/
 │   └── Architecture, ERD and use-case diagrams; UI mockups/wireframes
@@ -172,7 +172,7 @@ This may include:
 
 ### `tests/`
 
-Contains testing-related files.
+Contains testing-related files. (The Flutter app's own tests live next to the app in `mobile/argus_shield/test/`, because `flutter test` looks for them there.)
 
 This may include:
 
@@ -406,7 +406,7 @@ Full details, including Flutter code and the complete permission table, are in [
 ## How accounts are created
 
 * **Citizens** register in the app (`supabase.auth.signUp`), sending their username, name, phone number and residence. A database trigger creates their `"User"` and `citizen` rows. **App sign-ups are always citizens.** A role sent from the app is ignored.
-* **Investigators** do not register themselves. An admin creates them from the admin screen through the `create-investigator` Edge Function, which emails them a code to set their own password.
+* **Investigators** do not register themselves. An admin will create them from the admin screen through the `create-investigator` Edge Function, which emails them a code to set their own password. *(The Edge Function is not built yet; until then investigator accounts are created by the database owner, and the investigator screens themselves are still to come.)*
 * **Admins** are set up manually by the database owner (see `database/README.md`).
 * **Login** uses a **username**. The app looks up the matching email with `email_for_username`, then signs in with email + password and reads `role` to choose the dashboard.
 * **Deleted accounts:** if a login is deleted, the profile row is kept (with `authid` empty) so the evidence trail on cases and uploads is preserved.
@@ -457,8 +457,10 @@ final profile = await supabase
     .single();
 // profile['role'] -> 'admin' | 'investigator' | 'citizen'
 
-// Reads are filtered automatically by RLS
-final cases = await supabase.from('crimescene').select();
+// Reads are filtered automatically by RLS.
+// Most screens call database functions instead of reading tables directly,
+// e.g. one page of submissions (see database/README.md for all of them):
+final page = await supabase.rpc('list_submissions', params: {'p_review': 'pending'});
 ```
 
 ---
@@ -643,6 +645,17 @@ Research: Evaluate vehicle detection model performance
 # Project Status
 
 Argus Shield is currently under active research and development.
+
+| Part | State |
+|---|---|
+| Login / registration (citizen) | Live on Supabase Auth |
+| Admin dashboard: Overview, Cases, Detectives, Submissions | Live on the database (review, cases, assignments, suggestions, history) |
+| Citizen upload / My submissions / Profile | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
+| Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again |
+| Creating investigator accounts from the app | **Not built yet**: needs the `create-investigator` Edge Function |
+| Footage storage | **Not built yet**: no Supabase Storage bucket or storage policies |
+| AI / computer vision pipeline | **Not built yet** (`ai/` is empty). The database is ready for it; demo data stands in for it |
+
 
 Individual components may be at different stages of development. Features should not be considered production-ready unless they have been implemented, tested, and reviewed by the team.
 

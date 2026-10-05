@@ -15,8 +15,9 @@ This folder is the version-controlled record of the Argus Shield database. The l
 9. [Workflow: making a database change](#workflow-making-a-database-change)
 10. [Testing](#testing)
 11. [The AI pipeline: what it writes](#the-ai-pipeline-what-it-writes)
-12. [Still to do](#still-to-do)
-13. [Troubleshooting](#troubleshooting)
+12. [Current status](#current-status)
+13. [Still to do](#still-to-do)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -232,7 +233,7 @@ Under 30 is not shown. 30–59 is a "possible match" (case page recommendations 
 | `is_assigned_to(incidentid)` | helper | True if the logged-in investigator is actively assigned to the case that incident belongs to |
 | `can_view_detection(detectionid)` | helper | True for admins, or investigators assigned to the detection's case |
 | `handle_new_auth_user()` | trigger on `auth.users` insert | Creates the `"User"` row and the matching `citizen`/`investigator` row |
-| `handle_auth_email_change()` | trigger on `auth.users` email update | Copies the new email into `"User".email` |
+| `handle_auth_email_change()` | trigger `on_auth_user_email_changed` on `auth.users` email update | Copies the new email into `"User".email` |
 | `protect_user_columns()` | trigger on `"User"` update | Only admins may change `role`, `email`, `authid`, `userid`, `datecreated` |
 | `protect_investigator_columns()` | trigger on `investigator` update | Non-admins may only change `dutystatus` |
 | `protect_crimescene_caseid()` | trigger on `crimescene` insert/update | Only admins may review a submission or move it between cases; app inserts always start as `pending` |
@@ -268,7 +269,9 @@ Under 30 is not shown. 30–59 is a "possible match" (case page recommendations 
 | `set_case_status(p_caseid, p_status)` | admin / assigned investigator | Changes a case's status. Admins: any status. Assigned investigators: only between `open` and `under_review` |
 | `verify_detection(p_detectionid, p_verified)` | admin / assigned investigator | Confirms (or un-confirms) an AI detection; logged in `caseevent` |
 | `list_case_events(p_caseid, p_limit, p_before)` | callable by logged-in users | A case's history, newest first, 30 at a time (`p_before` = last `eventid` you have). Normal RLS applies |
-| `log_crimescene_event()` / `log_cases_event()` / `log_assignment_event()` / `log_detection_event()` | triggers | Write the `caseevent` rows |
+| `log_crimescene_event()` / `log_cases_event()` / `log_assignment_event()` / `log_detection_event()` | triggers `log_crimescene_event`, `log_cases_insert` / `_update` / `_delete`, `log_assignment_insert` / `_update`, `log_detection_event` | Write the `caseevent` rows (SECURITY DEFINER, so the app itself can never write history) |
+| `log_case_event(...)` | helper | Inserts one `caseevent` row with the logged-in user as actor (not callable from the app) |
+| `case_ref(id)` / `incident_ref(id)` / `status_label(text)` | helpers | `3` → `CASE-0003`, `42` → `INC-0042`, `under_review` → `under review` (used in history texts) |
 | `protect_crimescene_ai()` / `protect_media_ai()` | triggers on `crimescene` / `media` | Only the service key may write the AI fields |
 | `mark_ai_summary_outdated()` | trigger on `media` insert | New footage on an incident with a `ready` summary marks it `outdated` |
 | `unassign_investigator(p_assignmentid)` | admin action | Ends an assignment; the row stays as history |
@@ -294,7 +297,7 @@ Found under **Dashboard → Project Settings → API Keys**.
 ```dart
 await Supabase.initialize(
   url: 'https://<project-ref>.supabase.co',
-  anonKey: 'sb_publishable_...',   // the publishable key goes in this parameter
+  publishableKey: 'sb_publishable_...',   // as in mobile/argus_shield/lib/main.dart
 );
 final supabase = Supabase.instance.client;
 ```
@@ -520,10 +523,27 @@ The app shows `aisummary` on every submission card next to the citizen's descrip
 
 ---
 
+## Current status
+
+What exists today, so nobody builds on something that isn't there yet:
+
+| Part | State |
+|---|---|
+| Login / registration (citizen) | Live on Supabase Auth |
+| Admin dashboard: Overview, Cases, Detectives, Submissions | Live on the database (review, cases, assignments, suggestions, history) |
+| Citizen upload / My submissions / Profile | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
+| Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again |
+| Creating investigator accounts from the app | **Not built yet**: needs the `create-investigator` Edge Function |
+| Footage storage | **Not built yet**: no Supabase Storage bucket or storage policies |
+| AI / computer vision pipeline | **Not built yet** (`ai/` is empty). The database is ready for it; demo data stands in for it |
+
+---
+
 ## Still to do
 
 * **`create-investigator` Edge Function** — needed for the admin "add investigator" screen. It goes in `database/supabase/functions/create-investigator/index.ts` (the Supabase CLI deploys functions from `supabase/functions/`) and is deployed with `supabase functions deploy create-investigator`.
 * **AI pipeline** — see [The AI pipeline: what it writes](#the-ai-pipeline-what-it-writes).
+* **Citizen app on the database** — the citizen upload, My submissions and profile pages still use a local demo store (`mobile/argus_shield/lib/citizen/citizen_store.dart`). They should insert `crimescene` + `media` rows (with the phone's GPS in `latitude`/`longitude`), upload the file to Storage, and read the citizen's own rows back (RLS already limits them to their own).
 * **Storage bucket for footage** — `media.storagepath` expects files in Supabase Storage, but no bucket or storage policies exist yet.
 * **Email** — custom SMTP provider and the Reset Password template with `{{ .Token }}`.
 * **Registration fields** — there is no registration wireframe yet. If citizens need more than residence (e.g. ID number, suburb, city), add columns to `citizen` in a new migration.
