@@ -1,4 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'models/investigator_summary.dart';
+import 'models/system_stats.dart';
 
 /// All Supabase calls for accounts (register, login, logout).
 ///
@@ -136,6 +138,50 @@ class SupabaseService {
 
   // ------------------------------------------------------------------ LOGOUT
   Future<void> logout() => supabase.auth.signOut();
+
+  // ----------------------------------------------------------- INVESTIGATORS
+  // Both methods call the list_investigators database function, which joins
+  // "User" + investigator, counts active case assignments and sorts newest
+  // account first. Database rules decide who gets rows back (admins see all
+  // investigators). Errors are thrown, so the screen can show a message.
+
+  /// The [limit] most recently created investigators, newest first.
+  Future<List<InvestigatorSummary>> getRecentInvestigators({int limit = 20}) =>
+      _listInvestigators(limit: limit);
+
+  /// Investigators whose badge number or name contains [query], ignoring
+  /// case (e.g. "jhb" finds "JHB-4471", "thabo m" finds "Thabo Mokoena").
+  /// An empty [query] returns the most recent investigators.
+  Future<List<InvestigatorSummary>> searchInvestigators(
+    String query, {
+    int limit = 20,
+  }) =>
+      _listInvestigators(search: query, limit: limit);
+
+  // ------------------------------------------------------------ ADMIN STATS
+  /// The four SYSTEM STATUS numbers for the admin Overview tab, counted by
+  /// the admin_overview_stats database function.
+  Future<SystemStats> getAdminStats() async {
+    final rows = await supabase.rpc('admin_overview_stats') as List;
+    return SystemStats.fromMap(rows.first as Map<String, dynamic>);
+  }
+
+  Future<List<InvestigatorSummary>> _listInvestigators({
+    String? search,
+    required int limit,
+  }) async {
+    final text = search?.trim() ?? '';
+    final rows = await supabase.rpc(
+      'list_investigators',
+      params: {
+        'p_search': text.isEmpty ? null : text,
+        'p_limit': limit,
+      },
+    );
+    return (rows as List)
+        .map((row) => InvestigatorSummary.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
 
 
 }
