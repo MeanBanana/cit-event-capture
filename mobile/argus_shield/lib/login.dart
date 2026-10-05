@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'register_citizen.dart';
 import 'supabase_service.dart';
 import 'citizen/citizen_home.dart';
+import 'admin_screens/admin_dashboard.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
 import 'loadingscreen.dart';
@@ -34,8 +35,10 @@ class _LoginPageState extends State<LoginPage>{
   Future<void> _login() async {
     final ctx = context;
 
+    // pushReplacement (not push) everywhere below: the loading screen takes the
+    // login page's place, so Back from a dashboard does not return here.
     if (userNameController.text.trim().isEmpty || passwordController.text.isEmpty) {
-      Navigator.push(
+      Navigator.pushReplacement(
         ctx,
         MaterialPageRoute(
           builder: (_) => LoadingScreen(
@@ -57,26 +60,37 @@ class _LoginPageState extends State<LoginPage>{
     if (!ctx.mounted) return;
 
     final success = result["success"] == true;
-
-    // Decide next screen based on role or success
     final role = result["profile"]?["role"];
-    final nextScreen = success
-        ? (role == 'citizen'
-        ? const CitizenHome()
-        : const LoginPage()) // adjust for investigator/admin later
-        : const LoginPage();
+    String message = result["message"];
+    Widget nextScreen = const LoginPage(); // failed login: back to this page
 
-    Navigator.push(
+    // Choose the dashboard for the signed-in user's role
+    if (success) {
+      switch (role) {
+        case 'citizen':
+          nextScreen = const CitizenHome();
+        case 'admin':
+          nextScreen = const AdminDashboard();
+        default:
+          // Investigator screens are not built yet. Sign out again so the
+          // session does not stay open, and return to the login page.
+          await service.logout();
+          if (!ctx.mounted) return;
+          message = "Investigator screens are not available yet.";
+      }
+    }
+
+    Navigator.pushReplacement(
       ctx,
       MaterialPageRoute(
         builder: (_) => LoadingScreen(
-          resultMessage: result["message"],
+          resultMessage: message,
           nextScreen: nextScreen,
         ),
       ),
     );
 
-    setState(() => isLoading = false);
+    if (mounted) setState(() => isLoading = false);
   }
 
   @override
