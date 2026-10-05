@@ -88,13 +88,14 @@ The sub-tables point at `"User"` using **both** `userid` and `role`. Because of 
 
 | Table | Holds | Links to |
 |---|---|---|
-| `crimescene` | A reported incident: location, date/time, attack type, status (`open`, `closed`, `under_review`), description | `reportedby` → User |
+| `cases` | One investigation, created by an admin: title, description, status (`open`, `under_review`, `closed`), date created, date closed (set automatically when status becomes `closed`) | `createdby` → User |
+| `crimescene` | A reported incident: location, date/time, attack type, status (`open`, `closed`, `under_review`), description. `caseid` is empty until an admin adds the incident to a case | `reportedby` → User, `caseid` → cases |
 | `media` | Footage/photos uploaded to an incident: type (`image`, `video`, `audio`), storage path, file hash/size, timestamps, processing status (`pending`, `processing`, `completed`, `failed`) | `incidentid` → crimescene, `uploadedby` → User |
 | `detection` | What the AI found in a media file: type (`vehicle`, `person`, `weapon`), frame time, bounding box, confidence, model version | `mediaid` → media |
 | `vehicledetail` | Vehicle details for a vehicle detection: make, model, colour, number plate, plate confidence | `detectionid` → detection (one-to-one) |
 | `suspect` | A person detection that an admin has confirmed as a suspect: physical/clothing description, behaviour | `detectionid` → detection, `incidentid` → crimescene, `confirmedby` → User |
 | `correctionlog` | Audit trail of corrections to AI results (original and corrected value) | `detectionid` → detection, `correctedby` → User |
-| `caseassignment` | Which investigator is assigned to which case, by whom, and the status (`active`, `reassigned`, `closed`) | `incidentid` → crimescene, `assignedto` / `assignedby` → User |
+| `caseassignment` | Which investigator is assigned to which case, by whom, and the status (`active`, `reassigned`, `closed`). An investigator can have only one `active` assignment per case | `caseid` → cases, `assignedto` / `assignedby` → User |
 | `crossreferencelink` | Links the same vehicle or suspect across different incidents, with match confidence and verification status | `linkedby` → User |
 
 See `diagrams/ERD.png` for the diagram (it still needs updating to show the `citizen` and `investigator` tables).
@@ -155,7 +156,8 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 | `"User"` | Own row; may edit own username, name, phone | Own row and other investigators | All; may change roles |
 | `citizen` | Own row; may edit residence | — | All |
 | `investigator` | — | All investigators; may change **only** own `dutystatus` | All; may edit everything |
-| `crimescene` | Report incidents as themselves; see those they reported | See and update cases they are **actively assigned** to | All |
+| `cases` | — | See cases they are **actively assigned** to | Create, edit, close, delete |
+| `crimescene` | Report incidents as themselves; see those they reported | See and update incidents in cases they are **actively assigned** to | All; only admins can set `caseid` |
 | `media` | Upload to incidents they reported; see own uploads | See and upload to assigned cases | All |
 | `detection` | — | Assigned cases (read-only) | All (read) |
 | `vehicledetail` | — | Assigned cases; may correct details | All |
@@ -176,12 +178,15 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 |---|---|---|
 | `current_user_id()` | helper | The logged-in user's `userid` |
 | `current_user_role()` | helper | The logged-in user's role as text |
-| `is_assigned_to(incidentid)` | helper | True if the logged-in investigator has an active assignment on that case |
+| `is_assigned_to_case(caseid)` | helper | True if the logged-in investigator has an active assignment on that case |
+| `is_assigned_to(incidentid)` | helper | True if the logged-in investigator is actively assigned to the case that incident belongs to |
 | `can_view_detection(detectionid)` | helper | True for admins, or investigators assigned to the detection's case |
 | `handle_new_auth_user()` | trigger on `auth.users` insert | Creates the `"User"` row and the matching `citizen`/`investigator` row |
 | `handle_auth_email_change()` | trigger on `auth.users` email update | Copies the new email into `"User".email` |
 | `protect_user_columns()` | trigger on `"User"` update | Only admins may change `role`, `email`, `authid`, `userid`, `datecreated` |
 | `protect_investigator_columns()` | trigger on `investigator` update | Non-admins may only change `dutystatus` |
+| `protect_crimescene_caseid()` | trigger on `crimescene` insert/update | Only admins may add an incident to a case or move it between cases |
+| `set_case_dateclosed()` | trigger on `cases` insert/update | Sets `dateclosed` when a case is closed and clears it if reopened |
 | `email_for_username(username)` | callable before login | Returns the email for a username (any case), or null |
 | `username_available(username)` | callable before login | True if nobody has that username yet (any case) |
 | `rls_auto_enable()` | event trigger | Turns RLS on for every new table in `public` (the table still needs policies before the app can use it) |
@@ -283,6 +288,7 @@ await supabase.auth.updateUser(UserAttributes(password: newPassword));
 | `20260929072508_remote_schema.sql` | Baseline: all tables, constraints and indexes, pulled from Supabase Cloud |
 | `20260929114152_auth_and_rls.sql` | Links `"User"` to Supabase Auth (`authid`), removes `passwordhash`, adds the helper functions, the sign-up trigger, column protection and all RLS policies |
 | `20260929221626_user_role_tables.sql` | `role` becomes the `user_role` enum; adds `username`, `firstname`, `surname`, `phonenumber`; removes `fullname` and `badgenumber`; creates `citizen` and `investigator`; username helpers; email sync; investigator duty-status rule; their RLS policies |
+| `20261005141600_cases_table.sql` | Adds `cases`; `crimescene.caseid` links incidents to a case; `caseassignment` now points at `caseid` (existing assignments become one case per incident); `is_assigned_to_case()` helper; only admins set `caseid`; `dateclosed` set automatically; RLS policies for `cases` |
 
 ---
 
