@@ -89,7 +89,7 @@ The sub-tables point at `"User"` using **both** `userid` and `role`. Because of 
 | Table | Holds | Links to |
 |---|---|---|
 | `cases` | One investigation, created by an admin: title, description, status (`open`, `under_review`, `closed`), date created, date closed (set automatically when status becomes `closed`) | `createdby` → User |
-| `crimescene` | A reported incident: location, date/time, attack type, status (`open`, `closed`, `under_review`), description. `caseid` is empty until an admin adds the incident to a case | `reportedby` → User, `caseid` → cases |
+| `crimescene` | A reported incident: location, date/time, attack type, status (`open`, `closed`, `under_review`), description. `datereported` is when it was reported (set by the database; `datetime` is when it happened). `caseid` is empty until an admin adds the incident to a case. `reviewstatus` is the admin's decision: `pending`, `accepted` (in a case), `rejected` (kept on record, with `reviewnote`) or `duplicate` (of `duplicateof`, follows it into its case); `reviewedby`/`reviewedat` record who decided and when. The database refuses any row where these don't match | `reportedby` → User, `caseid` → cases |
 | `media` | Footage/photos uploaded to an incident: type (`image`, `video`, `audio`), storage path, file hash/size, timestamps, processing status (`pending`, `processing`, `completed`, `failed`) | `incidentid` → crimescene, `uploadedby` → User |
 | `detection` | What the AI found in a media file: type (`vehicle`, `person`, `weapon`), frame time, bounding box, confidence, model version | `mediaid` → media |
 | `vehicledetail` | Vehicle details for a vehicle detection: make, model, colour, number plate, plate confidence | `detectionid` → detection (one-to-one) |
@@ -158,7 +158,7 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 | `citizen` | Own row; may edit residence | — | All |
 | `investigator` | — | All investigators; may change **only** own `dutystatus` | All; may edit everything |
 | `cases` | — | See cases they are **actively assigned** to | Create, edit, close, delete |
-| `crimescene` | Report incidents as themselves; see those they reported | See and update incidents in cases they are **actively assigned** to | All; only admins can set `caseid` |
+| `crimescene` | Report incidents as themselves; see those they reported | See and update incidents in cases they are **actively assigned** to | All; only admins can review (`reviewstatus`, `caseid`, `duplicateof` ...) |
 | `media` | Upload to incidents they reported; see own uploads | See and upload to assigned cases | All |
 | `detection` | — | Assigned cases (read-only) | All (read) |
 | `vehicledetail` | — | Assigned cases; may correct details | All |
@@ -187,12 +187,26 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 | `handle_auth_email_change()` | trigger on `auth.users` email update | Copies the new email into `"User".email` |
 | `protect_user_columns()` | trigger on `"User"` update | Only admins may change `role`, `email`, `authid`, `userid`, `datecreated` |
 | `protect_investigator_columns()` | trigger on `investigator` update | Non-admins may only change `dutystatus` |
-| `protect_crimescene_caseid()` | trigger on `crimescene` insert/update | Only admins may add an incident to a case or move it between cases |
+| `protect_crimescene_caseid()` | trigger on `crimescene` insert/update | Only admins may review a submission or move it between cases; app inserts always start as `pending` |
 | `set_case_dateclosed()` | trigger on `cases` insert/update | Sets `dateclosed` when a case is closed and clears it if reopened |
+| `set_crimescene_datereported()` | trigger on `crimescene` insert/update | App users can't choose `datereported`: it is set to now on insert and kept on update |
+| `release_case_incidents()` | trigger on `cases` delete | A deleted case's incidents go back to `pending` (duplicates stay duplicates) |
+| `require_admin()` / `attach_incident()` | helpers | Used inside the admin actions |
 | `check_weapondetail()` | trigger on `weapondetail` insert/update | The detection must be a `weapon` detection, and a linked suspect must be from the same incident |
 | `email_for_username(username)` | callable before login | Returns the email for a username (any case), or null |
 | `list_investigators(p_search, p_limit)` | callable by logged-in users | Investigators with their `"User"` details and active case count, newest account first (default 20, max 100). With `p_search`, only those whose badge number or name contains it (any case). Normal RLS applies, so citizens get nothing |
-| `admin_overview_stats()` | callable by logged-in users | One row for the admin Overview tiles: `totalcases`, `activecases` (open/under review), `pendingcases` (active with no active assignment), `investigators`. Normal RLS applies, so only admins get the full totals |
+| `admin_overview_stats()` | callable by logged-in users | One row for the admin Overview tiles: `totalcases`, `activecases` (open/under review), `pendingcases` (submissions waiting for review), `investigators`. Normal RLS applies, so only admins get the full totals |
+| `list_submissions(p_search, p_limit, p_review, p_caseid)` | callable by logged-in users | Incidents newest reported first (default 20, max 100), with reporter name, media count, case title and review details. Filter by review status or case. With `p_search`: an incident number (`42`, `INC-0042`, `inc 42`) or text in the location (any case). Normal RLS applies (admins see all, citizens their own, investigators their assigned cases) |
+| `recent_activity(p_limit)` | callable by logged-in users | Newest events for the admin Overview feed (default 5, max 50), built from existing dates: `NEW` submission, `CASE` created, `ASGN` investigator assigned, `CLSD` case closed, `INV` investigator added, `VER` suspect confirmed, `COR` detection corrected. Normal RLS applies |
+| `create_case(p_title, p_description, p_incidentids)` | admin action | New case, optionally with incidents (accepted into it). Returns the case id |
+| `add_incidents_to_case(p_caseid, p_incidentids)` | admin action | Accepts / moves incidents into a case that is not closed. Their duplicates follow |
+| `reject_submission(p_incidentid, p_note)` | admin action | Rejects (kept on record, out of any case) with an optional reason |
+| `mark_duplicate(p_incidentid, p_originalid)` | admin action | Duplicate of the original (never of another duplicate); joins its case |
+| `reopen_submission(p_incidentid)` | admin action | Back to `pending` and out of its case — undo, and "Remove from case" |
+| `assign_investigator(p_caseid, p_userid)` | admin action | Assigns an investigator to a case that is not closed (no double assignment). Returns the assignment id |
+| `unassign_investigator(p_assignmentid)` | admin action | Ends an assignment; the row stays as history |
+| `list_cases(p_search, p_status, p_limit, p_caseid)` | callable by logged-in users | Cases, most recently active first, with incident count and active investigators. Search by case number (`CASE-0003`, `3`) or title; status `active` = open + under review |
+| `list_case_assignments(p_caseid)` | callable by logged-in users | A case's investigators: active first, then past assignments |
 | `username_available(username)` | callable before login | True if nobody has that username yet (any case) |
 | `rls_auto_enable()` | event trigger | Turns RLS on for every new table in `public` (the table still needs policies before the app can use it) |
 
@@ -298,6 +312,9 @@ await supabase.auth.updateUser(UserAttributes(password: newPassword));
 | `20261005143300_drop_suspect_behaviour.sql` | Removes the unused `suspect.behaviouralindicators` column |
 | `20261005152000_list_investigators.sql` | Adds `list_investigators()` for the admin Investigators screen (recent list + search by name or badge number) |
 | `20261005153500_admin_overview_stats.sql` | Adds `admin_overview_stats()` for the admin Overview SYSTEM STATUS tiles |
+| `20261005154500_submissions.sql` | Adds `crimescene.datereported` (existing rows get their incident time) and `list_submissions()` for the admin Submissions screen and Overview |
+| `20261005161500_overview_activity.sql` | Pending tile now counts submissions not in a case; adds `recent_activity()` for the Overview feed |
+| `20261005163000_review_and_cases.sql` | Submission review (`reviewstatus`, reviewer, reason, duplicates), admin action functions for cases and assignments, `list_cases`, `list_case_assignments`, filters on `list_submissions`; Pending tile counts submissions waiting for review; activity feed shows ADD / REJ / DUP |
 
 ---
 

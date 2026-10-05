@@ -1,6 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/investigator_summary.dart';
 import 'models/system_stats.dart';
+import 'models/crime_scene_summary.dart';
+import 'models/activity_item.dart';
+import 'models/case_summary.dart';
+import 'models/case_assignment_info.dart';
 
 /// All Supabase calls for accounts (register, login, logout).
 ///
@@ -158,14 +162,6 @@ class SupabaseService {
   }) =>
       _listInvestigators(search: query, limit: limit);
 
-  // ------------------------------------------------------------ ADMIN STATS
-  /// The four SYSTEM STATUS numbers for the admin Overview tab, counted by
-  /// the admin_overview_stats database function.
-  Future<SystemStats> getAdminStats() async {
-    final rows = await supabase.rpc('admin_overview_stats') as List;
-    return SystemStats.fromMap(rows.first as Map<String, dynamic>);
-  }
-
   Future<List<InvestigatorSummary>> _listInvestigators({
     String? search,
     required int limit,
@@ -183,5 +179,191 @@ class SupabaseService {
         .toList();
   }
 
+  // ------------------------------------------------------------ ADMIN STATS
+  /// The four SYSTEM STATUS numbers for the admin Overview tab, counted by
+  /// the admin_overview_stats database function.
+  Future<SystemStats> getAdminStats() async {
+    final rows = await supabase.rpc('admin_overview_stats') as List;
+    return SystemStats.fromMap(rows.first as Map<String, dynamic>);
+  }
 
+  /// The [limit] newest events for RECENT ACTIVITY on the admin Overview
+  /// (new submissions, cases created/closed, assignments, new investigators,
+  /// confirmed suspects, corrections), from the recent_activity function.
+  Future<List<ActivityItem>> getRecentActivity({int limit = 5}) async {
+    final rows = await supabase.rpc(
+      'recent_activity',
+      params: {'p_limit': limit},
+    );
+    return (rows as List)
+        .map((row) => ActivityItem.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  // ------------------------------------------------------------- SUBMISSIONS
+  // All three call the list_submissions database function: incidents
+  // (crimescene) newest REPORTED first, with reporter name, media count and
+  // review details. Database rules decide what comes back (admins see every
+  // submission).
+  //
+  // [review] filters on the admin's decision: null = all, or 'pending',
+  // 'accepted', 'rejected', 'duplicate'.
+
+  /// The [limit] most recently reported incidents, newest first.
+  Future<List<CrimeSceneSummary>> getRecentSubmissions({
+    int limit = 20,
+    String? review,
+  }) =>
+      _listSubmissions(limit: limit, review: review);
+
+  /// Incidents matching [query]: an incident number ("42", "INC-0042",
+  /// "inc 42") or text in the location (any case). An empty [query] returns
+  /// the most recent submissions.
+  Future<List<CrimeSceneSummary>> searchSubmissions(
+    String query, {
+    int limit = 20,
+    String? review,
+  }) =>
+      _listSubmissions(search: query, limit: limit, review: review);
+
+  /// Every incident in a case (accepted ones and their duplicates).
+  Future<List<CrimeSceneSummary>> getCaseIncidents(int caseId) =>
+      _listSubmissions(limit: 100, caseId: caseId);
+
+  Future<List<CrimeSceneSummary>> _listSubmissions({
+    String? search,
+    required int limit,
+    String? review,
+    int? caseId,
+  }) async {
+    final text = search?.trim() ?? '';
+    final rows = await supabase.rpc(
+      'list_submissions',
+      params: {
+        'p_search': text.isEmpty ? null : text,
+        'p_limit': limit,
+        'p_review': review,
+        'p_caseid': caseId,
+      },
+    );
+    return (rows as List)
+        .map((row) => CrimeSceneSummary.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  // ------------------------------------------------------- REVIEW (admin only)
+  // Each calls one database function that checks the caller is an admin and
+  // makes all of its changes at once. On failure they throw; the message of
+  // a PostgrestException explains why (e.g. "Case 5 is closed ...").
+
+  /// Rejects a submission. It stays on record but is not used.
+  Future<void> rejectSubmission(int incidentId, {String? note}) async {
+    await supabase.rpc('reject_submission',
+        params: {'p_incidentid': incidentId, 'p_note': note});
+  }
+
+  /// Marks [incidentId] as a duplicate of [originalId]; it joins the
+  /// original's case, if it has one.
+  Future<void> markDuplicate(int incidentId, int originalId) async {
+    await supabase.rpc('mark_duplicate',
+        params: {'p_incidentid': incidentId, 'p_originalid': originalId});
+  }
+
+  /// Undoes a review: back to 'pending' and out of its case. Also used for
+  /// "Remove from case".
+  Future<void> reopenSubmission(int incidentId) async {
+    await supabase.rpc('reopen_submission', params: {'p_incidentid': incidentId});
+  }
+
+  // ------------------------------------------------------------ CASES (admin)
+
+  /// Creates a case, optionally with incidents in it (they are accepted).
+  /// Returns the new case id.
+  Future<int> createCase({
+    required String title,
+    String? description,
+    List<int> incidentIds = const [],
+  }) async {
+    final id = await supabase.rpc('create_case', params: {
+      'p_title': title,
+      'p_description': description,
+      'p_incidentids': incidentIds,
+    });
+    return (id as num).toInt();
+  }
+
+  /// Adds (or moves) incidents into an existing case that is not closed.
+  Future<void> addIncidentsToCase(int caseId, List<int> incidentIds) async {
+    await supabase.rpc('add_incidents_to_case',
+        params: {'p_caseid': caseId, 'p_incidentids': incidentIds});
+  }
+
+  /// Cases, most recently active first. [status]: null = all, 'active'
+  /// (open + under review), 'open', 'under_review' or 'closed'. [query]
+  /// matches a case number ("3", "CASE-0003") or text in the title.
+  Future<List<CaseSummary>> listCases({
+    String? query,
+    String? status,
+    int limit = 20,
+  }) async {
+    final text = query?.trim() ?? '';
+    final rows = await supabase.rpc('list_cases', params: {
+      'p_search': text.isEmpty ? null : text,
+      'p_status': status,
+      'p_limit': limit,
+    });
+    return (rows as List)
+        .map((row) => CaseSummary.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// One case, or null if it doesn't exist (or may not be seen).
+  Future<CaseSummary?> getCase(int caseId) async {
+    final rows = await supabase.rpc('list_cases', params: {'p_caseid': caseId})
+        as List;
+    return rows.isEmpty
+        ? null
+        : CaseSummary.fromMap(rows.first as Map<String, dynamic>);
+  }
+
+  /// Changes a case's title, description and/or status. Only the values
+  /// passed are changed. Closing sets the closed date automatically.
+  Future<void> updateCase(
+    int caseId, {
+    String? title,
+    String? description,
+    String? status,
+  }) async {
+    final changes = <String, dynamic>{
+      if (title != null) 'title': title.trim(),
+      if (description != null)
+        'description': description.trim().isEmpty ? null : description.trim(),
+      'status': ?status, // only added when not null
+    };
+    if (changes.isEmpty) return;
+    await supabase.from('cases').update(changes).eq('caseid', caseId);
+  }
+
+  /// Investigators on a case: active first, then past assignments.
+  Future<List<CaseAssignmentInfo>> getCaseAssignments(int caseId) async {
+    final rows = await supabase
+        .rpc('list_case_assignments', params: {'p_caseid': caseId}) as List;
+    return rows
+        .map((row) => CaseAssignmentInfo.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Assigns an investigator ([userId]) to a case. Does nothing if they are
+  /// already assigned. Returns the assignment id.
+  Future<int> assignInvestigator(int caseId, int userId) async {
+    final id = await supabase.rpc('assign_investigator',
+        params: {'p_caseid': caseId, 'p_userid': userId});
+    return (id as num).toInt();
+  }
+
+  /// Ends an assignment (kept as history).
+  Future<void> unassignInvestigator(int assignmentId) async {
+    await supabase.rpc('unassign_investigator',
+        params: {'p_assignmentid': assignmentId});
+  }
 }

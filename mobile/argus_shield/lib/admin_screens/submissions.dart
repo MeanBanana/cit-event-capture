@@ -1,101 +1,169 @@
 // submissions.dart — System Administrator view of every reported incident.
 //
-// Same layout as investigators.dart: a search bar and a
-// scrollable list of cards.
+// Same layout as investigators.dart: a search bar and a scrollable list of
+// cards.
 //
-// For now the list holds ONE hard-coded sample incident so the layout can be
-// reviewed. When the Supabase fetch is ready, replace `_submissions` with the
-// rows returned from SupabaseService — the search and cards keep working
-// unchanged because they only read from that list.
+// A "submission" is an incident a citizen reported (public.crimescene).
+// Cases (public.cases) are created later by an admin to group incidents;
+// they have their own screen.
+//
+// Data comes from SupabaseService:
+//   * on opening: getRecentSubmissions()  -> the 20 most recently reported
+//   * while searching: searchSubmissions() -> incident number or location
+// The search runs in the database, so it finds any submission, not only
+// the 20 already on screen. The chips filter on the admin's review
+// decision (Pending / In a case / Rejected / Duplicates).
+//
+// Pending cards have Reject · View · Accept (see review_actions.dart);
+// tapping a card opens SubmissionDetailPage.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
+import 'package:argus_shield/supabase_service.dart';
+import 'package:argus_shield/models/crime_scene_summary.dart';
+import 'package:argus_shield/admin_screens/admin_ui.dart';
+import 'package:argus_shield/admin_screens/review_actions.dart';
+import 'package:argus_shield/admin_screens/submission_detail.dart';
 
-/// One reported incident as the card needs it.
-///
-/// Field names follow public.crimescene (incidentid, location, datetime,
-/// attacktype, status, description, reportedby). The reporter's name comes
-/// from public."User" via reportedby, and the media count from public.media.
-class CrimeSceneSummary {
-  final int incidentId;
-  final String location;
-  final DateTime dateTime; // when the incident happened
-  final String? attackType; // nullable in the database
-  final String status; // 'open' | 'under_review' | 'closed'
-  final String? description; // nullable in the database
-  final int reportedBy; // User.userid
-  final String reporterName; // User.firstname + surname
-  final int mediaCount; // rows in media for this incident
-
-  const CrimeSceneSummary({
-    required this.incidentId,
-    required this.location,
-    required this.dateTime,
-    this.attackType,
-    required this.status,
-    this.description,
-    required this.reportedBy,
-    required this.reporterName,
-    this.mediaCount = 0,
-  });
-
-  /// Display reference, e.g. incident 42 → "INC-0042".
-  String get reference => 'INC-${incidentId.toString().padLeft(4, '0')}';
-}
+// Other screens (e.g. overview.dart) import CrimeSceneSummary from here.
+export 'package:argus_shield/models/crime_scene_summary.dart';
 
 /// Body of the Submissions tab. Like the citizen pages, it has no Scaffold
 /// or header of its own — AdminDashboard draws those.
 class AdminSubmissions extends StatefulWidget {
-  const AdminSubmissions({super.key});
+  /// Optional so tests can pass in a fake; the app uses the real service.
+  final SupabaseService? service;
+
+  const AdminSubmissions({super.key, this.service});
+
+  /// How long to wait after the last key press before searching.
+  static const searchDelay = Duration(milliseconds: 400);
+
+  /// Filter chips: label → review status passed to the database
+  /// (null = all).
+  static const filters = <(String, String?)>[
+    ('All', null),
+    ('Pending', 'pending'),
+    ('In a case', 'accepted'),
+    ('Rejected', 'rejected'),
+    ('Duplicates', 'duplicate'),
+  ];
 
   @override
   State<AdminSubmissions> createState() => _AdminSubmissionsState();
 }
 
 class _AdminSubmissionsState extends State<AdminSubmissions> {
+  late final SupabaseService _service = widget.service ?? SupabaseService();
   final _searchController = TextEditingController();
-  String _query = '';
+  Timer? _searchTimer;
 
-  // Sample data only — swap for the Supabase results later.
-  // Not const because DateTime(...) isn't a const constructor.
-  final List<CrimeSceneSummary> _submissions = [
-    CrimeSceneSummary(
-      incidentId: 42,
-      location: 'R21 Highway, near OR Tambo off-ramp, Kempton Park',
-      dateTime: DateTime(2026, 9, 28, 14, 35),
-      attackType: 'Vehicle ambush',
-      status: 'open',
-      description: 'Cash van forced off the road by two sedans. Armed suspects '
-          'fled north with cash cases. Dashcam and phone footage submitted.',
-      reportedBy: 7,
-      reporterName: 'Lerato Dlamini',
-      mediaCount: 3,
-    ),
-  ];
+  String _query = '';
+  String? _review; // current filter chip (null = all)
+  List<CrimeSceneSummary> _submissions = const [];
+  bool _loading = true;
+  String? _error;
+
+  // Only the newest request may update the screen (see investigators.dart).
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch(); // _loading already starts as true
+  }
 
   @override
   void dispose() {
+    _searchTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  /// Incidents whose reference, location or reporter contains the search
-  /// text. Case-insensitive, and "42" matches "INC-0042".
-  List<CrimeSceneSummary> get _filtered {
-    final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return _submissions;
-    return _submissions.where((s) {
-      return s.reference.toLowerCase().contains(q) ||
-          s.incidentId.toString() == q ||
-          s.location.toLowerCase().contains(q) ||
-          s.reporterName.toLowerCase().contains(q);
-    }).toList();
+  /// Loads the recent submissions, or the search results when there is
+  /// search text.
+  Future<void> _fetch() async {
+    final id = ++_requestId;
+    final query = _query.trim();
+    try {
+      final rows = query.isEmpty
+          ? await _service.getRecentSubmissions(review: _review)
+          : await _service.searchSubmissions(query, review: _review);
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _submissions = rows;
+        _error = null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _error = 'Could not load submissions. Check your connection.';
+        _loading = false;
+      });
+    }
+  }
+
+  /// Shows the spinner and loads again (search changed, or "Try again").
+  void _reload() {
+    _searchTimer?.cancel();
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    _fetch();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _query = value);
+    _searchTimer?.cancel();
+    _searchTimer = Timer(AdminSubmissions.searchDelay, _reload);
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _query = '';
+    _reload();
+  }
+
+  void _onFilter(String? review) {
+    if (review == _review) return;
+    _review = review;
+    _reload();
+  }
+
+  Future<void> _openDetails(CrimeSceneSummary s) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SubmissionDetailPage(submission: s, service: _service),
+      ),
+    );
+    if (mounted) _reload(); // the review may have changed
+  }
+
+  Future<void> _runReview(
+      Future<bool> Function(BuildContext, SupabaseService, CrimeSceneSummary)
+          action,
+      CrimeSceneSummary s) async {
+    final changed = await action(context, _service, s);
+    if (changed && mounted) _reload();
+  }
+
+  String get _countText {
+    final n = _submissions.length;
+    if (_query.trim().isEmpty) {
+      return n == 1
+          ? 'Showing the most recent submission'
+          : 'Showing the $n most recent submissions';
+    }
+    return '$n ${n == 1 ? 'match' : 'matches'} for "${_query.trim()}"';
   }
 
   @override
   Widget build(BuildContext context) {
-    final results = _filtered;
-
     return Padding(
       padding: AppSpacing.page,
       child: Column(
@@ -114,164 +182,246 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
             controller: _searchController,
             style: AppText.body,
             textInputAction: TextInputAction.search,
-            onChanged: (value) => setState(() => _query = value),
+            onChanged: _onSearchChanged,
+            onSubmitted: (_) => _reload(), // search now, don't wait
             decoration: InputDecoration(
-              hintText: 'Search by reference/location/reporter',
+              hintText: 'Search by incident number/location',
               prefixIcon: const Icon(Icons.search, color: AppColors.accent),
               suffixIcon: _query.isEmpty
                   ? null
                   : IconButton(
                       icon: const Icon(Icons.close, color: AppColors.textMuted),
                       tooltip: 'Clear search',
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _query = '');
-                      },
+                      onPressed: _clearSearch,
                     ),
             ),
           ),
           const SizedBox(height: AppSpacing.small),
-          Text(
-            '${results.length} of ${_submissions.length} submissions',
-            style: AppText.caption.copyWith(color: AppColors.textMuted),
+
+          // Filter chips (scroll sideways on narrow phones)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final (label, value) in AdminSubmissions.filters) ...[
+                  ChoiceChip(
+                    label: Text(label),
+                    selected: _review == value,
+                    onSelected: (_) => _onFilter(value),
+                    selectedColor: AppColors.accent,
+                    backgroundColor: AppColors.header,
+                    labelStyle: AppText.body.copyWith(
+                      fontSize: 13,
+                      color: _review == value
+                          ? AppColors.header
+                          : AppColors.textPrimary,
+                    ),
+                    showCheckmark: false,
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ],
+            ),
           ),
+          const SizedBox(height: AppSpacing.small),
+          if (!_loading && _error == null)
+            Text(
+              _countText,
+              style: AppText.caption.copyWith(color: AppColors.textMuted),
+            ),
           const SizedBox(height: AppSpacing.medium),
 
           // Only the list scrolls; the title and search bar stay in place.
-          Expanded(
-            child: results.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No submissions match your search.',
-                      style: AppText.bodyMuted,
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: results.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: AppSpacing.medium),
-                    itemBuilder: (context, index) =>
-                        CrimeSceneCard(submission: results[index]),
-                  ),
-          ),
+          Expanded(child: _buildList()),
         ],
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!, style: AppText.bodyMuted, textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.small),
+            TextButton(onPressed: _reload, child: const Text('Try again')),
+          ],
+        ),
+      );
+    }
+
+    if (_submissions.isEmpty) {
+      return Center(
+        child: Text(
+          _query.trim().isNotEmpty
+              ? 'No submissions match your search.'
+              : _review == null
+                  ? 'No incidents have been reported yet.'
+                  : 'No submissions in this list.',
+          style: AppText.bodyMuted,
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    // Pull down to refresh.
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _submissions.length,
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.medium),
+        itemBuilder: (context, index) {
+          final s = _submissions[index];
+          return CrimeSceneCard(
+            submission: s,
+            onTap: () => _openDetails(s),
+            onAccept: () => _runReview(acceptSubmission, s),
+            onReject: () => _runReview(rejectSubmission, s),
+          );
+        },
       ),
     );
   }
 }
 
 /// One incident's details. Same style as InvestigatorCard.
+///
+/// Tapping the card calls [onTap] (opens the details page). For a pending
+/// submission, passing [onAccept] / [onReject] adds the wireframe's
+/// Reject · View · Accept buttons.
 class CrimeSceneCard extends StatelessWidget {
   final CrimeSceneSummary submission;
+  final VoidCallback? onTap;
+  final VoidCallback? onAccept;
+  final VoidCallback? onReject;
 
-  const CrimeSceneCard({super.key, required this.submission});
-
-  /// Database value → label and colour for the status tag.
-  static (String, Color) _status(String status) {
-    switch (status) {
-      case 'open':
-        return ('Open', AppColors.danger);
-      case 'under_review':
-        return ('Under review', AppColors.accent);
-      case 'closed':
-        return ('Closed', AppColors.success);
-      default:
-        return (status, AppColors.textMuted);
-    }
-  }
-
-  /// 28/09/2026 14:35 — formatted without adding the intl package.
-  static String _formatDateTime(DateTime d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
-  }
+  const CrimeSceneCard({
+    super.key,
+    required this.submission,
+    this.onTap,
+    this.onAccept,
+    this.onReject,
+  });
 
   @override
   Widget build(BuildContext context) {
     final s = submission;
-    final (statusLabel, statusColor) = _status(s.status);
+    final (statusLabel, statusColor) = statusStyle(s.status);
+    final (reviewLabel, reviewColor) = reviewStyle(s.reviewStatus);
+    final showActions = s.isPending && (onAccept != null || onReject != null);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.header,
-        border: Border.all(color: AppColors.fieldBorder),
+    return Material(
+      color: AppColors.header,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(
+          color: s.isPending ? AppColors.accent : AppColors.fieldBorder,
+        ),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Reference + status
-          Row(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text(s.reference, style: AppText.cardTitle)),
-              const SizedBox(width: AppSpacing.small),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  border: Border.all(color: statusColor),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  statusLabel.toUpperCase(),
-                  style: AppText.caption.copyWith(color: statusColor),
-                ),
+              // Reference + review decision + incident status
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: Text(s.reference, style: AppText.cardTitle)),
+                  const SizedBox(width: AppSpacing.small),
+                  StatusTag(label: statusLabel, color: statusColor),
+                ],
               ),
+              const SizedBox(height: 6),
+              StatusTag(label: reviewLabel, color: reviewColor),
+              if (s.attackType != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  s.attackType!.toUpperCase(),
+                  style: AppText.caption.copyWith(fontSize: 13),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Divider(color: AppColors.fieldBorder, height: 1),
+              const SizedBox(height: 12),
+
+              DetailLine(icon: Icons.location_on_outlined, text: s.location),
+              DetailLine(
+                  icon: Icons.schedule,
+                  text: 'Happened ${formatDateTime(s.dateTime)}'),
+              if (s.dateReported != null)
+                DetailLine(
+                    icon: Icons.upload_outlined,
+                    text: 'Reported ${formatDateTime(s.dateReported!)}'),
+              DetailLine(
+                icon: Icons.person_outline,
+                text: 'Reported by ${s.reporterName}',
+              ),
+              DetailLine(
+                icon: Icons.perm_media_outlined,
+                text: '${s.mediaCount} media '
+                    '${s.mediaCount == 1 ? 'file' : 'files'}',
+              ),
+              if (s.caseReference != null)
+                DetailLine(
+                  icon: Icons.folder_open,
+                  text: '${s.caseReference}'
+                      '${s.caseTitle == null ? '' : ' · ${s.caseTitle}'}',
+                  color: AppColors.success,
+                ),
+              if (s.isDuplicate && s.duplicateOf != null)
+                DetailLine(
+                  icon: Icons.copy_all,
+                  text: 'Duplicate of ${incidentReference(s.duplicateOf!)}',
+                ),
+              if (s.isRejected && s.reviewNote != null)
+                DetailLine(icon: Icons.block, text: 'Reason: ${s.reviewNote}'),
+
+              if (s.description != null) ...[
+                const SizedBox(height: 4),
+                Text(s.description!, style: AppText.bodyMuted),
+              ],
+
+              if (showActions) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SmallActionButton(
+                          label: 'Reject',
+                          color: AppColors.danger,
+                          onPressed: onReject),
+                    ),
+                    const SizedBox(width: AppSpacing.small),
+                    Expanded(
+                      child: SmallActionButton(
+                          label: 'View',
+                          color: AppColors.textPrimary,
+                          onPressed: onTap),
+                    ),
+                    const SizedBox(width: AppSpacing.small),
+                    Expanded(
+                      child: SmallActionButton(
+                          label: 'Accept',
+                          color: AppColors.success,
+                          onPressed: onAccept),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
-          if (s.attackType != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              s.attackType!.toUpperCase(),
-              style: AppText.caption.copyWith(fontSize: 13),
-            ),
-          ],
-          const SizedBox(height: 12),
-          const Divider(color: AppColors.fieldBorder, height: 1),
-          const SizedBox(height: 12),
-
-          _DetailRow(icon: Icons.location_on_outlined, text: s.location),
-          _DetailRow(icon: Icons.schedule, text: _formatDateTime(s.dateTime)),
-          _DetailRow(
-            icon: Icons.person_outline,
-            text: 'Reported by ${s.reporterName}',
-          ),
-          _DetailRow(
-            icon: Icons.perm_media_outlined,
-            text: '${s.mediaCount} media '
-                '${s.mediaCount == 1 ? 'file' : 'files'}',
-          ),
-
-          if (s.description != null) ...[
-            const SizedBox(height: 4),
-            Text(s.description!, style: AppText.bodyMuted),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// Icon + text line used inside CrimeSceneCard.
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _DetailRow({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: AppColors.accent),
-          const SizedBox(width: AppSpacing.small),
-          Expanded(child: Text(text, style: AppText.bodyMuted)),
-        ],
+        ),
       ),
     );
   }
