@@ -148,6 +148,83 @@ class SupabaseService {
   // ------------------------------------------------------------------ LOGOUT
   Future<void> logout() => supabase.auth.signOut();
 
+  // ---------------------------------------------------------- RESET PASSWORD
+  // How resetting a forgotten password works:
+  //  1. sendPasswordReset asks Supabase to email a reset link. The link opens
+  //     this app through the deep link below (set up in AndroidManifest.xml
+  //     and ios/Runner/Info.plist, and listed under Authentication > URL
+  //     Configuration > Redirect URLs in the Supabase dashboard).
+  //  2. supabase_flutter reads the link, signs the user in for this one
+  //     purpose and fires AuthChangeEvent.passwordRecovery. main.dart listens
+  //     for it and opens ResetPasswordPage.
+  //  3. ResetPasswordPage calls updatePassword, then logs out so the user
+  //     logs in again with the new password.
+  // The link only works on the phone that asked for it (PKCE flow).
+
+  /// Where the reset link in the email sends the user.
+  static const passwordResetRedirect = 'argusshield://reset-password';
+
+  /// Emails a password reset link. Supabase gives the same answer whether or
+  /// not the email belongs to an account, so the message does not reveal
+  /// which emails are registered.
+  Future<Map<String, dynamic>> sendPasswordReset(String email) async {
+    try {
+      await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        redirectTo: passwordResetRedirect,
+      );
+      return {
+        "success": true,
+        "message": "If an account exists for $email, a reset link has been "
+            "sent. Open it on this phone.",
+      };
+    } on AuthException catch (e) {
+      if (e.statusCode == '429' || e.code == 'over_email_send_rate_limit') {
+        return {
+          "success": false,
+          "message": "Too many reset emails. Please wait a while and try again.",
+        };
+      }
+      return {"success": false, "message": e.message};
+    } catch (e) {
+      return {
+        "success": false,
+        "message": "Could not send the reset email. Check your connection.",
+      };
+    }
+  }
+
+  /// Sets a new password for the user signed in by the reset link.
+  Future<Map<String, dynamic>> updatePassword(String newPassword) async {
+    try {
+      await supabase.auth.updateUser(UserAttributes(password: newPassword));
+      return {"success": true, "message": "Password changed, please log in"};
+    } on AuthWeakPasswordException {
+      return {"success": false, "message": "Password is too weak."};
+    } on AuthException catch (e) {
+      if (e.code == 'same_password') {
+        return {
+          "success": false,
+          "message": "Choose a password that is different from your old one.",
+        };
+      }
+      if (e is AuthSessionMissingException ||
+          e.code == 'session_not_found' ||
+          e.code == 'session_expired') {
+        return {
+          "success": false,
+          "message": "This reset link has expired. Please request a new one.",
+        };
+      }
+      return {"success": false, "message": e.message};
+    } catch (e) {
+      return {
+        "success": false,
+        "message": "Could not change the password. Check your connection.",
+      };
+    }
+  }
+
   // ------------------------------------------------------- CITIZEN PROFILE
   // Database rules (RLS) let a citizen read and update only their own
   // "User" and citizen rows, and a trigger stops them changing their own
@@ -270,7 +347,7 @@ class SupabaseService {
     }
   }
 
-  /// "Your phone number was saved, but <reason>" when something already
+  /// "Your phone number was saved, but `reason`" when something already
   /// went through before the failure.
   String _partly(List<String> saved, String reason) => saved.isEmpty
       ? reason
