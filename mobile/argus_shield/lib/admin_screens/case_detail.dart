@@ -395,6 +395,16 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
           DetailLine(
               icon: Icons.lock_outline,
               text: 'Closed ${formatDateTime(c.dateClosed!)}'),
+        // Suspects: counts only. Confirming or dismissing a possible
+        // suspect is for the investigators on the case (POPIA).
+        if (suspectSummary(
+                possible: c.possibleSuspects,
+                confirmed: c.confirmedSuspects) case final suspects?)
+          DetailLine(
+            icon: Icons.person_search_outlined,
+            text: suspects,
+            color: suspectColor(confirmed: c.confirmedSuspects),
+          ),
         if (c.plates.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

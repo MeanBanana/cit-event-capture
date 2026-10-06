@@ -78,6 +78,10 @@ class AdminFakeService extends SupabaseService {
   List<CaseSuggestion> caseSuggestions = [];
   List<LinkedGroup> linkedGroups = [];
   List<SuggestedMatch> suggestedMatches = [];
+  List<CaseCardSuggestion> caseCardSuggestions = [];
+
+  /// Makes getCaseCardSuggestions throw (the cards must still show).
+  bool failCaseCardSuggestions = false;
 
   // ---- helpers ---------------------------------------------------------------
 
@@ -137,6 +141,8 @@ class AdminFakeService extends SupabaseService {
               aiSummary: s.aiSummary,
             ),
         ],
+        possibleSuspects: c.possibleSuspects,
+        confirmedSuspects: c.confirmedSuspects,
       );
     }
   }
@@ -271,6 +277,14 @@ class AdminFakeService extends SupabaseService {
       caseSuggestions;
 
   @override
+  Future<List<CaseCardSuggestion>> getCaseCardSuggestions(
+      List<int> caseIds) async {
+    calls.add('caseCardSuggestions:$caseIds');
+    if (failCaseCardSuggestions) throw Exception('offline');
+    return caseCardSuggestions.where((s) => caseIds.contains(s.caseId)).toList();
+  }
+
+  @override
   Future<List<SuggestedMatch>> listSuggestedMatches(
           {int minScore = 60, int limit = 50}) async =>
       suggestedMatches
@@ -397,6 +411,8 @@ class AdminFakeService extends SupabaseService {
       status: status ?? c.status,
       dateCreated: c.dateCreated,
       createdByName: c.createdByName,
+      possibleSuspects: c.possibleSuspects,
+      confirmedSuspects: c.confirmedSuspects,
     );
     _recount();
   }

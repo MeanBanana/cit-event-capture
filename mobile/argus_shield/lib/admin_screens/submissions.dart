@@ -563,7 +563,18 @@ class AiFactChips extends StatelessWidget {
               icon: Icons.directions_car_outlined),
         for (final plate in s.plates)
           FactChip(plate, icon: Icons.pin_outlined, color: AppColors.accent),
-        if (s.personCount > 0)
+        // People: as suspects once there is something to review or
+        // confirmed (only investigators on the case decide, POPIA);
+        // otherwise just how many people were seen.
+        if (s.confirmedSuspects > 0)
+          FactChip(plural(s.confirmedSuspects, 'confirmed suspect'),
+              icon: Icons.person_outline, color: AppColors.danger),
+        if (s.possibleSuspects > 0)
+          FactChip('about ${plural(s.possibleSuspects, 'possible suspect')}',
+              icon: Icons.person_search_outlined, color: AppColors.accent),
+        if (s.confirmedSuspects == 0 &&
+            s.possibleSuspects == 0 &&
+            s.personCount > 0)
           FactChip(plural(s.personCount, 'person', 'people'),
               icon: Icons.person_outline),
         if (s.weaponCount > 0)

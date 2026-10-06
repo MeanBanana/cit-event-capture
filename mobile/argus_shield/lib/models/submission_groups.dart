@@ -103,6 +103,53 @@ class IncidentSuggestion {
       );
 }
 
+/// The best suggested pending submission for one case, as shown on the
+/// case card (case_card_suggestions): same scoring as
+/// [IncidentSuggestion], plus the most relevant number plate the AI read
+/// in that submission.
+class CaseCardSuggestion {
+  final int caseId;
+  final int incidentId;
+  final int score;
+  final List<String> reasons;
+
+  /// Other submissions also suggested for this case.
+  final int otherCount;
+
+  /// The plate that matters most: one also in the case, else one a
+  /// character off a plate in the case, else the plate read with the
+  /// highest confidence. Null when no plate was read. An AI read, not
+  /// confirmed by anyone.
+  final String? plate;
+
+  /// 'same' / 'similar' when [plate] matches a plate in the case, else null.
+  final String? plateMatch;
+
+  const CaseCardSuggestion({
+    required this.caseId,
+    required this.incidentId,
+    required this.score,
+    this.reasons = const [],
+    this.otherCount = 0,
+    this.plate,
+    this.plateMatch,
+  });
+
+  factory CaseCardSuggestion.fromMap(Map<String, dynamic> row) =>
+      CaseCardSuggestion(
+        caseId: (row['caseid'] as num).toInt(),
+        incidentId: (row['incidentid'] as num).toInt(),
+        score: (row['score'] as num).toInt(),
+        reasons: _strings(row['reasons']),
+        otherCount: (row['othercount'] as num?)?.toInt() ?? 0,
+        plate: row['plate'] as String?,
+        plateMatch: row['platematch'] as String?,
+      );
+
+  /// 14 -> "INC-0014".
+  String get reference => 'INC-${incidentId.toString().padLeft(4, '0')}';
+}
+
 /// "This submission probably belongs in that case"
 /// (suggest_cases_for_incident).
 class CaseSuggestion {
@@ -218,6 +265,10 @@ class CaseEvent {
       'lead_changed' => 'Lead investigator changed',
       'detection_verified' => '${inc}AI detection confirmed',
       'detection_unverified' => '${inc}AI detection un-confirmed',
+      'suspect_confirmed' => '${inc}Suspect confirmed',
+      'suspect_dismissed' => '${inc}Person dismissed as a suspect',
+      'suspect_review_undone' => '${inc}Suspect review undone',
+      'suspect_edited' => '${inc}Suspect details edited',
       _ => eventType,
     };
     return detail == null || detail!.isEmpty ? what : '$what · $detail';
