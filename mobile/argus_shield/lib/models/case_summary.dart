@@ -78,6 +78,14 @@ class CaseSummary {
   final List<String> plates; // number plates the AI read, max 3
   final List<CasePreviewItem> preview; // the 3 newest submissions
 
+  /// People the AI saw that no investigator has reviewed yet, and people
+  /// an investigator on the case confirmed as suspects. Each is the
+  /// highest of the case's submissions (most seen at once in one clip),
+  /// so A = 2, B = 1, C = 1 gives 2. Counts only: under POPIA nothing
+  /// about a possible suspect is shown until an investigator confirms them.
+  final int possibleSuspects;
+  final int confirmedSuspects;
+
   const CaseSummary({
     required this.caseId,
     required this.title,
@@ -92,6 +100,8 @@ class CaseSummary {
     this.mediaCount = 0,
     this.plates = const [],
     this.preview = const [],
+    this.possibleSuspects = 0,
+    this.confirmedSuspects = 0,
   });
 
   factory CaseSummary.fromMap(Map<String, dynamic> row) {
@@ -117,6 +127,8 @@ class CaseSummary {
       preview: ((row['preview'] as List?) ?? const [])
           .map((p) => CasePreviewItem.fromMap(p as Map<String, dynamic>))
           .toList(),
+      possibleSuspects: (row['possiblesuspects'] as num?)?.toInt() ?? 0,
+      confirmedSuspects: (row['confirmedsuspects'] as num?)?.toInt() ?? 0,
     );
   }
 

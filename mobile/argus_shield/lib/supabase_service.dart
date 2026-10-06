@@ -372,6 +372,19 @@ class SupabaseService {
         .toList();
   }
 
+  /// For a page of case cards: each case's best suggested pending
+  /// submission with its most relevant number plate (closed cases and
+  /// cases with no suggestion are left out). At most 50 cases per call.
+  Future<List<CaseCardSuggestion>> getCaseCardSuggestions(
+      List<int> caseIds) async {
+    if (caseIds.isEmpty) return const [];
+    final rows = await supabase.rpc('case_card_suggestions',
+        params: {'p_caseids': caseIds.take(50).toList()}) as List;
+    return rows
+        .map((row) => CaseCardSuggestion.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
   // ------------------------------------------------------- REVIEW (admin only)
   // Each calls one database function that checks the caller is an admin and
   // makes all of its changes at once. On failure they throw; the message of

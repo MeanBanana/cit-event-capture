@@ -47,7 +47,7 @@ lib/
     ├── submissions.dart        ← Newest/Oldest/Location/Status/Case/Linked views + cards
     ├── suggested_matches.dart  ← "N submissions match existing cases" bar + one-tap review
     ├── submission_detail.dart  ← one submission: descriptions, each clip, review actions
-    ├── cases.dart              ← Cases tab (case cards with a submissions preview)
+    ├── cases.dart              ← Cases tab (case cards: suspects, best suggestion + plate, preview)
     ├── case_detail.dart        ← one case: status, investigators, recommended, submissions, history
     ├── investigators.dart      ← Detectives tab
     ├── review_actions.dart     ← Accept / Reject / Duplicate / Move / Remove flows
@@ -62,7 +62,9 @@ test/
 ## How the admin screens work
 
 * **Submissions** loads 30 at a time and fetches more as you scroll (`PagedList`). The database pages with a cursor, so long lists stay fast.
-* Each submission card shows the **citizen's description and the AI summary**, chips for what the AI saw (vehicles, people, "weapon seen", plates), and when it was **filmed** (from the footage's metadata) with a warning when that disagrees with the time the citizen typed.
+* Each submission card shows the **citizen's description and the AI summary**, chips for what the AI saw (vehicles, suspects, "weapon seen", plates), and when it was **filmed** (from the footage's metadata) with a warning when that disagrees with the time the citizen typed.
+* **Suspects (POPIA):** a person the AI saw is only a *possible* suspect until an investigator assigned to the case confirms or dismisses them. Admin screens show **counts only**: "about 2 possible suspects awaiting investigator review", "2 confirmed suspects". A case shows the highest of its submissions (A = 2, B = 1, C = 1 → about 2), counting the most people seen at once in one clip. Admins cannot confirm suspects.
+* **Case cards** also show the case's best **suggested submission** (the same scoring as "Recommended for this case") with its most relevant **number plate**: one that is also in the case, else one a character off (an OCR misread), else the plate read with the highest confidence. The suggestions load once per page of cards after the cards appear (`getCaseCardSuggestions`), so they never slow down or break the list. Closed cases have none.
 * **Suggested matches**: the green bar above the list opens a review list of submissions that probably belong to an existing case, with the reasons. The admin unticks anything wrong and accepts the rest in one tap. Nothing joins a case before that.
 * **Accept** on a pending submission suggests cases first; "Case not listed? Create a new case" creates one and opens it.
 * **Case page**: submissions as cards, recommended submissions with one-tap Add, remove (never deletes, goes back to Pending), lead investigator (star), and the case history.

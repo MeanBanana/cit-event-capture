@@ -10,7 +10,15 @@
 //   * tap a case to open CaseDetailPage (submissions, investigators,
 //     status, suggestions, history)
 //
-// Data comes from SupabaseService.listCasesPage (the list_cases function).
+// Each card also shows the case's suspects (possible = seen by the AI, not
+// yet reviewed by an investigator; confirmed = confirmed by an
+// investigator on the case) and, for cases that are not closed, the best
+// suggested pending submission with its most relevant number plate.
+//
+// Data comes from SupabaseService.listCasesPage (the list_cases function);
+// the suggestions from getCaseCardSuggestions, fetched once per page after
+// the cards appear, so a slow or failed suggestion call never holds up or
+// breaks the list.
 
 import 'dart:async';
 
@@ -18,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/case_summary.dart';
+import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/paged_list.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
@@ -56,6 +65,9 @@ class _AdminCasesState extends State<AdminCases> {
   String? _status; // current filter chip (null = all)
   int _generation = 0; // bump to reload from the top
 
+  /// Best suggested submission per case id, filled in page by page.
+  final Map<int, CaseCardSuggestion> _suggestions = {};
+
   @override
   void dispose() {
     _searchTimer?.cancel();
@@ -68,7 +80,37 @@ class _AdminCasesState extends State<AdminCases> {
     setState(() {
       _activeQuery = _query.trim();
       _generation++;
+      _suggestions.clear();
     });
+  }
+
+  /// Loads one page of cases, then (without waiting) their suggestions.
+  Future<List<CaseSummary>> _loadPage(String query, List<CaseSummary> loaded) async {
+    final page = await _service.listCasesPage(
+      query: query,
+      status: _status,
+      after: loaded.isEmpty ? null : loaded.last,
+    );
+    unawaited(_loadSuggestions(page, _generation));
+    return page;
+  }
+
+  /// Suggestions are extra information: if they fail, the cards simply
+  /// show without them.
+  Future<void> _loadSuggestions(List<CaseSummary> page, int generation) async {
+    final ids = [for (final c in page) if (!c.isClosed) c.caseId];
+    if (ids.isEmpty) return;
+    try {
+      final found = await _service.getCaseCardSuggestions(ids);
+      if (!mounted || generation != _generation || found.isEmpty) return;
+      setState(() {
+        for (final s in found) {
+          _suggestions[s.caseId] = s;
+        }
+      });
+    } catch (_) {
+      // leave the cards without suggestions
+    }
   }
 
   void _onSearchChanged(String value) {
@@ -176,11 +218,7 @@ class _AdminCasesState extends State<AdminCases> {
               key: ValueKey('$_status/$q/$_generation'),
               pageSize: 20,
               idOf: (c) => c.caseId,
-              loadPage: (loaded) => _service.listCasesPage(
-                query: q,
-                status: _status,
-                after: loaded.isEmpty ? null : loaded.last,
-              ),
+              loadPage: (loaded) => _loadPage(q, loaded),
               errorText: 'Could not load cases. Check your connection.',
               emptyText: q.isNotEmpty
                   ? 'No cases match your search.'
@@ -189,6 +227,7 @@ class _AdminCasesState extends State<AdminCases> {
                       : 'No cases with this status.',
               itemBuilder: (context, c) => CaseCard(
                 caseSummary: c,
+                suggestion: _suggestions[c.caseId],
                 showPreview: true,
                 onTap: () => _openCase(c.caseId),
                 onViewCase: () => _openCase(c.caseId),
@@ -203,11 +242,16 @@ class _AdminCasesState extends State<AdminCases> {
 
 /// One case, in the same card style as a submission: reference and
 /// status, title and description, what's inside (submissions, footage,
-/// plates), who is on it, and optionally a preview of its newest
-/// submissions with a "View case" button.
+/// suspects, plates), who is on it, the best suggested submission, and
+/// optionally a preview of its newest submissions with a "View case"
+/// button.
 class CaseCard extends StatelessWidget {
   final CaseSummary caseSummary;
   final VoidCallback? onTap;
+
+  /// The best suggested pending submission for the case (not shown for
+  /// closed cases).
+  final CaseCardSuggestion? suggestion;
 
   /// Shows the newest submissions (citizen + AI descriptions) in the card.
   final bool showPreview;
@@ -219,6 +263,7 @@ class CaseCard extends StatelessWidget {
     super.key,
     required this.caseSummary,
     this.onTap,
+    this.suggestion,
     this.showPreview = false,
     this.onViewCase,
   });
@@ -230,6 +275,9 @@ class CaseCard extends StatelessWidget {
     final unassigned = c.investigators.isEmpty && !c.isClosed;
     final lead = c.lead;
     final others = c.investigators.where((i) => !i.isLead).toList();
+    final suspects = suspectSummary(
+        possible: c.possibleSuspects, confirmed: c.confirmedSuspects);
+    final suggested = c.isClosed ? null : suggestion;
 
     return AdminCard(
       onTap: onTap,
@@ -284,6 +332,12 @@ class CaseCard extends StatelessWidget {
                 '${c.dateClosed == null ? '' : ' · closed ${formatDate(c.dateClosed!)}'}'
                 '${c.lastActivity == null || c.dateClosed != null ? '' : ' · active ${formatDate(c.lastActivity!)}'}',
           ),
+          if (suspects != null)
+            DetailLine(
+              icon: Icons.person_search_outlined,
+              text: suspects,
+              color: suspectColor(confirmed: c.confirmedSuspects),
+            ),
           if (c.plates.isNotEmpty)
             Wrap(
               spacing: 6,
@@ -294,6 +348,11 @@ class CaseCard extends StatelessWidget {
                       icon: Icons.pin_outlined, color: AppColors.accent),
               ],
             ),
+
+          if (suggested != null) ...[
+            const SizedBox(height: 12),
+            _SuggestedSubmission(suggestion: suggested),
+          ],
 
           if (showPreview && c.preview.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -324,6 +383,71 @@ class CaseCard extends StatelessWidget {
                 color: AppColors.accent,
                 onPressed: onViewCase,
               ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The best suggested pending submission on a case card: which one, how
+/// strong, its most relevant plate and why it was suggested. Adding it to
+/// the case still happens on the case page ("Recommended for this case").
+class _SuggestedSubmission extends StatelessWidget {
+  final CaseCardSuggestion suggestion;
+
+  const _SuggestedSubmission({required this.suggestion});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = suggestion;
+    final plateNote = switch (s.plateMatch) {
+      'same' => 'same plate as in this case',
+      'similar' => '1 character off a plate in this case',
+      _ => 'AI read, not confirmed',
+    };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            s.otherCount > 0
+                ? 'SUGGESTED SUBMISSION (+${s.otherCount} MORE)'
+                : 'SUGGESTED SUBMISSION',
+            style: AppText.caption.copyWith(color: AppColors.textHint),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${s.reference} · ${suggestionStrength(s.score)}',
+            style: AppText.body.copyWith(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          if (s.plate != null) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                FactChip(s.plate!, icon: Icons.pin_outlined, color: AppColors.accent),
+                Text(plateNote,
+                    style: AppText.bodyMuted.copyWith(fontSize: 12)),
+              ],
+            ),
+          ],
+          if (s.reasons.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              s.reasons.join(' · '),
+              style: AppText.bodyMuted.copyWith(fontSize: 13),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ],

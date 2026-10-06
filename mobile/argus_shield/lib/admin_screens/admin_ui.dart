@@ -250,6 +250,28 @@ class FactChip extends StatelessWidget {
 String plural(int n, String one, [String? many]) =>
     '$n ${n == 1 ? one : (many ?? '${one}s')}';
 
+/// What a card says about suspects, e.g. "2 confirmed suspects · about 1
+/// possible suspect awaiting investigator review". Null when there are
+/// none of either.
+///
+/// Possible suspects are people the AI saw that no investigator has
+/// reviewed yet; only an investigator assigned to the case can confirm or
+/// dismiss them (POPIA), so the admin screens only ever show this count.
+String? suspectSummary({required int possible, required int confirmed}) {
+  if (possible <= 0 && confirmed <= 0) return null;
+  final text = [
+    if (confirmed > 0) plural(confirmed, 'confirmed suspect'),
+    if (possible > 0)
+      'about ${plural(possible, 'possible suspect')} awaiting investigator review',
+  ].join(' · ');
+  return text[0].toUpperCase() + text.substring(1);
+}
+
+/// Colour for [suspectSummary]: red once someone is confirmed, otherwise
+/// the accent (needs an investigator's attention).
+Color suspectColor({required int confirmed}) =>
+    confirmed > 0 ? AppColors.danger : AppColors.accent;
+
 /// What to say about the AI summary when there isn't a usable one yet.
 /// Returns null when [summary] should be shown as it is.
 String? aiStatusNote(String status, {required bool hasSummary, int mediaCount = 1}) {

@@ -53,6 +53,12 @@ class CrimeSceneSummary {
   final int weaponCount;
   final List<String> plates;
 
+  /// People the AI saw that no investigator has reviewed yet (most in one
+  /// clip), and people an investigator on the case confirmed as suspects.
+  /// Under POPIA only these counts are shown until someone is confirmed.
+  final int possibleSuspects;
+  final int confirmedSuspects;
+
   /// Earliest capture time in the footage's own metadata (null when no
   /// clip has one). Better evidence than the time the citizen typed.
   final DateTime? capturedAt;
@@ -88,6 +94,8 @@ class CrimeSceneSummary {
     this.personCount = 0,
     this.weaponCount = 0,
     this.plates = const [],
+    this.possibleSuspects = 0,
+    this.confirmedSuspects = 0,
     this.capturedAt,
     this.timeMismatch = false,
   });
@@ -128,6 +136,8 @@ class CrimeSceneSummary {
       personCount: (row['personcount'] as num?)?.toInt() ?? 0,
       weaponCount: (row['weaponcount'] as num?)?.toInt() ?? 0,
       plates: ((row['plates'] as List?) ?? const []).cast<String>(),
+      possibleSuspects: (row['possiblesuspects'] as num?)?.toInt() ?? 0,
+      confirmedSuspects: (row['confirmedsuspects'] as num?)?.toInt() ?? 0,
       capturedAt: time('capturedat'),
       timeMismatch: (row['timemismatch'] as bool?) ?? false,
     );
@@ -160,7 +170,12 @@ class CrimeSceneSummary {
 
   /// True when the AI found anything worth showing as a chip.
   bool get hasAiFacts =>
-      vehicleCount > 0 || personCount > 0 || weaponCount > 0 || plates.isNotEmpty;
+      vehicleCount > 0 ||
+      personCount > 0 ||
+      weaponCount > 0 ||
+      plates.isNotEmpty ||
+      possibleSuspects > 0 ||
+      confirmedSuspects > 0;
 }
 
 /// 42 → "INC-0042".

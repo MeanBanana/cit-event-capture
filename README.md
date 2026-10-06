@@ -136,7 +136,8 @@ database/
         ├── 20261005161500_overview_activity.sql        ← Recent activity feed
         ├── 20261005163000_review_and_cases.sql         ← accept / reject / duplicate, case actions
         ├── 20261005203000_case_events_and_leads.sql    ← case history, lead investigator, case status rules
-        └── 20261005203100_submission_views_and_ai.sql  ← AI fields, paging, grouping, suggestions, one-tap review
+        ├── 20261005203100_submission_views_and_ai.sql  ← AI fields, paging, grouping, suggestions, one-tap review
+        └── 20261006090000_suspect_review_and_case_cards.sql ← possible / confirmed suspects (POPIA), case card suggestions
 ```
 
 The full list with what each migration does is in [`database/README.md`](./database/README.md#migrations).
@@ -418,8 +419,8 @@ Every table has RLS enabled. The mobile app uses the **publishable key** and the
 | Role | Access |
 |---|---|
 | **Citizen** | Report incidents and upload footage as themselves; view only their own submissions and profile; edit their own username, name, phone number and residence |
-| **Investigator** | View only cases they are actively assigned to, plus that footage, detections, vehicle details and the case history; move a case between open and under review; confirm (verify) AI detections; log corrections; view cross-incident links and other investigators; change their own duty status |
-| **Admin** | Full access; review submissions (accept into a case, reject, mark duplicate); accept suggested matches; create, edit, close and reopen cases; assign investigators and choose the lead; confirm suspects; manage users and investigator details |
+| **Investigator** | View only cases they are actively assigned to, plus that footage, detections, vehicle details and the case history; move a case between open and under review; confirm (verify) AI detections; **confirm or dismiss possible suspects** on their cases and edit confirmed suspects' descriptions; log corrections; view cross-incident links and other investigators; change their own duty status |
+| **Admin** | Full access; review submissions (accept into a case, reject, mark duplicate); accept suggested matches; create, edit, close and reopen cases; assign investigators and choose the lead; see suspect counts and undo a suspect review (but **not** confirm suspects); manage users and investigator details |
 | **Not logged in** | No access to any table (only the username lookup used by the login screen) |
 
 The Python AI/CV pipeline uses the **service role (secret) key**, which bypasses RLS, to write detections and update processing status. Only that key can write the AI fields (per-clip descriptions, the combined summary, capture times); the database refuses them from the app. This key must **never** be placed in the mobile app or committed to Git. What the pipeline must write, and in which order, is in [`database/README.md`](./database/README.md#the-ai-pipeline-what-it-writes).
@@ -433,7 +434,9 @@ The Python AI/CV pipeline uses the **service role (secret) key**, which bypasses
 3. The admin works through the **Submissions** tab: Newest / Oldest, grouped by Location, Status, Case, or Linked (submissions the AI connected). Each card shows the citizen's description **and** the AI summary.
 4. The database suggests which case a submission belongs to (AI links, same or nearly the same plate, distance, time from the footage's own metadata), with the reasons. The admin reviews the **Suggested matches** list and accepts the right ones in one tap, or accepts a submission into a new or existing case by hand. **Nothing joins a case without an admin accepting it.**
 5. Inside a case the admin assigns investigators (the first becomes the lead), sees recommended submissions, and can remove a submission again: it goes back to Pending and is never deleted.
-6. Every step is recorded in the case history (`caseevent`).
+6. Every person the AI sees is only a **possible suspect**. Under POPIA, only an investigator assigned to the case can confirm or dismiss them (with a reason). Until then the admin screens show counts only: the case cards show "about 2 possible suspects awaiting investigator review" or "2 confirmed suspects" (the highest of the case's submissions, so A = 2, B = 1, C = 1 → about 2). Details: [`database/README.md`](./database/README.md#suspects-and-popia).
+7. Each case card also shows the case's best **suggested submission** with its most relevant number plate (one also in the case, else the one read with the highest confidence).
+8. Every step is recorded in the case history (`caseevent`).
 
 Details: [`database/README.md`](./database/README.md#how-a-submission-becomes-a-case).
 
@@ -585,6 +588,7 @@ Examples include:
 * AI model testing
 * Database testing, including RLS policy testing: log in as a citizen, an investigator, and an admin and confirm each only sees what it should
 * Demo data: a SQL script with demo submissions, a demo case, footage, AI descriptions and AI links (kept outside the repository; see [`database/README.md`](./database/README.md#testing))
+* Mock data for suspects and case cards: `mock_suspects_and_case_cards.sql` / `mock_cleanup.sql` (also kept outside the repository; see [`database/README.md`](./database/README.md#testing))
 * Integration testing across mobile app, Supabase, and AI component
 
 Test results should be documented where appropriate.
@@ -651,13 +655,53 @@ Argus Shield is currently under active research and development.
 | Login / registration (citizen) | Live on Supabase Auth |
 | Admin dashboard: Overview, Cases, Detectives, Submissions | Live on the database (review, cases, assignments, suggestions, history) |
 | Citizen upload / My submissions / Profile | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
-| Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again |
+| Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again (see [TODO: investigator app](#todo-investigator-app)) |
+| Suspect review (POPIA) | **Database ready**: possible / confirmed / dismissed suspects, only assigned investigators confirm, every decision logged. Admin case cards and submission cards show the counts. Confirming in the app waits for the investigator screens |
 | Creating investigator accounts from the app | **Not built yet**: needs the `create-investigator` Edge Function |
 | Footage storage | **Not built yet**: no Supabase Storage bucket or storage policies |
 | AI / computer vision pipeline | **Not built yet** (`ai/` is empty). The database is ready for it; demo data stands in for it |
 
 
 Individual components may be at different stages of development. Features should not be considered production-ready unless they have been implemented, tested, and reviewed by the team.
+
+
+---
+
+# TODO
+
+## TODO: investigator app
+
+The investigator screens are not built yet. Investigators **work** their cases: they can review and correct, never delete. Every change goes through a database function that checks they are actively assigned to the case and is logged in `caseevent` automatically (the same pattern as the admin actions).
+
+**Already in the database** (the screens only need to call these):
+
+* `set_case_status`: move a case between open and under review
+* `verify_detection`: confirm an AI detection
+* `review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`: the POPIA suspect review
+* `list_case_events`: the case history
+* `list_cases`, `list_submissions`, `list_incident_media`: already filtered to their assigned cases by RLS
+
+**To build:**
+
+- [ ] **Login routing**: send investigators to their own dashboard instead of signing them out (`login.dart`).
+- [ ] **My cases**: the cases they are actively assigned to (`list_cases`), lead cases first.
+- [ ] **Case page for investigators**: submissions, footage, history, status open ↔ under review. No adding/removing submissions, assigning or closing (admin only).
+- [ ] **Suspect review screen** (POPIA): per submission, the people the AI saw with their status (possible first), each with the frame / bounding box from the footage. Confirm (with physical and clothing descriptions), dismiss (reason required), edit, undo. Needs:
+  - [ ] a database function listing a submission's person detections with `suspectstatus`, reviewer and note (for the assigned investigators; admins keep seeing counts only);
+  - [ ] the footage itself (Supabase Storage bucket + storage policies, see below).
+- [ ] **Verify detections**: confirm / un-confirm AI vehicle and weapon detections (`verify_detection`), correct vehicle details (plate, make, colour) with the old and new value in `correctionlog`.
+- [ ] **Case notes**: a new `casenote` table (case or submission, author, text, time). Append-only: no editing or deleting, a correction is a new note. Written through a function, logged in `caseevent`.
+- [ ] **Investigator edits of submission data** (e.g. attack type, location, time): through functions only, never deletes. Each edit must be logged with the **old and new value**; decide whether that is a new column on `caseevent` (`oldvalue` / `newvalue`) or one `changelog` table that `correctionlog` folds into.
+- [ ] **Suspect links across incidents**: let investigators verify or reject AI `crossreferencelink`s for confirmed suspects.
+- [ ] **POPIA follow-ups** to decide as a team: how long dismissed people and their detections are kept; whether viewing a suspect's details should itself be logged; who may see footage of possible suspects.
+
+## TODO: other
+
+- [ ] `create-investigator` Edge Function (admin creates investigator accounts from the app)
+- [ ] Supabase Storage bucket and policies for footage
+- [ ] Citizen upload / My submissions / Profile on the database instead of the local demo store
+- [ ] AI / computer vision pipeline (`ai/`), writing what [`database/README.md`](./database/README.md#the-ai-pipeline-what-it-writes) describes
+- [ ] Update the ERD (`diagrams/`) with the new tables and columns, including `detection.suspectstatus`
 
 ---
 
