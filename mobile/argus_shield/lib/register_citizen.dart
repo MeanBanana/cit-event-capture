@@ -35,10 +35,17 @@ class _RegisterPageState extends State<RegisterPage>{
     return Scaffold(
       appBar: const ArgusAppBar(),
       body:Padding(
-        padding: EdgeInsets.symmetric(vertical: 60, horizontal: 30),
+        // Only left/right here. Top/bottom padding sits inside the scroll
+        // view below, so it scrolls with the form instead of leaving fixed
+        // empty bands that cut the form off under the header and above the
+        // phone's buttons.
+        padding: const EdgeInsets.symmetric(horizontal: 30),
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
+            // Small top gap to match the login page; a bit more at the bottom
+            // so the Register button doesn't touch the edge.
+            padding: const EdgeInsets.only(top: 4, bottom: 20),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.center,

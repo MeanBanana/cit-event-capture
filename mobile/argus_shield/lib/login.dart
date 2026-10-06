@@ -162,22 +162,29 @@ class _LoginPageState extends State<LoginPage>{
 
     if (email == null || !mounted) return; // closed without resetting
 
-    // TODO: connect to Supabase with supabase.auth.resetPasswordForEmail,
-    // plus a screen where the user sets the new password from the link.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Password reset is not connected yet. '
-          'The reset link will be sent to $email.',
-        ),
-      ),
+    // Emails the reset link. Tapping it opens the app on ResetPasswordPage
+    // (see main.dart and supabase_service.dart, "RESET PASSWORD").
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Sending reset link...')),
     );
+    final result = await service.sendPasswordReset(email);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(result["message"] as String),
+          backgroundColor:
+              result["success"] == true ? null : AppColors.danger,
+          duration: const Duration(seconds: 6),
+        ),
+      );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Tiny top/bottom padding so the form sits right under the app bar and
-    // the buttons sit right at the bottom. Left/right stay at the usual 30.
+    // Tiny top/bottom padding so the buttons sit right at the bottom.
+    // Left/right stay at the usual 30.
     const padding = EdgeInsets.symmetric(horizontal: 30, vertical: 4);
 
     return Scaffold(
@@ -197,7 +204,14 @@ class _LoginPageState extends State<LoginPage>{
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ---- top: the form
+                // Empty first child: with spaceBetween, the free space is
+                // split equally above and below the form, so the form sits
+                // centred between the header and the bottom buttons. On a
+                // short screen (or with the keyboard open) there is no free
+                // space and everything simply scrolls.
+                const SizedBox.shrink(),
+
+                // ---- middle: the form
                 Column(
                   children: [
                     // height 1.0 + no extra space above the first line:
