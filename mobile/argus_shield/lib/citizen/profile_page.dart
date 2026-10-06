@@ -1,11 +1,16 @@
-// profile_page.dart — contact form, validation, and session save feedback.
+// profile_page.dart — the logged-in citizen's details, loaded from Supabase.
+//
+// Full name is shown but cannot be changed. Email, phone number and
+// residence are filled in with the current values; Save Changes sends only
+// what was changed (see CitizenStore.saveProfile).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'citizen_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/argus_widgets.dart';
 
-/// Displays editable contact details and saves them to the session store.
+/// Displays the citizen's profile and saves changes to Supabase.
 class ProfilePage extends StatefulWidget {
   final CitizenStore store;
 
@@ -17,11 +22,18 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage>
     with AutomaticKeepAliveClientMixin<ProfilePage> {
-  // The form key triggers validation; controllers hold editable field values.
+  // The form key triggers validation; controllers hold the field values.
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
+  final _nameController = TextEditingController(); // read-only
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _residenceController = TextEditingController();
+
+  /// The profile the fields were last filled from. When the store's profile
+  /// becomes a different object (first load, a save, a reload), the fields
+  /// are refilled from it.
+  CitizenProfile? _filledFrom;
+  bool _saving = false;
 
   @override
   // Retain form input while another tab is visible.
@@ -30,35 +42,77 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void initState() {
     super.initState();
-    // Populate the form from a previously saved profile, if one exists.
-    final profile = widget.store.profile;
-    if (profile != null) {
-      _nameController.text = profile.name;
-      _emailController.text = profile.email;
-      _phoneController.text = profile.phone;
-    }
+    widget.store.addListener(_fillFromStore);
+    _fillFromStore();
+
+    // CitizenHome normally starts the load at login. This covers the case
+    // where it hasn't (and no error is showing yet). Run after the first
+    // frame, because loading notifies listeners and that can't happen
+    // while widgets are still being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final store = widget.store;
+      if (mounted &&
+          store.profile == null &&
+          !store.profileLoading &&
+          store.profileError == null) {
+        store.loadProfile();
+      }
+    });
   }
 
   @override
   void dispose() {
+    widget.store.removeListener(_fillFromStore);
     // Clean up text controllers when the page leaves the widget tree.
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _residenceController.dispose();
     super.dispose();
   }
 
-  /// Saves valid contact fields; this does not update an authentication account.
-  void _saveProfile() {
+  /// Copies the store's profile into the fields when it's new.
+  void _fillFromStore() {
+    final profile = widget.store.profile;
+    if (profile == null || identical(profile, _filledFrom)) return;
+    _filledFrom = profile;
+    _nameController.text = profile.fullName;
+    _emailController.text = profile.email;
+    _phoneController.text = profile.localPhone;
+    _residenceController.text = profile.residence ?? '';
+  }
+
+  Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    // The store trims values, validates again, and replaces the saved profile.
-    widget.store.saveProfile(
-      name: _nameController.text,
-      email: _emailController.text,
-      phone: _phoneController.text,
-    );
+    FocusScope.of(context).unfocus(); // close the keyboard
+
+    setState(() => _saving = true);
+    Map<String, dynamic> result;
+    try {
+      result = await widget.store.saveProfile(
+        email: _emailController.text,
+        phone: _phoneController.text,
+        residence: _residenceController.text,
+      );
+    } on ArgumentError catch (e) {
+      result = {"success": false, "message": e.message.toString()};
+    }
+    if (!mounted) return;
+    setState(() => _saving = false);
+
+    // A requested email change only applies once confirmed, so show the
+    // current (confirmed) address again instead of the typed one.
+    if (result["emailPending"] == true) {
+      _emailController.text = widget.store.profile?.email ?? '';
+    }
+
+    final success = result["success"] == true;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile saved for this app session.')),
+      SnackBar(
+        content: Text(result["message"] as String? ?? ''),
+        backgroundColor: success ? null : AppColors.danger,
+        duration: Duration(seconds: result["emailPending"] == true ? 6 : 3),
+      ),
     );
   }
 
@@ -66,62 +120,134 @@ class _ProfilePageState extends State<ProfilePage>
   Widget build(BuildContext context) {
     // Keeps this page alive during tab changes.
     super.build(context);
-    return SingleChildScrollView(
-      padding: AppSpacing.page,
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('My profile', style: AppText.sectionTitle),
-            const SizedBox(height: AppSpacing.small),
-            const Text(
-              'Keep your contact information up to date so an authorised '
-              'investigator can reach you if they need more information.',
-              style: AppText.bodyMuted,
-            ),
-            const SizedBox(height: AppSpacing.large),
-            const FieldLabel('Full name'),
-            TextFormField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(hintText: 'Enter your full name'),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter your full name'
-                  : null,
-            ),
-            const SizedBox(height: AppSpacing.medium),
-            const FieldLabel('Email address'),
-            TextFormField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration:
-                  const InputDecoration(hintText: 'Enter your email address'),
-              // Basic presence check only; a server must verify real email ownership.
-              validator: (value) => value == null || !value.trim().contains('@')
-                  ? 'Enter a valid email address'
-                  : null,
-            ),
-            const SizedBox(height: AppSpacing.medium),
-            const FieldLabel('Phone number'),
-            TextFormField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration:
-                  const InputDecoration(hintText: 'Enter your phone number'),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter your phone number'
-                  : null,
-            ),
-            const SizedBox(height: AppSpacing.large),
-            Center(
-              child: PrimaryButton(
-                label: 'Save Changes',
-                onPressed: _saveProfile,
+    return ListenableBuilder(
+      listenable: widget.store,
+      builder: (context, _) {
+        final store = widget.store;
+        return SingleChildScrollView(
+          padding: AppSpacing.page,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('My profile', style: AppText.sectionTitle),
+              const SizedBox(height: AppSpacing.small),
+              const Text(
+                'Keep your contact information up to date so an authorised '
+                'investigator can reach you if they need more information.',
+                style: AppText.bodyMuted,
               ),
-            ),
-          ],
+              const SizedBox(height: AppSpacing.large),
+              if (store.profile != null)
+                _buildForm(store.profile!)
+              else if (store.profileError != null)
+                _buildError(store.profileError!)
+              else
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.large),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildError(String message) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(message, style: AppText.body.copyWith(color: AppColors.danger)),
+        const SizedBox(height: AppSpacing.small),
+        TextButton.icon(
+          onPressed: widget.store.loadProfile,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Try again'),
         ),
+      ],
+    );
+  }
+
+  Widget _buildForm(CitizenProfile profile) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const FieldLabel('Full name'),
+          // Read-only: names are fixed after registration.
+          TextFormField(
+            controller: _nameController,
+            readOnly: true,
+            enableInteractiveSelection: false,
+            style: AppText.body.copyWith(color: AppColors.textMuted),
+            decoration: const InputDecoration(
+              suffixIcon: Icon(Icons.lock_outline, color: AppColors.textHint),
+              helperText: 'Your name can\'t be changed.',
+              helperStyle: TextStyle(color: AppColors.textHint),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('Username: ${profile.username}', style: AppText.bodyMuted),
+          const SizedBox(height: AppSpacing.medium),
+
+          const FieldLabel('Email address'),
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            decoration:
+                const InputDecoration(hintText: 'Enter your email address'),
+            // Same check as the register form.
+            validator: (value) {
+              final text = value?.trim() ?? '';
+              if (text.isEmpty) return 'Email is required';
+              if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(text)) {
+                return 'Enter a valid email address.';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: AppSpacing.medium),
+
+          const FieldLabel('Phone number'),
+          TextFormField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            // Same format as the register form: "+27 " shown, 9 digits typed.
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(9),
+            ],
+            decoration: const InputDecoration(prefixText: '+27 '),
+            validator: (value) {
+              if (value == null || value.isEmpty) return 'Phone is required';
+              if (value.length != 9) {
+                return 'Phone number must be 9 digits long, no initial 0 needed';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: AppSpacing.medium),
+
+          const FieldLabel('Residence'),
+          TextFormField(
+            controller: _residenceController,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(hintText: 'Enter your residence'),
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Residence is required.'
+                : null,
+          ),
+          const SizedBox(height: AppSpacing.large),
+
+          Center(
+            child: PrimaryButton(
+              label: _saving ? 'Saving...' : 'Save Changes',
+              onPressed: _saving ? null : _saveProfile,
+            ),
+          ),
+        ],
       ),
     );
   }

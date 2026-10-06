@@ -32,6 +32,9 @@ dependencies:
     sdk: flutter
   flutter_markdown_plus: ^1.0.12
   supabase_flutter: ^2.17.2
+  # Remembers the last user's email/phone on the device (forgot password form).
+  # Already installed as part of supabase_flutter; listed so we can import it.
+  shared_preferences: ^2.5.5
   image_picker: ^1.1.2
 
 

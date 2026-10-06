@@ -6,6 +6,7 @@ import 'models/activity_item.dart';
 import 'models/case_summary.dart';
 import 'models/case_assignment_info.dart';
 import 'models/submission_groups.dart';
+import 'models/citizen_profile.dart';
 
 /// Sort order for submission lists (by date reported).
 enum SubmissionOrder { newest, oldest }
@@ -98,8 +99,8 @@ class SupabaseService {
 
   // ------------------------------------------------------------------- LOGIN
   /// On success the result also contains "profile":
-  /// {userid, username, firstname, surname, role} where role is
-  /// 'citizen', 'investigator' or 'admin'.
+  /// {userid, username, firstname, surname, email, phonenumber, role} where
+  /// role is 'citizen', 'investigator' or 'admin'.
   Future<Map<String, dynamic>> loginUser({
     required String username,
     required String password,
@@ -123,7 +124,7 @@ class SupabaseService {
 
       final profile = await supabase
           .from('User')
-          .select('userid, username, firstname, surname, role')
+          .select('userid, username, firstname, surname, email, phonenumber, role')
           .eq('authid', authResponse.user!.id)
           .single();
 
@@ -146,6 +147,134 @@ class SupabaseService {
 
   // ------------------------------------------------------------------ LOGOUT
   Future<void> logout() => supabase.auth.signOut();
+
+  // ------------------------------------------------------- CITIZEN PROFILE
+  // Database rules (RLS) let a citizen read and update only their own
+  // "User" and citizen rows, and a trigger stops them changing their own
+  // role or email there. So:
+  //   * phone number  -> "User".phonenumber   (plain update)
+  //   * residence     -> citizen.residence    (plain update)
+  //   * email         -> Supabase Auth, which emails a confirmation link.
+  //     Once confirmed, the on_auth_user_email_changed trigger copies the
+  //     new address into "User".email.
+  //   * first name / surname are not changed here at all.
+
+  /// The logged-in citizen's profile. Throws if nobody is logged in or the
+  /// rows can't be read, so the screen can show an error with a Retry button.
+  Future<CitizenProfile> getMyCitizenProfile() async {
+    final authUser = supabase.auth.currentUser;
+    if (authUser == null) {
+      throw StateError('Nobody is logged in.');
+    }
+
+    final user = await supabase
+        .from('User')
+        .select('userid, username, firstname, surname, email, phonenumber')
+        .eq('authid', authUser.id)
+        .single();
+
+    // maybeSingle: an older account might not have a citizen row yet.
+    final citizen = await supabase
+        .from('citizen')
+        .select('residence')
+        .eq('userid', user['userid'])
+        .maybeSingle();
+
+    return CitizenProfile.fromMaps(user, citizen);
+  }
+
+  /// Saves the citizen's changes. Pass only what changed; null = unchanged.
+  ///
+  /// [phone] is the 9 digits after +27 (like the register form).
+  ///
+  /// Returns {success, message, emailPending, emailChangedNow}.
+  /// emailPending is true when a confirmation email was sent - the new
+  /// address only applies after the citizen clicks the link in it.
+  /// emailChangedNow is true when the project doesn't ask for confirmation.
+  Future<Map<String, dynamic>> updateMyCitizenProfile({
+    required int userId,
+    String? email,
+    String? phone,
+    String? residence,
+  }) async {
+    // Lets the error message say which parts were already saved.
+    final saved = <String>[];
+    try {
+      if (phone != null) {
+        // .select() returns the updated rows. If RLS blocked the update,
+        // Postgres doesn't raise an error - it just updates 0 rows - so we
+        // check for that instead of assuming it worked.
+        final rows = await supabase
+            .from('User')
+            .update({'phonenumber': '+27${phone.trim()}'})
+            .eq('userid', userId)
+            .select('userid');
+        if ((rows as List).isEmpty) {
+          return {"success": false, "message": "Your phone number could not be saved."};
+        }
+        saved.add('phone number');
+      }
+
+      if (residence != null) {
+        final rows = await supabase
+            .from('citizen')
+            .update({'residence': residence.trim()})
+            .eq('userid', userId)
+            .select('userid');
+        if ((rows as List).isEmpty) {
+          return {
+            "success": false,
+            "message": _partly(saved, "Your residence could not be saved."),
+          };
+        }
+        saved.add('residence');
+      }
+
+      var emailPending = false;
+      var emailChangedNow = false;
+      if (email != null) {
+        final response =
+            await supabase.auth.updateUser(UserAttributes(email: email.trim()));
+        // With "Secure email change" on (the default), Supabase holds the
+        // new address in newEmail until the link is clicked. With it off,
+        // the email changes straight away.
+        emailPending = response.user?.newEmail != null;
+        emailChangedNow = !emailPending;
+        if (emailChangedNow) saved.add('email');
+      }
+
+      final parts = <String>[
+        if (saved.isNotEmpty)
+          'Your ${saved.join(' and ')} ${saved.length == 1 ? 'was' : 'were'} saved.',
+        if (emailPending)
+          'We sent a confirmation link to ${email!.trim()}. '
+              'Your email changes once you open it.',
+      ];
+      return {
+        "success": true,
+        "message": parts.join(' '),
+        "emailPending": emailPending,
+        "emailChangedNow": emailChangedNow,
+      };
+    } on AuthException catch (e) {
+      final reason = (e.code == 'email_exists' || e.code == 'user_already_exists')
+          ? "That email address is already used by another account."
+          : e.code == 'over_email_send_rate_limit'
+              ? "Too many emails sent. Please wait a few minutes and try again."
+              : "Your email could not be changed: ${e.message}";
+      return {"success": false, "message": _partly(saved, reason)};
+    } on PostgrestException catch (e) {
+      return {"success": false, "message": _partly(saved, e.message)};
+    } catch (e) {
+      return {"success": false, "message": _partly(saved, e.toString())};
+    }
+  }
+
+  /// "Your phone number was saved, but <reason>" when something already
+  /// went through before the failure.
+  String _partly(List<String> saved, String reason) => saved.isEmpty
+      ? reason
+      : "Your ${saved.join(' and ')} ${saved.length == 1 ? 'was' : 'were'} saved, but: $reason";
 
   // ----------------------------------------------------------- INVESTIGATORS
   // Both methods call the list_investigators database function, which joins

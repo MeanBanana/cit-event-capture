@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'register_citizen.dart';
 import 'supabase_service.dart';
+import 'saved_contact_details.dart';
 import 'citizen/citizen_home.dart';
 import 'admin_screens/admin_dashboard.dart';
 import 'theme/app_theme.dart';
@@ -11,7 +12,10 @@ class LoginPage extends StatefulWidget{
   /// Optional so tests can pass in a fake; the app uses the real service.
   final SupabaseService? service;
 
-  const LoginPage({super.key, this.service});
+  /// Optional so tests can pass in a fake; the app uses the device storage.
+  final SavedContactStore? savedContacts;
+
+  const LoginPage({super.key, this.service, this.savedContacts});
 
   @override
   State<LoginPage>  createState() => _LoginPageState();
@@ -22,13 +26,42 @@ class _LoginPageState extends State<LoginPage>{
   final TextEditingController passwordController = TextEditingController();
 
   late final SupabaseService service = widget.service ?? SupabaseService();
+  late final SavedContactStore savedContacts =
+      widget.savedContacts ?? SavedContactStore();
   bool isLoading = false;
+
+  /// Email/phone remembered on this phone from the last login. Empty until
+  /// someone has logged in on this device.
+  SavedContact _saved = const SavedContact();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedContact();
+  }
 
   @override
   void dispose() {
     userNameController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  /// Step 1 of the saved-details flow: when the app opens, check the device.
+  /// If nothing is there yet, _saved stays empty until the user logs in.
+  Future<void> _loadSavedContact() async {
+    final saved = await savedContacts.load();
+    if (mounted) setState(() => _saved = saved);
+  }
+
+  /// Step 2: after a successful login, insert or update the saved details.
+  /// Not awaited by the caller - the next screen doesn't need to wait for it.
+  void _rememberContact(Map<String, dynamic>? profile) {
+    if (profile == null) return;
+    savedContacts.save(
+      email: profile['email'] as String?,
+      phone: profile['phonenumber'] as String?,
+    );
   }
 
   Future<void> _login() async {
@@ -63,6 +96,10 @@ class _LoginPageState extends State<LoginPage>{
     String message = result["message"];
     Widget nextScreen = const LoginPage(); // failed login: back to this page
 
+    if (success) {
+      _rememberContact(result["profile"] as Map<String, dynamic>?);
+    }
+
     // Choose the dashboard for the signed-in user's role
     if (success) {
       switch (role) {
@@ -92,83 +129,313 @@ class _LoginPageState extends State<LoginPage>{
     if (mounted) setState(() => isLoading = false);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const ArgusAppBar(),
-      // Scrolls so the form still fits when the keyboard is open
-      body: SingleChildScrollView(
-        padding: AppSpacing.page,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Text("Login", style: AppText.pageTitle),
-
-            const SizedBox(height: AppSpacing.large),
-
-            const FieldLabel("Username"),
-            TextField(
-              controller: userNameController,
-              decoration: const InputDecoration(),
+  /// Opens the Forgot password overlay, pre-filled with the email saved on
+  /// this phone (editable). It slides up and fades in as it opens.
+  Future<void> _showForgotPassword() async {
+    final email = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close',
+      barrierColor: Colors.black.withValues(alpha: 0.6),
+      transitionDuration: const Duration(milliseconds: 380),
+      pageBuilder: (context, _, _) => _ForgotPasswordPanel(saved: _saved),
+      // Slide up from slightly below + fade + a touch of scale.
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, 0.12), end: Offset.zero)
+                .animate(curved),
+            child: ScaleTransition(
+              scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+              child: child,
             ),
+          ),
+        );
+      },
+    );
 
-            const SizedBox(height: AppSpacing.large),
+    if (email == null || !mounted) return; // closed without resetting
 
-            const FieldLabel("Password"),
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(),
-            ),
-
-            const SizedBox(height: AppSpacing.small),
-
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: () {},         //Add functionality for the forgot password button
-                child: const Text("Forgot password?"),
-              ),
-            ),
-
-            const SizedBox(height: 60),
-
-            TextButton(
-              onPressed: (){
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const RegisterPage()),
-                );
-              },
-              child: const Text(
-                "Register as citizen",
-                style: TextStyle(
-                  decoration: TextDecoration.underline,
-                  decorationColor: AppColors.accent,
-                  decorationThickness: 2,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.medium),
-
-            PrimaryButton(
-              label: "Access System",
-              onPressed: isLoading ? null : _login,
-            ),
-
-            const SizedBox(height: 15),
-
-            const Text(
-              "Argus Shield . Secure Access . SAPS Authorised",
-              textAlign: TextAlign.center,
-              style: AppText.footer,
-            ),
-          ],
+    // TODO: connect to Supabase with supabase.auth.resetPasswordForEmail,
+    // plus a screen where the user sets the new password from the link.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Password reset is not connected yet. '
+          'The reset link will be sent to $email.',
         ),
       ),
     );
   }
 
+  @override
+  Widget build(BuildContext context) {
+    // Tiny top/bottom padding so the form sits right under the app bar and
+    // the buttons sit right at the bottom. Left/right stay at the usual 30.
+    const padding = EdgeInsets.symmetric(horizontal: 30, vertical: 4);
+
+    return Scaffold(
+      appBar: const ArgusAppBar(),
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          // Scrolls so the form still fits when the keyboard is open
+          padding: padding,
+          child: ConstrainedBox(
+            // At least as tall as the screen, so spaceBetween below can push
+            // the bottom group down to the bottom edge. On a short screen
+            // (or with the keyboard open) the content is taller and scrolls.
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight - padding.vertical,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // ---- top: the form
+                Column(
+                  children: [
+                    // height 1.0 + no extra space above the first line:
+                    // the 50px Courier font otherwise adds a tall blank band
+                    // above the letters.
+                    Text(
+                      "Login",
+                      style: AppText.pageTitle.copyWith(height: 1.0),
+                      textHeightBehavior: const TextHeightBehavior(
+                        applyHeightToFirstAscent: false,
+                        applyHeightToLastDescent: false,
+                      ),
+                    ),
+
+                    const SizedBox(height: AppSpacing.large),
+
+                    const FieldLabel("Username"),
+                    TextField(
+                      controller: userNameController,
+                      decoration: const InputDecoration(),
+                    ),
+
+                    const SizedBox(height: AppSpacing.large),
+
+                    const FieldLabel("Password"),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(),
+                    ),
+
+                    const SizedBox(height: AppSpacing.small),
+
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: _showForgotPassword,
+                        child: const Text("Forgot password?"),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // ---- bottom: register, login button, footer
+                Column(
+                  children: [
+                    // keeps a gap from the form on short screens
+                    const SizedBox(height: AppSpacing.medium),
+
+                    TextButton(
+                      onPressed: (){
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const RegisterPage()),
+                        );
+                      },
+                      child: const Text(
+                        "Register as citizen",
+                        style: TextStyle(
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppColors.accent,
+                          decorationThickness: 2,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: AppSpacing.medium),
+
+                    PrimaryButton(
+                      label: "Access System",
+                      onPressed: isLoading ? null : _login,
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    const Text(
+                      "Argus Shield . Secure Access . SAPS Authorised",
+                      textAlign: TextAlign.center,
+                      style: AppText.footer,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+}
+
+// ===========================================================================
+// Forgot password overlay (email only)
+// ===========================================================================
+
+class _ForgotPasswordPanel extends StatefulWidget {
+  final SavedContact saved;
+
+  const _ForgotPasswordPanel({required this.saved});
+
+  @override
+  State<_ForgotPasswordPanel> createState() => _ForgotPasswordPanelState();
+}
+
+class _ForgotPasswordPanelState extends State<_ForgotPasswordPanel> {
+  // Pre-filled with the email saved on this phone; the user can change it.
+  late final _emailController =
+      TextEditingController(text: widget.saved.email ?? '');
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  /// Checks the email and closes the overlay, returning it to LoginPage.
+  void _reset() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.of(context).pop(_emailController.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Lift the panel above the keyboard when the field is focused.
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final hasSavedEmail = widget.saved.email?.isNotEmpty ?? false;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + keyboard),
+        child: Center(
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Material(
+                color: AppColors.header,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(color: AppColors.accent, width: 1.5),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.lock_reset,
+                                color: AppColors.accent, size: 26),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text('Reset password',
+                                  style: AppText.cardTitle),
+                            ),
+                            IconButton(
+                              tooltip: 'Close',
+                              icon: const Icon(Icons.close,
+                                  color: AppColors.textMuted),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          "Enter your account's email address and we'll send "
+                          'you a link to reset your password.',
+                          style: AppText.bodyMuted,
+                        ),
+                        const SizedBox(height: AppSpacing.medium),
+                        const FieldLabel('Email address'),
+                        TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autocorrect: false,
+                          style: AppText.body,
+                          decoration: const InputDecoration(
+                            hintText: 'you@example.com',
+                            prefixIcon: Icon(Icons.alternate_email,
+                                color: AppColors.accent),
+                          ),
+                          validator: (value) {
+                            final text = value?.trim() ?? '';
+                            if (text.isEmpty) return 'Enter your email address';
+                            if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                                .hasMatch(text)) {
+                              return 'Enter a valid email address.';
+                            }
+                            return null;
+                          },
+                          onFieldSubmitted: (_) => _reset(),
+                        ),
+                        if (hasSavedEmail) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.smartphone,
+                                  size: 14, color: AppColors.textHint),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Filled in from your last login on this phone.',
+                                  style: AppText.bodyMuted.copyWith(
+                                    fontSize: 12,
+                                    color: AppColors.textHint,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: AppSpacing.medium),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _reset,
+                            style: ElevatedButton.styleFrom(
+                              textStyle:
+                                  AppText.buttonSmall.copyWith(fontSize: 17),
+                            ),
+                            child: const Text('Reset Password'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
