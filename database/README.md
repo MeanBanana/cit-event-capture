@@ -57,7 +57,7 @@ auth.users  (Supabase Auth: email, hashed password, login sessions)
 | Column | Type | Notes |
 |---|---|---|
 | `userid` | integer, PK | Referenced by every other table (reportedby, uploadedby, assignedto…) |
-| `authid` | uuid, unique | Link to `auth.users.id`. Set to empty if the login is deleted, so the evidence trail is kept |
+| `authid` | uuid, unique, not null | Link to `auth.users.id`. Meant to be set to empty if the login is deleted, so the evidence trail is kept; but `20261006081759_remote_schema.sql` made it `NOT NULL`, so deleting a login that has a profile currently fails (see [Still to do](#still-to-do)) |
 | `username` | varchar(30) | Used to log in. Unique ignoring case. Letters, numbers, `_` and `.`, 3–30 characters |
 | `firstname` | varchar(100) | |
 | `surname` | varchar(100) | |
@@ -124,7 +124,7 @@ Our tables never store passwords or login tokens. Supabase Auth keeps them in it
 | Account | How it is created | What the database does |
 |---|---|---|
 | **Citizen** | Registers in the app with `supabase.auth.signUp(...)`, sending `username`, `firstname`, `surname`, `phonenumber`, `residence` as sign-up data | The `on_auth_user_created` trigger creates the `"User"` row and the `citizen` row. **App sign-ups are always citizens** — a role sent from the app is ignored |
-| **Investigator** | An admin fills in the "add investigator" screen, which calls the `create-investigator` Edge Function (see [Still to do](#still-to-do)) | The Edge Function creates the login with the service key and puts `role: investigator` in `app_metadata`, which only the service key can set. The trigger then creates the `"User"` and `investigator` rows. The investigator is emailed a code to set their own password |
+| **Investigator** | An admin fills in the "add investigator" screen, which calls the `create-investigator` Edge Function (see [Still to do](#still-to-do)) | The Edge Function creates the login with the service key and puts `role: investigator` in `app_metadata`, which only the service key can set. The trigger then creates the `"User"` and `investigator` rows. The investigator then sets their own password through the same reset link as **Forgot password?** (see below) |
 | **Admin** | Manually, by the database owner (see below) | — |
 
 **Creating an admin** (one-time, by the database owner):
@@ -146,10 +146,24 @@ Supabase Auth logs in with an **email**, but our login screen asks for a **usern
 
 ### Setting and resetting passwords
 
-New investigators and anyone who taps **Forgot password?** receive an email with a 6-digit code (`resetPasswordForEmail`). The app verifies the code and lets them choose a new password. This needs:
+Anyone who taps **Forgot password?** on the login page gets an email with a **reset link**. Tapping the link on the phone opens the app on a "New Password" screen:
 
-* the **Reset Password** email template (Dashboard → Authentication → Emails) to include `{{ .Token }}`;
-* a custom SMTP provider for real users — Supabase's built-in email only sends to the project team's own addresses, a few per hour.
+1. The app calls `resetPasswordForEmail(email, redirectTo: 'argusshield://reset-password')`. Supabase answers the same way whether or not the email has an account, so nobody can use it to find out which emails are registered.
+2. The link in the email opens the app (Android intent filter in `AndroidManifest.xml`, iOS URL scheme in `Info.plist`). `supabase_flutter` checks the link with Supabase, signs the user in for this one purpose and fires `AuthChangeEvent.passwordRecovery`.
+3. `main.dart` hears that event and opens `ResetPasswordPage`. The user types the new password twice, the app calls `updateUser(UserAttributes(password: ...))`, signs out and goes back to the login page.
+
+Things to know:
+
+* The link only works **on the phone that asked for it** (the app uses the PKCE flow, which keeps a secret on that phone). Opening it on a computer does nothing.
+* An old or already-used link shows "This reset link is invalid or has expired".
+* Supabase allows one reset email per account per minute.
+
+This needs, in the Supabase dashboard:
+
+* **Authentication → URL Configuration → Redirect URLs** must include `argusshield://reset-password`. Without it Supabase ignores the redirect and the link opens the Site URL in a browser instead of the app.
+* The **Reset Password** email template (Authentication → Emails) keeps the default `{{ .ConfirmationURL }}` link.
+* The **Email** provider (Authentication → Sign In / Providers) must stay enabled. "Confirm email" can be on or off; it does not affect resets.
+* A **custom SMTP provider** before real users rely on it (Authentication → Emails → SMTP Settings). Without one, Supabase's built-in email only sends to the project team's own addresses, a few per hour. That is enough for testing with your own account.
 
 ---
 
@@ -375,12 +389,23 @@ final details = await supabase
     .single();
 ```
 
-### Set / reset password with the emailed code
+### Reset password with the emailed link
 
 ```dart
-await supabase.auth.resetPasswordForEmail(email);      // "Forgot password?" only
-await supabase.auth.verifyOTP(type: OtpType.recovery, email: email, token: code);
+// 1. Login page, "Forgot password?" (SupabaseService.sendPasswordReset)
+await supabase.auth.resetPasswordForEmail(email,
+    redirectTo: 'argusshield://reset-password');
+
+// 2. main.dart: the link was tapped and checked by supabase_flutter
+supabase.auth.onAuthStateChange.listen((data) {
+  if (data.event == AuthChangeEvent.passwordRecovery) {
+    // open ResetPasswordPage
+  }
+});
+
+// 3. ResetPasswordPage (SupabaseService.updatePassword), then sign out
 await supabase.auth.updateUser(UserAttributes(password: newPassword));
+await supabase.auth.signOut();
 ```
 
 ### Submissions, cases and suggestions (admin)
@@ -445,6 +470,7 @@ await supabase.rpc('accept_suggested_matches', params: {
 | `20261005163000_review_and_cases.sql` | Submission review (`reviewstatus`, reviewer, reason, duplicates), admin action functions for cases and assignments, `list_cases`, `list_case_assignments`, filters on `list_submissions`; Pending tile counts submissions waiting for review; activity feed shows ADD / REJ / DUP |
 | `20261005203000_case_events_and_leads.sql` | `caseevent` history table written by triggers; lead investigator (`caseassignment.islead`, `set_case_lead`); `set_case_status` (investigators may move open ↔ under review); verified detections (`detection.verified`, `verify_detection`); `list_case_events` |
 | `20261005203100_submission_views_and_ai.sql` | AI fields (`media.aidescription`, `crimescene.aisummary` + status), GPS and `locationkey` on `crimescene`; `list_submissions` and `list_cases` page with a cursor and return the AI summary, chips and case previews; `list_location_groups`, `list_linked_groups`, `list_incident_media`; suggestions (`match_incidents`, `suggest_incidents_for_case`, `suggest_cases_for_incident`) and the one-tap review (`list_suggested_matches`, `accept_suggested_matches`) |
+| `20261006081759_remote_schema.sql` | Re-sync pulled from Supabase Cloud (`supabase db pull`): re-creates the existing functions as they are on the live database, drops and re-adds the check constraints on `caseassignment`, `crimescene`, `crossreferencelink`, `detection` and `media`, adds the unique constraint on `"User".username` and makes `"User".authid` **`NOT NULL`** (see the note on `authid` above) |
 | `20261006090000_suspect_review_and_case_cards.sql` | Suspect review for POPIA: `detection.suspectstatus` (`possible` / `confirmed` / `dismissed`) with reviewer, time and reason; only assigned investigators confirm or dismiss (`review_possible_suspect`, `update_suspect_details`), admins or investigators undo (`undo_suspect_review`); admins lose direct write access to `suspect`; suspect decisions logged in `caseevent`. `list_submissions` and `list_cases` return `possiblesuspects` / `confirmedsuspects`; `case_card_suggestions` gives each case card its best suggested submission and most relevant plate |
 
 ---
@@ -564,8 +590,10 @@ What exists today, so nobody builds on something that isn't there yet:
 | Part | State |
 |---|---|
 | Login / registration (citizen) | Live on Supabase Auth |
+| Forgot password / reset password | Live: emailed reset link opens the app's New Password screen (see [Setting and resetting passwords](#setting-and-resetting-passwords)). Needs custom SMTP before real users rely on it |
 | Admin dashboard: Overview, Cases, Detectives, Submissions | Live on the database (review, cases, assignments, suggestions, history) |
-| Citizen upload / My submissions / Profile | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
+| Citizen profile | Live: reads and saves email, phone number and residence (`getMyCitizenProfile`, `updateMyCitizenProfile`); a new email applies once the citizen confirms it |
+| Citizen upload / My submissions | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
 | Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again |
 | Suspect review (POPIA) | **Database ready** (`review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`, logged in `caseevent`); admin cards show possible / confirmed counts. Confirming needs the investigator screens |
 | Creating investigator accounts from the app | **Not built yet**: needs the `create-investigator` Edge Function |
@@ -578,9 +606,10 @@ What exists today, so nobody builds on something that isn't there yet:
 
 * **`create-investigator` Edge Function** — needed for the admin "add investigator" screen. It goes in `database/supabase/functions/create-investigator/index.ts` (the Supabase CLI deploys functions from `supabase/functions/`) and is deployed with `supabase functions deploy create-investigator`.
 * **AI pipeline** — see [The AI pipeline: what it writes](#the-ai-pipeline-what-it-writes).
-* **Citizen app on the database** — the citizen upload, My submissions and profile pages still use a local demo store (`mobile/argus_shield/lib/citizen/citizen_store.dart`). They should insert `crimescene` + `media` rows (with the phone's GPS in `latitude`/`longitude`), upload the file to Storage, and read the citizen's own rows back (RLS already limits them to their own).
+* **Citizen app on the database** — the profile page is live, but the citizen upload and My submissions pages still use a local demo store (`mobile/argus_shield/lib/citizen/citizen_store.dart`). They should insert `crimescene` + `media` rows (with the phone's GPS in `latitude`/`longitude`), upload the file to Storage, and read the citizen's own rows back (RLS already limits them to their own).
 * **Storage bucket for footage** — `media.storagepath` expects files in Supabase Storage, but no bucket or storage policies exist yet.
-* **Email** — custom SMTP provider and the Reset Password template with `{{ .Token }}`.
+* **Email** — a custom SMTP provider (Authentication → Emails → SMTP Settings), so reset and confirmation emails reach real users.
+* **Deleted logins** — decide whether `"User".authid` should be nullable again. `20261006081759_remote_schema.sql` made it `NOT NULL`, which clashes with `ON DELETE SET NULL`: deleting a login that has a profile now fails instead of keeping the profile for the evidence trail. If the old behaviour is wanted, add a migration with `ALTER TABLE public."User" ALTER COLUMN authid DROP NOT NULL;`. **Until this is decided, don't delete users under Authentication → Users**; nothing in the app deletes logins, so everything else works normally.
 * **Registration fields** — there is no registration wireframe yet. If citizens need more than residence (e.g. ID number, suburb, city), add columns to `citizen` in a new migration.
 * **ERD** — update `diagrams/ERD.png`: add `citizen`, `investigator`, `cases`, `caseevent` and `weapondetail`; `caseassignment` now points at `cases` (with `islead`); `crimescene` has `caseid`, the review columns, GPS and the AI summary; remove `fullName`, `passwordHash` and `badgeNumber` from USER.
 * **Case summary** — a de-duplicated vehicle / suspect / weapon summary on the case page ("at least 2 handguns", "Blue BMW, seen in 6 videos"), built from the detections with the same "most seen at once in one video" rule as the submission cards.

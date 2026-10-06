@@ -137,6 +137,7 @@ database/
         ├── 20261005163000_review_and_cases.sql         ← accept / reject / duplicate, case actions
         ├── 20261005203000_case_events_and_leads.sql    ← case history, lead investigator, case status rules
         ├── 20261005203100_submission_views_and_ai.sql  ← AI fields, paging, grouping, suggestions, one-tap review
+        ├── 20261006081759_remote_schema.sql            ← re-sync pulled from Supabase Cloud (authid now NOT NULL)
         └── 20261006090000_suspect_review_and_case_cards.sql ← possible / confirmed suspects (POPIA), case card suggestions
 ```
 
@@ -407,10 +408,11 @@ Full details, including Flutter code and the complete permission table, are in [
 ## How accounts are created
 
 * **Citizens** register in the app (`supabase.auth.signUp`), sending their username, name, phone number and residence. A database trigger creates their `"User"` and `citizen` rows. **App sign-ups are always citizens.** A role sent from the app is ignored.
-* **Investigators** do not register themselves. An admin will create them from the admin screen through the `create-investigator` Edge Function, which emails them a code to set their own password. *(The Edge Function is not built yet; until then investigator accounts are created by the database owner, and the investigator screens themselves are still to come.)*
+* **Investigators** do not register themselves. An admin will create them from the admin screen through the `create-investigator` Edge Function, after which they set their own password with the same reset link as **Forgot password?**. *(The Edge Function is not built yet; until then investigator accounts are created by the database owner, and the investigator screens themselves are still to come.)*
 * **Admins** are set up manually by the database owner (see `database/README.md`).
 * **Login** uses a **username**. The app looks up the matching email with `email_for_username`, then signs in with email + password and reads `role` to choose the dashboard.
-* **Deleted accounts:** if a login is deleted, the profile row is kept (with `authid` empty) so the evidence trail on cases and uploads is preserved.
+* **Forgot password** emails a reset link (`argusshield://reset-password`). Tapping it on the same phone opens the app on a "New Password" screen; after saving, the user is signed out and logs in again. The link must be listed under **Authentication → URL Configuration → Redirect URLs** in Supabase. Details: [`database/README.md`](./database/README.md#setting-and-resetting-passwords).
+* **Deleted accounts:** the intent is that when a login is deleted, the profile row is kept (with `authid` empty) so the evidence trail on cases and uploads is preserved. *Currently blocked:* migration `20261006081759_remote_schema.sql` made `authid` `NOT NULL`, so deleting a login with a profile fails (see [TODO: other](#todo-other)).
 
 ## Who can see and do what (row-level security)
 
@@ -459,6 +461,10 @@ final profile = await supabase
     .eq('authid', supabase.auth.currentUser!.id)
     .single();
 // profile['role'] -> 'admin' | 'investigator' | 'citizen'
+
+// Forgot password: emails a link that opens the app (see database/README.md)
+await supabase.auth.resetPasswordForEmail(email,
+    redirectTo: 'argusshield://reset-password');
 
 // Reads are filtered automatically by RLS.
 // Most screens call database functions instead of reading tables directly,
@@ -653,8 +659,10 @@ Argus Shield is currently under active research and development.
 | Part | State |
 |---|---|
 | Login / registration (citizen) | Live on Supabase Auth |
+| Forgot password / reset password | Live: emailed reset link opens the app's New Password screen. Needs a custom SMTP provider before real users rely on it |
 | Admin dashboard: Overview, Cases, Detectives, Submissions | Live on the database (review, cases, assignments, suggestions, history) |
-| Citizen upload / My submissions / Profile | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
+| Citizen profile | Live: email, phone number and residence are read from and saved to Supabase |
+| Citizen upload / My submissions | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
 | Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again (see [TODO: investigator app](#todo-investigator-app)) |
 | Suspect review (POPIA) | **Database ready**: possible / confirmed / dismissed suspects, only assigned investigators confirm, every decision logged. Admin case cards and submission cards show the counts. Confirming in the app waits for the investigator screens |
 | Creating investigator accounts from the app | **Not built yet**: needs the `create-investigator` Edge Function |
@@ -699,7 +707,9 @@ The investigator screens are not built yet. Investigators **work** their cases: 
 
 - [ ] `create-investigator` Edge Function (admin creates investigator accounts from the app)
 - [ ] Supabase Storage bucket and policies for footage
-- [ ] Citizen upload / My submissions / Profile on the database instead of the local demo store
+- [ ] Citizen upload / My submissions on the database instead of the local demo store (the profile is already live)
+- [ ] Custom SMTP provider in Supabase so reset and confirmation emails reach real users
+- [ ] Decide whether `"User".authid` should be nullable again so deleting a login keeps the profile (see [`database/README.md`](./database/README.md#still-to-do)). Until then, don't delete users in the Supabase dashboard
 - [ ] AI / computer vision pipeline (`ai/`), writing what [`database/README.md`](./database/README.md#the-ai-pipeline-what-it-writes) describes
 - [ ] Update the ERD (`diagrams/`) with the new tables and columns, including `detection.suspectstatus`
 
