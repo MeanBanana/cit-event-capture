@@ -191,7 +191,7 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
     final searchable = _view != SubmissionView.linked;
 
     return Padding(
-      padding: AppSpacing.page,
+      padding: AppSpacing.tab,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -866,7 +866,7 @@ class _SubmissionListPageState extends State<SubmissionListPage> {
     return Scaffold(
       appBar: const ArgusAppBar(roleLabel: 'Admin'),
       body: Padding(
-        padding: AppSpacing.page,
+        padding: AppSpacing.tab,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

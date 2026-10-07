@@ -30,7 +30,8 @@ database/
 └── supabase/                  ← run all Supabase CLI commands from database/
     ├── config.toml            ← Supabase CLI project configuration
     ├── migrations/            ← SQL migrations, applied in timestamp order
-    └── functions/             ← Edge Functions (planned — see "Still to do")
+    └── functions/             ← Edge Functions (see "Creating investigator accounts")
+        └── create-investigator/index.ts
 ```
 
 Never put passwords, the database password, the service role / secret key or any other credential in this folder.
@@ -124,7 +125,7 @@ Our tables never store passwords or login tokens. Supabase Auth keeps them in it
 | Account | How it is created | What the database does |
 |---|---|---|
 | **Citizen** | Registers in the app with `supabase.auth.signUp(...)`, sending `username`, `firstname`, `surname`, `phonenumber`, `residence` as sign-up data | The `on_auth_user_created` trigger creates the `"User"` row and the `citizen` row. **App sign-ups are always citizens** — a role sent from the app is ignored |
-| **Investigator** | An admin fills in the "add investigator" screen, which calls the `create-investigator` Edge Function (see [Still to do](#still-to-do)) | The Edge Function creates the login with the service key and puts `role: investigator` in `app_metadata`, which only the service key can set. The trigger then creates the `"User"` and `investigator` rows. The investigator then sets their own password through the same reset link as **Forgot password?** (see below) |
+| **Investigator** | An admin taps **+ New investigator** on the Investigators tab and fills in the popup, which calls the `create-investigator` Edge Function (see [Creating investigator accounts](#creating-investigator-accounts)) | The Edge Function creates the login with the service key and puts `role: investigator` in `app_metadata`, which only the service key can set. The trigger then creates the `"User"` and `investigator` rows. The investigator then sets their own password through the same reset link as **Forgot password?** (see below) |
 | **Admin** | Manually, by the database owner (see below) | — |
 
 **Creating an admin** (one-time, by the database owner):
@@ -139,6 +140,27 @@ Our tables never store passwords or login tokens. Supabase Auth keeps them in it
      WHERE email = 'person@example.com';
    ```
    The `DELETE` must run first — the database will not change the role while a citizen row exists.
+
+### Creating investigator accounts
+
+`functions/create-investigator/index.ts` runs on Supabase's servers, so the service key never goes into the app:
+
+1. It reads the caller's login token and checks their `"User".role` is `admin` (anyone else gets "Only a system administrator can add investigators.").
+2. It checks the form (same rules as the app), then that the username (`username_available`) and badge number are free.
+3. `auth.admin.createUser` with `email_confirm: true`, `app_metadata: { role: "investigator" }` and the form fields in `user_metadata` (`username`, `firstname`, `surname`, `phonenumber`, `rank`, `badgenumber`, `station`, `unit`). The `on_auth_user_created` trigger makes the `"User"` and `investigator` rows.
+4. It returns `{ userid, email }`. Errors come back as `{ error: "message" }`, which the app shows as they are.
+
+The account has **no password**. The investigator opens the app on their own phone, taps **Forgot password?** and enters their email. (The function does not send the reset email itself, because reset links only open on the phone that asked for them.)
+
+**Deploy** (once, and after every change to the function), from the `database/` folder:
+
+```bash
+supabase login                      # first time only
+supabase link --project-ref tnydrlxptqegzhbvwpcq   # first time only
+supabase functions deploy create-investigator
+```
+
+`config.toml` sets `verify_jwt = false` for this function because it checks the caller itself (step 1). `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to Edge Functions automatically; nothing needs to be added by hand. Until it is deployed, the app shows "This feature is not set up on the server yet." Logs: **Dashboard → Edge Functions → create-investigator → Logs**.
 
 ### Logging in with a username
 
@@ -596,7 +618,7 @@ What exists today, so nobody builds on something that isn't there yet:
 | Citizen upload / My submissions | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
 | Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again |
 | Suspect review (POPIA) | **Database ready** (`review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`, logged in `caseevent`); admin cards show possible / confirmed counts. Confirming needs the investigator screens |
-| Creating investigator accounts from the app | **Not built yet**: needs the `create-investigator` Edge Function |
+| Creating investigator accounts from the app | **Built**: **+ New investigator** on the Investigators tab and the `create-investigator` Edge Function. Must be **deployed** before it works (see [Creating investigator accounts](#creating-investigator-accounts)) |
 | Footage storage | **Not built yet**: no Supabase Storage bucket or storage policies |
 | AI / computer vision pipeline | **Not built yet** (`ai/` is empty). The database is ready for it; demo data stands in for it |
 
@@ -604,7 +626,6 @@ What exists today, so nobody builds on something that isn't there yet:
 
 ## Still to do
 
-* **`create-investigator` Edge Function** — needed for the admin "add investigator" screen. It goes in `database/supabase/functions/create-investigator/index.ts` (the Supabase CLI deploys functions from `supabase/functions/`) and is deployed with `supabase functions deploy create-investigator`.
 * **AI pipeline** — see [The AI pipeline: what it writes](#the-ai-pipeline-what-it-writes).
 * **Citizen app on the database** — the profile page is live, but the citizen upload and My submissions pages still use a local demo store (`mobile/argus_shield/lib/citizen/citizen_store.dart`). They should insert `crimescene` + `media` rows (with the phone's GPS in `latitude`/`longitude`), upload the file to Storage, and read the citizen's own rows back (RLS already limits them to their own).
 * **Storage bucket for footage** — `media.storagepath` expects files in Supabase Storage, but no bucket or storage policies exist yet.

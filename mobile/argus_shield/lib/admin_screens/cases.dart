@@ -163,7 +163,7 @@ class _AdminCasesState extends State<AdminCases> {
   Widget build(BuildContext context) {
     final q = _activeQuery;
     return Padding(
-      padding: AppSpacing.page,
+      padding: AppSpacing.tab,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

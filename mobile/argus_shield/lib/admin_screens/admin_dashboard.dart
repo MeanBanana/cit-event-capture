@@ -48,9 +48,8 @@ class AdminDashboard extends StatelessWidget {
             tabs: [
               Tab(child: _TabLabel('Overview')),
               Tab(child: _TabLabel('Cases')),
-              // "Detectives": shorter than "Investigators", same meaning
-              // (SAPS detectives investigate the cases)
-              Tab(child: _TabLabel('Detectives')),
+              // _TabLabel shrinks "Investigators" slightly if needed.
+              Tab(child: _TabLabel('Investigators')),
               Tab(child: _TabLabel('Submissions')),
             ],
           ),

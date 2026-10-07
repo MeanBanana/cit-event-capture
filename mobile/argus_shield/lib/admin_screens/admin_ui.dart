@@ -168,6 +168,16 @@ class SmallActionButton extends StatelessWidget {
 /// shown as they are.
 String errorText(Object error) {
   if (error is PostgrestException) return error.message;
+  // Edge Functions (e.g. create-investigator) answer { "error": "..." }.
+  if (error is FunctionException) {
+    final details = error.details;
+    if (details is Map && details['error'] is String) {
+      return details['error'] as String;
+    }
+    if (error.status == 404) {
+      return 'This feature is not set up on the server yet.';
+    }
+  }
   return 'Something went wrong. Check your connection and try again.';
 }
 

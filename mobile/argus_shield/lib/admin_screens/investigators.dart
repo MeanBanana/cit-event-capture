@@ -8,6 +8,9 @@
 //   * while searching: searchInvestigators() -> matches by name/badge number
 // The search runs in the database (not on the phone), so it finds any
 // investigator, not only the 20 already on screen.
+//
+// "+ New investigator" opens a popup (NewInvestigatorForm) that creates the
+// account through SupabaseService.createInvestigator.
 
 import 'dart:async';
 
@@ -15,6 +18,9 @@ import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/investigator_summary.dart';
+import 'package:argus_shield/admin_screens/admin_ui.dart';
+import 'package:argus_shield/admin_screens/pickers.dart';
+import 'package:argus_shield/admin_screens/new_investigator_form.dart';
 
 // Other screens (e.g. overview.dart) import InvestigatorSummary from here.
 export 'package:argus_shield/models/investigator_summary.dart';
@@ -108,6 +114,59 @@ class _InvestigatorsState extends State<Investigators> {
     _reload();
   }
 
+  /// Opens the "New investigator" popup. On success: closes it, explains
+  /// how the investigator sets their password, and reloads the list so the
+  /// new account appears at the top.
+  Future<void> _newInvestigator() async {
+    final created = await showAdminSheet<NewInvestigatorDetails>(
+      context,
+      title: 'New investigator',
+      builder: (sheetContext) => NewInvestigatorForm(
+        onCreate: (details) async {
+          await _service.createInvestigator(
+            firstName: details.firstName,
+            surname: details.surname,
+            username: details.username,
+            email: details.email,
+            phone: details.phone,
+            rank: details.rank,
+            badgeNumber: details.badgeNumber,
+            station: details.station,
+            unit: details.unit,
+          );
+          if (sheetContext.mounted) Navigator.pop(sheetContext, details);
+        },
+      ),
+    );
+    if (created == null || !mounted) return;
+
+    // Show the newest accounts again (the new one is first).
+    _searchController.clear();
+    _query = '';
+    _reload();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Account created', style: AppText.cardTitle),
+        content: Text(
+          '${created.firstName} ${created.surname} can now log in with the '
+          'username "${created.username}".\n\n'
+          'To set a password, they open Argus Shield on their own phone, tap '
+          '"Forgot password?" and enter ${created.email}. The reset link only '
+          'works on the phone that asked for it.',
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String get _countText {
     final n = _investigators.length;
     if (_query.trim().isEmpty) {
@@ -121,11 +180,23 @@ class _InvestigatorsState extends State<Investigators> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: AppSpacing.page,
+      padding: AppSpacing.tab,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Title on its own line ("Investigators" is too long to share a
+          // line with the button on a phone), then the add button below it
+          // on the right, styled like "+ New case" on Cases.
           const Text('Investigators', style: AppText.sectionTitle),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: SmallActionButton(
+              label: '+ New investigator',
+              color: AppColors.accent,
+              onPressed: _newInvestigator,
+            ),
+          ),
           const SizedBox(height: AppSpacing.small),
           const Text(
             'Search and review every investigator registered on Argus Shield.',
@@ -200,6 +271,7 @@ class _InvestigatorsState extends State<Investigators> {
     return RefreshIndicator(
       onRefresh: _fetch,
       child: ListView.separated(
+        padding: const EdgeInsets.only(bottom: 12), // gap after the last card
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: _investigators.length,
         separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.medium),

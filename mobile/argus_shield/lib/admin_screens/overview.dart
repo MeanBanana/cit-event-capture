@@ -138,7 +138,9 @@ class _AdminOverviewState extends State<AdminOverview> {
     return RefreshIndicator(
       onRefresh: _fetch,
       child: ListView(
-        padding: AppSpacing.page,
+        // Same side margins as the other admin tabs, plus a little space
+        // under the last card so it isn't flush with the screen edge.
+        padding: AppSpacing.tab.copyWith(bottom: 12),
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           // 1. System status ----------------------------------------------

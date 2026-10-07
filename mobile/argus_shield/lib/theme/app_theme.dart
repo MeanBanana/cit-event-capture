@@ -172,6 +172,11 @@ class AppSpacing {
   /// Padding around the content of every page.
   static const EdgeInsets page = EdgeInsets.all(30);
 
+  /// Padding for the admin dashboard tabs (Overview, Cases, Investigators,
+  /// Submissions): a thin margin so the cards use almost the full screen.
+  /// No bottom padding, so lists scroll right to the bottom edge.
+  static const EdgeInsets tab = EdgeInsets.fromLTRB(12, 12, 12, 0);
+
   static const double small = 10;
   static const double medium = 20;
   static const double large = 30;

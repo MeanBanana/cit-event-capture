@@ -154,6 +154,9 @@ class _PagedListState<T> extends State<PagedList<T>> {
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.builder(
+        // a small gap after the last card, so it isn't flush with the
+        // bottom of the screen
+        padding: const EdgeInsets.only(bottom: 12),
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: offset + _items.length + (showFooter ? 1 : 0),
         itemBuilder: (context, index) {
