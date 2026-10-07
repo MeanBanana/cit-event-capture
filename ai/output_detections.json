@@ -1,0 +1,113 @@
+{
+  "source_path": "image_people_walking.jpeg",
+  "source_type": "image",
+  "processed_at": "2026-10-07T17:38:36.559701",
+  "model_version": "yolo26s+argus_tracker+spectrico-mobilenetv3+fastalpr-cct-s-v2-global-model",
+  "total_objects": 3,
+  "vehicle_count": 0,
+  "person_count": 3,
+  "max_people_at_once": 3,
+  "max_people_time_seconds": 0.0,
+  "people_peak_frame_path": "crops\\people_peak.png",
+  "detections": [
+    {
+      "track_id": 1,
+      "detection_type": "person",
+      "class_name": "person",
+      "confidence": 0.925,
+      "bounding_box": [
+        675.9,
+        689.6,
+        818.0,
+        1008.2
+      ],
+      "frame_number": 1,
+      "frame_time_seconds": 0.0,
+      "first_seen_seconds": 0.0,
+      "last_seen_seconds": 0.0,
+      "frames_seen": 1,
+      "model_version": "yolo26s+argus_tracker+spectrico-mobilenetv3+fastalpr-cct-s-v2-global-model",
+      "face_visible": false,
+      "face_size_px": 28,
+      "face_views": 0,
+      "best_face_time_seconds": null,
+      "upper_clothing": "blue",
+      "upper_clothing_confidence": 1.0,
+      "upper_clothing_top3": {
+        "blue": 1.0
+      },
+      "lower_clothing": "grey",
+      "lower_clothing_confidence": 1.0,
+      "lower_clothing_top3": {
+        "grey": 1.0
+      },
+      "clothing_views": 1
+    },
+    {
+      "track_id": 2,
+      "detection_type": "person",
+      "class_name": "person",
+      "confidence": 0.777,
+      "bounding_box": [
+        492.2,
+        686.7,
+        523.7,
+        788.1
+      ],
+      "frame_number": 1,
+      "frame_time_seconds": 0.0,
+      "first_seen_seconds": 0.0,
+      "last_seen_seconds": 0.0,
+      "frames_seen": 1,
+      "model_version": "yolo26s+argus_tracker+spectrico-mobilenetv3+fastalpr-cct-s-v2-global-model",
+      "face_visible": false,
+      "face_size_px": 0,
+      "face_views": 0,
+      "best_face_time_seconds": null,
+      "upper_clothing": "blue",
+      "upper_clothing_confidence": 1.0,
+      "upper_clothing_top3": {
+        "blue": 1.0
+      },
+      "lower_clothing": "blue",
+      "lower_clothing_confidence": 1.0,
+      "lower_clothing_top3": {
+        "blue": 1.0
+      },
+      "clothing_views": 1
+    },
+    {
+      "track_id": 3,
+      "detection_type": "person",
+      "class_name": "person",
+      "confidence": 0.766,
+      "bounding_box": [
+        434.0,
+        684.7,
+        475.9,
+        784.1
+      ],
+      "frame_number": 1,
+      "frame_time_seconds": 0.0,
+      "first_seen_seconds": 0.0,
+      "last_seen_seconds": 0.0,
+      "frames_seen": 1,
+      "model_version": "yolo26s+argus_tracker+spectrico-mobilenetv3+fastalpr-cct-s-v2-global-model",
+      "face_visible": false,
+      "face_size_px": 0,
+      "face_views": 0,
+      "best_face_time_seconds": null,
+      "upper_clothing": "blue",
+      "upper_clothing_confidence": 1.0,
+      "upper_clothing_top3": {
+        "blue": 1.0
+      },
+      "lower_clothing": "black",
+      "lower_clothing_confidence": 1.0,
+      "lower_clothing_top3": {
+        "black": 1.0
+      },
+      "clothing_views": 1
+    }
+  ]
+}
