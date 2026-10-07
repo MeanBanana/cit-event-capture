@@ -4,6 +4,7 @@ import 'supabase_service.dart';
 import 'saved_contact_details.dart';
 import 'citizen/citizen_home.dart';
 import 'admin_screens/admin_dashboard.dart';
+import 'investigator_dashboard/investigator_dashboard.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
 import 'loadingscreen.dart';
@@ -107,12 +108,14 @@ class _LoginPageState extends State<LoginPage>{
           nextScreen = const CitizenHome();
         case 'admin':
           nextScreen = const AdminDashboard();
+        case 'investigator':
+          nextScreen = const InvestigatorDashboard();
         default:
-          // Investigator screens are not built yet. Sign out again so the
-          // session does not stay open, and return to the login page.
+          // Unknown role: sign out again so the session does not stay
+          // open, and return to the login page.
           await service.logout();
           if (!ctx.mounted) return;
-          message = "Investigator screens are not available yet.";
+          message = "This account has no dashboard. Contact an administrator.";
       }
     }
 

@@ -14,6 +14,7 @@ import 'package:argus_shield/login.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/citizen/citizen_dashboard.dart';
 import 'package:argus_shield/admin_screens/admin_dashboard.dart';
+import 'package:argus_shield/investigator_dashboard/investigator_dashboard.dart';
 
 /// Returns a canned login result instead of calling Supabase.
 class FakeSupabaseService extends SupabaseService {
@@ -126,16 +127,28 @@ void main() {
     });
   }
 
-  testWidgets('an investigator is signed out again (no screens yet)',
+  testWidgets('an investigator is taken to the investigator dashboard',
       (tester) async {
     final service = FakeSupabaseService(successFor('investigator'));
     await logIn(tester, service);
+    expect(find.text('Welcome Thandi'), findsOneWidget);
+
+    await finishLoading(tester);
+    expect(find.byType(InvestigatorDashboard), findsOneWidget);
+    expect(find.byType(CitizenDashboard), findsNothing);
+    expect(find.byType(AdminDashboard), findsNothing);
+    expect(find.byType(LoginPage), findsNothing);
+    expect(service.logoutCalls, 0);
+  });
+
+  testWidgets('an unknown role is signed out again', (tester) async {
+    final service = FakeSupabaseService(successFor('visitor'));
+    await logIn(tester, service);
     expect(service.logoutCalls, 1);
-    expect(find.text('Investigator screens are not available yet.'),
+    expect(find.text('This account has no dashboard. Contact an administrator.'),
         findsOneWidget);
 
     await finishLoading(tester);
-    expect(find.byType(AdminDashboard), findsNothing);
     expect(find.byType(CitizenDashboard), findsNothing);
     expect(find.byType(LoginPage), findsOneWidget);
   });

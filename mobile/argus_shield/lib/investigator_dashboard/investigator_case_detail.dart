@@ -5,7 +5,6 @@ import 'package:argus_shield/models/crime_scene_summary.dart';
 import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/theme/app_theme.dart';
-import 'package:argus_shield/theme/argus_widgets.dart';
 
 /// Assigned-case brief for investigators. Administrative review and
 /// assignment controls are intentionally omitted from this surface.
