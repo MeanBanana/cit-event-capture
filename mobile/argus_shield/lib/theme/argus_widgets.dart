@@ -66,12 +66,14 @@ class RoleAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String roleLabel;
   final RoleMarker marker;
   final PreferredSizeWidget? bottom;
+  final List<Widget>? actions;
 
   const RoleAppBar({
     super.key,
     required this.roleLabel,
     this.marker = RoleMarker.circle,
     this.bottom,
+    this.actions,
   });
 
   static const double _toolbarHeight = 76;
@@ -105,6 +107,7 @@ class RoleAppBar extends StatelessWidget implements PreferredSizeWidget {
           const Text('Argus Shield', style: AppText.appTitle),
         ],
       ),
+      actions: actions,
       bottom: bottom,
     );
   }

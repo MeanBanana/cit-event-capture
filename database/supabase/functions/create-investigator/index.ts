@@ -16,7 +16,8 @@
 //   4. auth.admin.createUser with role 'investigator' in app_metadata (only
 //      the service key can set that). The on_auth_user_created trigger then
 //      creates the "User" and investigator rows from user_metadata.
-//   5. Returns { userid, email }.
+//   5. Makes sure the rows are investigator rows (see step 5 below), then
+//      returns { userid, email }.
 //
 // The account has no password. The investigator sets one on their own phone
 // with "Forgot password?" on the login page (reset links only open on the
@@ -174,12 +175,57 @@ Deno.serve(async (req) => {
     return fail(500, "The account could not be created. Try again.");
   }
 
-  // ---- 5. Return the new "User".userid (made by the trigger). -------------
-  const { data: row } = await admin
-    .from("User")
-    .select("userid")
-    .eq("authid", created.user.id)
-    .maybeSingle();
+  // ---- 5. Make sure the rows are investigator rows. ------------------------
+  // Supabase Auth saves a new login in two steps: it INSERTs the auth.users
+  // row first and adds app_metadata (our role) a moment later. The sign-up
+  // trigger runs on the INSERT, sees no role yet and makes a CITIZEN. The
+  // on_auth_user_role_set trigger (migration 20261007120000) normally fixes
+  // that straight away; this step makes sure of it, so the account is right
+  // even if that migration has not been run on the database.
+  const authId = created.user.id;
 
-  return reply(201, { userid: row?.userid ?? null, email });
+  // Removes the half-made account so the admin can simply try again.
+  const undo = async (userid?: number) => {
+    if (userid != null) await admin.from("User").delete().eq("userid", userid);
+    await admin.auth.admin.deleteUser(authId);
+  };
+
+  const { data: row, error: rowError } = await admin
+    .from("User")
+    .select("userid, role")
+    .eq("authid", authId)
+    .maybeSingle();
+  if (rowError || !row) {
+    console.error("User row missing after createUser", rowError);
+    await undo();
+    return fail(500, "The account could not be created. Try again.");
+  }
+
+  if (row.role !== "investigator") {
+    const steps = [
+      () => admin.from("citizen").delete().eq("userid", row.userid),
+      () => admin.from("User").update({ role: "investigator" }).eq("userid", row.userid),
+      () =>
+        admin.from("investigator").insert({
+          userid: row.userid,
+          rank: rank || null,
+          badgenumber,
+          station,
+          unit: unit || null,
+        }),
+    ];
+    for (const step of steps) {
+      const { error } = await step();
+      if (error) {
+        console.error("Could not make the account an investigator", error);
+        await undo(row.userid);
+        if (error.code === "23505") {
+          return fail(409, "The username or badge number is already in use.");
+        }
+        return fail(500, "The account could not be created. Try again.");
+      }
+    }
+  }
+
+  return reply(201, { userid: row.userid, email });
 });
