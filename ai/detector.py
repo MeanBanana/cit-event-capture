@@ -1,7 +1,7 @@
 """
-detector.py - finds vehicles and people in a video (or a single photo),
-follows each one from frame to frame, and works out each vehicle's MAKE
-(brand) and COLOUR. Photos: see process_image.
+detector.py - finds vehicles, people and weapons in a video (or a single
+photo), follows each one from frame to frame, and works out each vehicle's
+MAKE (brand) and COLOUR. Photos: see process_image. Weapons: see weapons.py.
 
 How it works, in plain English:
 
@@ -61,6 +61,12 @@ except ImportError as error:          # MNN not installed
     def sharpness(bgr_crop):          # same measure, without the models
         grey = cv2.resize(cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY), (224, 224))
         return float(cv2.Laplacian(grey, cv2.CV_64F).var())
+
+try:
+    from weapons import WeaponFinder
+except ImportError as error:          # weapons.py missing
+    WeaponFinder = None
+    _WEAPON_IMPORT_ERROR = error
 
 try:
     from plate_reader import PlateReader, PlateVotes
@@ -218,6 +224,42 @@ def load_image(path):
         return frame
 
 
+def drop_duplicate_people(detections, inside=0.9, same_height=0.1):
+    """Removes a second box around the SAME person.
+
+    The detector sometimes draws two boxes on one person: one tight around
+    the body and a wider one that also covers outstretched arms (e.g. aiming
+    a rifle). They share the same top and bottom. A real second person
+    standing behind someone has a different top/bottom (they look smaller),
+    so they are kept.
+
+    detections: [(id, class_id, confidence, [x1, y1, x2, y2]), ...]
+    A person box is dropped when it lies at least `inside` (90%) within a
+    surer person box AND their tops and bottoms are within `same_height`
+    (10%) of the box height of each other.
+    """
+    people = [d for d in detections if d[1] == PERSON_CLASS]
+    others = [d for d in detections if d[1] != PERSON_CLASS]
+    kept = []
+    for det in sorted(people, key=lambda d: -d[2]):          # surest first
+        x1, y1, x2, y2 = det[3]
+        area = max(1e-6, (x2 - x1) * (y2 - y1))
+        duplicate = False
+        for k in kept:
+            kx1, ky1, kx2, ky2 = k[3]
+            ix = max(0.0, min(x2, kx2) - max(x1, kx1))
+            iy = max(0.0, min(y2, ky2) - max(y1, ky1))
+            small = min(area, (kx2 - kx1) * (ky2 - ky1))
+            h = max(y2 - y1, ky2 - ky1)
+            if (ix * iy >= inside * small and abs(y1 - ky1) <= same_height * h
+                    and abs(y2 - ky2) <= same_height * h):
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(det)
+    return others + kept
+
+
 def _boxed(frame, boxes):
     """A copy of the frame with an orange box around each [x1, y1, x2, y2]."""
     picture = frame.copy()
@@ -256,6 +298,16 @@ class ArgusDetector:
             print(f"Face finding not available ({error}). "
                   "People will have no pictures.")
 
+        # Weapon finder (handgun / long gun / knife / machete). Optional.
+        self.weapons = None
+        if WeaponFinder is None:
+            print(f"Weapon detection not available ({_WEAPON_IMPORT_ERROR}).")
+        else:
+            try:
+                self.weapons = WeaponFinder()     # own tracker settings
+            except Exception as error:   # model download failed, etc.
+                print(f"Weapon detection not available ({error}).")
+
         # Stats about the last video (e.g. most people at once).
         self.last_run_stats = {}
 
@@ -278,21 +330,31 @@ class ArgusDetector:
                  "spectrico-mobilenetv3" if self.classifier is not None else "kmeans-colour"]
         if self.plates is not None:
             parts.append(self.plates.version)
+        if self.weapons is not None:
+            parts.append(self.weapons.version)
         return "+".join(parts)
 
     def process_video(self, video_path, sample_every=1, min_conf=0.4,
                       min_frames=3, min_vehicle_size=60, min_sharpness=15,
                       classify_every=3, min_answer_share=0.4,
-                      min_person_height=80, min_face_px=36, crops_dir=None):
-        """Finds, tracks and identifies the vehicles and people in a video.
+                      min_colour_size=30, min_make_size=120, min_make_share=0.6,
+                      min_person_height=80, min_face_px=36, weapon_every=2,
+                      crops_dir=None):
+        """Finds, tracks and identifies the vehicles, people and weapons in a video.
 
         sample_every      look at every Nth frame. 1 = every frame (best
                           tracking); 2 = about twice as fast.
         min_conf          ignore boxes YOLO is less than this sure about.
         min_frames        drop objects seen in fewer frames than this
                           (usually a mistake that lasted a moment).
-        min_vehicle_size  only judge make / colour when the vehicle box is at
-                          least this many pixels wide and high.
+        min_vehicle_size  only read plates when the vehicle box is at least
+                          this many pixels wide and high.
+        min_colour_size   judge colour from this size (pixels) up.
+        min_make_size     judge make only from this size up (badges and
+                          grilles need detail).
+        min_make_share    report a make only with at least this share of the
+                          evidence (stricter than colour); otherwise
+                          "unsure", guesses kept in make_top3.
         min_sharpness     skip pictures blurrier than this for make / colour
                           (see vehicle_classifier.sharpness).
         classify_every    judge each vehicle's make / colour on every Nth
@@ -309,6 +371,9 @@ class ArgusDetector:
         min_face_px       a person's picture is only saved if their face is
                           at least this many pixels tall in some frame (about
                           5 m away on 1080p phone video).
+        weapon_every      look for weapons on every Nth sampled frame (the
+                          weapon model is a second model, so this halves its
+                          cost; 1 = every frame, finds brief glimpses better).
         crops_dir         if given, save PNG pictures there: each vehicle's
                           clearest view, plate close-ups, and each person
                           whose face is visible (person_<id>.png + face_<id>.png),
@@ -316,6 +381,9 @@ class ArgusDetector:
 
         Returns a list with ONE dictionary per tracked object.
         """
+        # Fresh tracker for every video: when several files are processed in
+        # one run (a submission), IDs must not carry over from the last video.
+        self.model.predictor = None
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             raise FileNotFoundError(f"Could not open video: {video_path}")
@@ -324,6 +392,9 @@ class ArgusDetector:
         tracks = {}        # track_id -> everything we learn about that object
         frame_number = 0
         most_people, most_people_time, peak_frame = 0, None, None
+        if self.weapons is not None:
+            self.weapons.reset()
+        sampled = 0
 
         while True:
             ok, frame = cap.read()
@@ -334,6 +405,7 @@ class ArgusDetector:
                 continue                  # skip frames we don't sample
 
             frame_time = round(frame_number / fps, 2)
+            sampled += 1
 
             # track() = detect + match with earlier frames.
             # persist=True tells it this frame follows the previous one.
@@ -347,33 +419,42 @@ class ArgusDetector:
 
             boxes = results.boxes
             if boxes is None or boxes.id is None:
-                continue                  # nothing being tracked in this frame
+                detections = []           # nothing being tracked in this frame
+            else:
+                detections = [
+                    (int(track_id), int(box.cls[0]), float(box.conf[0]),
+                     [round(float(v), 1) for v in box.xyxy[0]])
+                    for box, track_id in zip(boxes, boxes.id)]
 
-            detections = [
-                (int(track_id), int(box.cls[0]), float(box.conf[0]),
-                 [round(float(v), 1) for v in box.xyxy[0]])
-                for box, track_id in zip(boxes, boxes.id)]
-
+            detections = drop_duplicate_people(detections)
             people_now = self._learn_from_frame(
                 frame, frame_number, frame_time, detections, tracks,
                 min_conf=min_conf, min_vehicle_size=min_vehicle_size,
+                min_colour_size=min_colour_size, min_make_size=min_make_size,
                 min_sharpness=min_sharpness, classify_every=classify_every,
                 min_person_height=min_person_height, min_face_px=min_face_px,
                 keep_crops=bool(crops_dir), cut_off_weight=0.0)
+
+            # Weapons (a separate model with its own tracker). Even frames
+            # with no person are checked: the gun may be all that's visible.
+            if self.weapons is not None and (sampled - 1) % weapon_every == 0:
+                self.weapons.add_frame(frame, frame_number, frame_time, people_now)
 
             # Most people visible at the same time (the safe people count).
             if len(people_now) > most_people:
                 most_people, most_people_time = len(people_now), frame_time
                 if crops_dir:
-                    peak_frame = _boxed(frame, people_now)
+                    peak_frame = _boxed(frame, [box for _, box in people_now])
 
         cap.release()
         return self._finish(tracks, min_frames, min_answer_share, most_people,
                             most_people_time, peak_frame, crops_dir,
-                            min_plate_reads=2)
+                            min_plate_reads=2, weapon_min_frames=3,
+                            min_make_share=min_make_share)
 
     def process_image(self, image_path, min_conf=0.4, min_vehicle_size=60,
                       min_sharpness=15, min_answer_share=0.4,
+                      min_colour_size=30, min_make_size=120, min_make_share=0.6,
                       min_person_height=80, min_face_px=36, crops_dir=None):
         """The same as process_video, for ONE photo (JPEG, PNG, WebP, ...;
         see load_image).
@@ -403,20 +484,29 @@ class ArgusDetector:
                                    [round(float(v), 1) for v in box.xyxy[0]]))
 
         tracks = {}
+        if self.weapons is not None:
+            self.weapons.reset()
+        detections = drop_duplicate_people(detections)
         people_now = self._learn_from_frame(
             frame, 1, 0.0, detections, tracks,
             min_conf=min_conf, min_vehicle_size=min_vehicle_size,
+                min_colour_size=min_colour_size, min_make_size=min_make_size,
             min_sharpness=min_sharpness, classify_every=1,
             min_person_height=min_person_height, min_face_px=min_face_px,
             keep_crops=bool(crops_dir), cut_off_weight=0.5)
 
-        peak_frame = _boxed(frame, people_now) if crops_dir and people_now else None
+        if self.weapons is not None:
+            self.weapons.add_image(frame, people_now)
+        peak_frame = (_boxed(frame, [box for _, box in people_now])
+                      if crops_dir and people_now else None)
         return self._finish(tracks, 1, min_answer_share, len(people_now),
                             0.0 if people_now else None, peak_frame, crops_dir,
-                            min_plate_reads=1)
+                            min_plate_reads=1, weapon_min_frames=1,
+                            min_make_share=min_make_share)
 
     def _learn_from_frame(self, frame, frame_number, frame_time, detections,
                           tracks, min_conf, min_vehicle_size, min_sharpness,
+                          min_colour_size, min_make_size,
                           classify_every, min_person_height, min_face_px,
                           keep_crops, cut_off_weight):
         """Adds what one picture shows to each object's record in `tracks`.
@@ -424,7 +514,8 @@ class ArgusDetector:
         detections      [(track_id, class_id, confidence, [x1, y1, x2, y2]), ...]
         cut_off_weight  how much a vehicle touching the picture's edge counts
                         for make / colour (0 = not at all).
-        Returns the boxes of the people in this picture (for the people count).
+        Returns [(track_id, box)] for the people in this picture (for the
+        people count and for linking weapons to the person holding them).
         """
         people_now = []
         for track_id, class_id, confidence, xyxy in detections:
@@ -432,7 +523,7 @@ class ArgusDetector:
                 continue
             is_vehicle = class_id in VEHICLE_CLASSES
             if class_id == PERSON_CLASS:
-                people_now.append(xyxy)
+                people_now.append((track_id, xyxy))
 
             # First time we see this object: start its record.
             if track_id not in tracks:
@@ -442,7 +533,8 @@ class ArgusDetector:
                     "make_scores": None,        # summed make probabilities
                     "colour_scores": None,      # summed colour probabilities
                     "colour_votes": Counter(),  # only for the k-means fallback
-                    "views_used": 0,            # frames that judged make/colour
+                    "views_used": 0,            # frames that judged colour
+                    "make_views": 0,            # frames close/sharp enough for make
                     "plate_votes": PlateVotes() if PlateVotes else None,
                     "person": None if is_vehicle else PersonRecord(),
                     "first_seen_seconds": frame_time,
@@ -480,19 +572,26 @@ class ArgusDetector:
                                          self.faces, min_face_px=min_face_px)
                 continue
 
-            # ---- vehicles: make + colour + plate
-            if width < min_vehicle_size or height < min_vehicle_size:
+            # ---- vehicles: colour, plate, make - each needs a different
+            # amount of detail, so each has its own minimum size:
+            #   colour  >= min_colour_size (30 px): a colour survives blur and
+            #           small size, so far-away cars still get one
+            #   plate   >= min_vehicle_size (60 px) and sharp
+            #   make    >= min_make_size (120 px) and sharp: badges, grilles
+            #           and lights are only a few blurry pixels on smaller cars,
+            #           and a confident WRONG make is worse than "unknown"
+            smallest = min(width, height)
+            if smallest < min_colour_size:
                 continue
             crop = crop_box(frame, xyxy)
             if crop is None:
                 continue
             sharp = sharpness(crop)
-            if sharp < min_sharpness:
-                continue              # too blurry to judge
+            sharp_enough = sharp >= min_sharpness
 
             # Number plate: also fine for a car cut off by the edge, as
             # long as the plate itself is in the picture.
-            if self.plates is not None:
+            if self.plates is not None and smallest >= min_vehicle_size and sharp_enough:
                 for read in self.plates.read(crop):
                     t["plate_votes"].add(read)
 
@@ -501,28 +600,37 @@ class ArgusDetector:
             edge_factor = cut_off_weight if cut_off else 1.0
 
             if self.classifier is not None:
-                weight = view_quality(xyxy, sharp, confidence) * edge_factor
-                make_p = self.classifier.make_probabilities(crop) * weight
-                colour_p = self.classifier.colour_probabilities(crop) * weight
-                t["make_scores"] = make_p if t["make_scores"] is None else t["make_scores"] + make_p
+                # colour: blur doesn't matter much, so no sharpness penalty
+                colour_weight = view_quality(xyxy, 150, confidence) * edge_factor
+                colour_p = self.classifier.colour_probabilities(crop) * colour_weight
                 t["colour_scores"] = colour_p if t["colour_scores"] is None else t["colour_scores"] + colour_p
                 t["views_used"] += 1
+                if smallest >= min_make_size and sharp_enough:
+                    make_weight = view_quality(xyxy, sharp, confidence) * edge_factor
+                    make_p = self.classifier.make_probabilities(crop) * make_weight
+                    t["make_scores"] = make_p if t["make_scores"] is None else t["make_scores"] + make_p
+                    t["make_views"] += 1
             else:
-                colour = vehicle_colour(frame, xyxy)   # k-means fallback
+                colour = vehicle_colour(frame, xyxy, min_size=min_colour_size)   # k-means fallback
                 if colour:
                     t["colour_votes"][colour] += edge_factor
                     t["views_used"] += 1
         return people_now
 
     def _finish(self, tracks, min_frames, min_answer_share, most_people,
-                most_people_time, peak_frame, crops_dir, min_plate_reads):
+                most_people_time, peak_frame, crops_dir, min_plate_reads,
+                weapon_min_frames, min_make_share=0.6):
         """Final list of objects + run stats + saved pictures."""
         objects = self._summarise(tracks, min_frames, min_answer_share,
-                                  min_plate_reads)
+                                  min_plate_reads, min_make_share)
         self.last_run_stats = {
             "max_people_at_once": most_people,
             "max_people_time_seconds": most_people_time,
+            "weapon_detection": self.weapons is not None,
         }
+        if self.weapons is not None:
+            objects += self.weapons.results(weapon_min_frames, min_answer_share,
+                                            crops_dir)
         if crops_dir:
             self._save_crops(tracks, objects, crops_dir)
             if peak_frame is not None:
@@ -539,6 +647,8 @@ class ArgusDetector:
         folder = Path(crops_dir)
         folder.mkdir(parents=True, exist_ok=True)
         for obj in objects:
+            if obj["detection_type"] == "weapon":
+                continue                  # weapons save their own (weapons.py)
             t = tracks[obj["track_id"]]
             if obj["detection_type"] == "person":
                 person_path, face_path = t["person"].save_images(folder, obj["track_id"])
@@ -556,7 +666,7 @@ class ArgusDetector:
                     folder / f"plate_{obj['track_id']}.png")
 
     def _summarise(self, tracks, min_frames, min_answer_share=0.4,
-                   min_plate_reads=2):
+                   min_plate_reads=2, min_make_share=0.6):
         """Turns the per-object records into the final list."""
         objects = []
         for track_id, t in sorted(tracks.items()):
@@ -597,7 +707,9 @@ class ArgusDetector:
                     colour_top = {k: round(v / sum(t["colour_votes"].values()), 2)
                                   for k, v in t["colour_votes"].most_common(3)}
                 # Too little agreement: say "unsure" (None), keep the guesses.
-                if make_share < min_answer_share:
+                # make needs MORE agreement than colour: a wrong brand in a
+                # report sends investigators after the wrong car
+                if make_share < max(min_answer_share, min_make_share):
                     make = None
                 if colour_share < min_answer_share:
                     colour = None
@@ -614,7 +726,8 @@ class ArgusDetector:
                     colour=colour,
                     colour_confidence=colour_share,
                     colour_top3=colour_top,
-                    views_used=t["views_used"],     # frames that judged make/colour
+                    views_used=t["views_used"],     # frames that judged colour
+                    make_views=t["make_views"],     # frames close enough for make (0 = too far)
                 )
 
             objects.append(result)
