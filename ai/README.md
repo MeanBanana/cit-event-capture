@@ -156,12 +156,12 @@ runs: colour falls back to a k-means method and make is left empty.
 
 ## Training the weapon model
 
-`training/train_weapon_model_v2.ipynb` trains our own detector for `handgun`,
+`training/train_weapon_model_v3.ipynb` trains our own detector for `handgun`,
 `long_gun`, `knife` and `machete` on Google Colab's free GPU. No accounts are
 needed apart from Google.
 
 1. Go to <https://colab.research.google.com> → **File → Upload notebook** →
-   choose `ai/training/train_weapon_model_v2.ipynb`.
+   choose `ai/training/train_weapon_model_v3.ipynb`.
 2. **Runtime → Change runtime type → T4 GPU → Save**.
 3. **Runtime → Run all**, allow Google Drive access, and wait (about 3–4 hours).
    If Colab disconnects, **Run all** again: it continues where it stopped
@@ -242,7 +242,7 @@ Tracking", CVPR 2025).
 
 * Check plate accuracy on full-resolution SA footage; if SA plates are misread
   often, fine-tune fast-plate-ocr on labelled SA plate crops
-* Run `training/train_weapon_model_v2.ipynb` on Colab and add the resulting
+* Run `training/train_weapon_model_v3.ipynb` on Colab and add the resulting
   `weapon_models/best.pt` (see "Training the weapon model")
 * Test the sound analysis on real gunfire recordings
 * Save results to Supabase (`detection`, `vehicledetail`) with the service key
