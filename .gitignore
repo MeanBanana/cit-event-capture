@@ -1,1 +1,4 @@
 
+
+# Backend secrets (Supabase service key)
+backend/.env
