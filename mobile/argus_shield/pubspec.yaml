@@ -36,6 +36,8 @@ dependencies:
   # Already installed as part of supabase_flutter; listed so we can import it.
   shared_preferences: ^2.5.5
   image_picker: ^1.1.2
+  # saves case pictures to the phone's gallery (Download button)
+  gal: ^2.3.0
 
 
   # The following adds the Cupertino Icons font to your application.
@@ -79,6 +81,8 @@ flutter:
 # To add assets to your application, add an assets section, like this:
   assets:
     - assets/splash.png
+    # sample AI case evidence (until Supabase stores it): case_evidence_source.dart
+    - assets/sample_case/
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

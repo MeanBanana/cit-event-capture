@@ -83,6 +83,8 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Argus Shield saves case pictures you download to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Argus Shield needs access to your photo library so you can upload photos and videos of incidents.</string>
 	<key>NSCameraUsageDescription</key>

@@ -47,6 +47,7 @@ from pathlib import Path
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 from detector import IMAGE_TYPES, ArgusDetector
+from metadata import file_metadata
 
 try:
     from audio import AudioAnalyser
@@ -130,6 +131,9 @@ def analyse_file(detector, source, crops_dir):
         objects = detector.process_video(source, crops_dir=str(crops_dir))
         sound = analyse_sound(source)
 
+    # where / when it was filmed, from the file itself (None if stripped)
+    meta = file_metadata(source, is_image=is_image)
+
     vehicles = [o for o in objects if o["detection_type"] == "vehicle"]
     people = [o for o in objects if o["detection_type"] == "person"]
     weapons = [o for o in objects if o["detection_type"] == "weapon"]
@@ -138,6 +142,7 @@ def analyse_file(detector, source, crops_dir):
         "source_path": str(source),
         "source_type": "image" if is_image else "video",
         "crops_folder": str(crops_dir),
+        **meta,                  # latitude, longitude, gps_source, capture_time, time_source
         "total_objects": len(objects),
         "vehicle_count": len(vehicles),
         # person_count = different people the tracker followed (can be too
@@ -155,6 +160,13 @@ def analyse_file(detector, source, crops_dir):
 
 
 def print_file_summary(result, vehicles, people, weapons, is_image):
+    if result.get("latitude") is not None:
+        print(f"Filmed at GPS {result['latitude']}, {result['longitude']}"
+              + (f" on {result['capture_time']}" if result.get("capture_time") else ""))
+    elif result.get("capture_time"):
+        print(f"Filmed on {result['capture_time']} (no GPS in the file)")
+    else:
+        print("No GPS or recording time in the file (stripped by WhatsApp / TikTok?)")
     print(f"Found {len(vehicles)} vehicle(s), {len(people)} person(s) "
           f"and {len(weapons)} weapon(s).")
     for v in vehicles:
@@ -248,11 +260,20 @@ def main():
             results.append({"source_path": str(source), "error": str(error)})
 
     ok = [r for r in results if "error" not in r]
+    # The submission's place and time: the first file with GPS, the earliest
+    # recording time. The case system uses these to suggest a case (see
+    # case_matcher.py); without them the app uses the phone's GPS at upload.
+    with_gps = [r for r in ok if r.get("latitude") is not None]
+    times = sorted(r["capture_time"] for r in ok if r.get("capture_time"))
     submission = {
         "submission": number,
         "processed_at": datetime.now().isoformat(),
         "model_version": detector.model_version,
         "file_count": len(files),
+        "location": ({"latitude": with_gps[0]["latitude"],
+                      "longitude": with_gps[0]["longitude"], "source": "file"}
+                     if with_gps else None),
+        "capture_time": times[0] if times else None,
         # totals over all files - note the same person/vehicle filmed in two
         # clips is counted once per clip
         "totals": {

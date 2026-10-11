@@ -130,14 +130,22 @@ def prepare(result, json_path, incident_id, media_ids):
     sub_dir = submission_dir(result, json_path)
     out = copy.deepcopy(result)
     pictures = {}
+    def to_bucket(value):
+        found = _picture(value, sub_dir)
+        if not found:
+            return None
+        bucket_path = f"{folder}/{found[1]}"
+        pictures[bucket_path] = found[0]
+        return bucket_path                      # ready for create_signed_url()
+
     for obj in _picture_fields(out):
         for key, value in obj.items():
             if key.endswith("_path") and key != "source_path":
-                found = _picture(value, sub_dir)
-                if found:
-                    bucket_path = f"{folder}/{found[1]}"
-                    pictures[bucket_path] = found[0]
-                    obj[key] = bucket_path      # ready for create_signed_url()
+                bucket_path = to_bucket(value)
+                if bucket_path:
+                    obj[key] = bucket_path
+            elif key.endswith("_paths") and isinstance(value, list):   # extra_crop_paths
+                obj[key] = [to_bucket(v) or v for v in value]
 
     for f, media_id in zip(out["files"], media_ids):
         f["mediaid"] = int(media_id)

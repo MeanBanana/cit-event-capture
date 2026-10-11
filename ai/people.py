@@ -2,14 +2,17 @@
 people.py - what the pipeline records about each PERSON, for investigators.
 
 For every tracked person this collects, over all the frames they appear in:
-  * their clearest picture, but ONLY if their face is visible and big enough
-    for an investigator to look at (roughly: within ~5 m on normal phone video)
+  * their clearest picture with a face close-up, if their face is visible and
+    big enough for an investigator to look at (roughly: within ~5 m on normal
+    phone video). Without a clear face, detector.py still saves the clearest
+    body view (clothing is evidence too), with no face close-up.
   * their upper and lower clothing colours (AI-suggested, voted over frames)
 
 Privacy (POPIA): this module only FINDS where a face is in the picture so we
 can choose a good frame. It never identifies anyone - no face recognition, no
 comparing faces, no face data stored apart from the picture an investigator
-reviews. Every person is only a "possible suspect" until an investigator on
+reviews. (appearance.py compares clothing / overall look between submissions,
+never faces, and only to SUGGEST a match an admin confirms.) Every person is only a "possible suspect" until an investigator on
 the case decides (see database/README.md, "Suspects and POPIA").
 
 Face finding uses YuNet (MIT licence, from OpenCV's model zoo,

@@ -243,13 +243,16 @@ class WeaponFinder:
     # --- results -----------------------------------------------------------
 
     def results(self, min_frames=3, min_answer_share=0.4, crops_dir=None,
-                max_lone_area=0.15):
+                max_lone_area=0.15, min_lone_frames=5):
         """One dictionary per weapon seen in at least `min_frames` frames.
 
         In videos, a "weapon" that nobody is holding AND that fills more than
         `max_lone_area` of the picture is dropped: that is scenery (the
         trained model once called a long straight road a rifle). A real
-        weapon that big is a close-up, and then someone is holding it."""
+        weapon that big is a close-up, and then someone is holding it.
+        A video "weapon" nobody holds must also be seen in at least
+        `min_lone_frames` frames (a 3-frame "knife" in a street corner was
+        a false alarm)."""
         objects = []
         for weapon_id, r in sorted(self.records.items()):
             if r["frames_seen"] < min_frames:
@@ -260,8 +263,8 @@ class WeaponFinder:
             share = round(weight / total, 2)
             holder_id, holder_frames = (r["holder_votes"].most_common(1)[0]
                                         if r["holder_votes"] else (None, 0))
-            if (holder_id is None and not r.get("photo")
-                    and r["area_share"] > max_lone_area):
+            if holder_id is None and not r.get("photo") and (
+                    r["area_share"] > max_lone_area or r["frames_seen"] < min_lone_frames):
                 continue
             obj = {
                 "track_id": weapon_id,

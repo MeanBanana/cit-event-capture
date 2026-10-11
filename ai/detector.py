@@ -33,6 +33,10 @@ How it works, in plain English:
   7. Each tracked object becomes ONE result. A vehicle's make, colour and
      plate are the answers with the most (weighted) support. Answers with
      too little agreement are reported as None ("unsure").
+  8. Each person and vehicle also gets an APPEARANCE fingerprint from its
+     clearest few views (appearance.py) and up to 3 pictures from different
+     moments, so the case system can suggest the same person / vehicle in
+     another submission.
 
 If the Spectrico models can't be loaded (e.g. MNN isn't installed), the
 detector still runs: colour falls back to our own k-means method
@@ -67,6 +71,12 @@ try:
 except ImportError as error:          # weapons.py missing
     WeaponFinder = None
     _WEAPON_IMPORT_ERROR = error
+
+try:
+    from appearance import AppearanceModel
+except ImportError as error:          # appearance.py missing
+    AppearanceModel = None
+    _APPEARANCE_IMPORT_ERROR = error
 
 try:
     from plate_reader import PlateReader, PlateVotes
@@ -224,6 +234,29 @@ def load_image(path):
         return frame
 
 
+def _keep_view(track, quality, frame_time, crop, keep=12):
+    """Remember one of the track's clearest views (for its appearance
+    fingerprint and extra pictures). Only the `keep` best are held."""
+    views = track["views"]
+    if len(views) >= keep and quality <= views[-1][0]:
+        return
+    views.append((quality, frame_time, crop.copy()))
+    views.sort(key=lambda v: -v[0])
+    del views[keep:]
+
+
+def _spread_views(views, count=6, min_gap=0.4):
+    """The clearest views, at least `min_gap` seconds apart (different
+    moments say more than six copies of the same frame)."""
+    chosen = []
+    for view in views:                    # already clearest first
+        if all(abs(view[1] - c[1]) >= min_gap for c in chosen):
+            chosen.append(view)
+        if len(chosen) == count:
+            break
+    return chosen
+
+
 def drop_duplicate_people(detections, inside=0.9, same_height=0.1):
     """Removes a second box around the SAME person.
 
@@ -308,6 +341,16 @@ class ArgusDetector:
             except Exception as error:   # model download failed, etc.
                 print(f"Weapon detection not available ({error}).")
 
+        # Appearance fingerprints (for matching across submissions). Optional.
+        self.appearance = None
+        if AppearanceModel is None:
+            print(f"Appearance matching not available ({_APPEARANCE_IMPORT_ERROR}).")
+        else:
+            try:
+                self.appearance = AppearanceModel()
+            except Exception as error:   # model download failed, etc.
+                print(f"Appearance matching not available ({error}).")
+
         # Stats about the last video (e.g. most people at once).
         self.last_run_stats = {}
 
@@ -332,6 +375,8 @@ class ArgusDetector:
             parts.append(self.plates.version)
         if self.weapons is not None:
             parts.append(self.weapons.version)
+        if self.appearance is not None:
+            parts.append(self.appearance.version)
         return "+".join(parts)
 
     def process_video(self, video_path, sample_every=1, min_conf=0.4,
@@ -541,6 +586,7 @@ class ArgusDetector:
                     "frames_seen": 0,
                     "best_score": -1.0,
                     "best_crop": None,
+                    "views": [],                # [(quality, time, crop)] clearest few
                 }
             t = tracks[track_id]
             t["frames_seen"] += 1
@@ -570,6 +616,12 @@ class ArgusDetector:
                 if height >= min_person_height and t["person"] is not None:
                     t["person"].add_view(frame, xyxy, confidence, frame_time,
                                          self.faces, min_face_px=min_face_px)
+                    # (cut-off views too, at half weight: in close-up phone
+                    # footage people are often partly out of the picture)
+                    crop = crop_box(frame, xyxy)
+                    if crop is not None:
+                        quality = height * confidence * min(1.0, sharpness(crop) / 150)
+                        _keep_view(t, quality * (0.5 if cut_off else 1.0), frame_time, crop)
                 continue
 
             # ---- vehicles: colour, plate, make - each needs a different
@@ -598,6 +650,7 @@ class ArgusDetector:
             if cut_off and cut_off_weight <= 0:
                 continue              # half a car: make/colour unreliable
             edge_factor = cut_off_weight if cut_off else 1.0
+            _keep_view(t, view_quality(xyxy, sharp, confidence) * edge_factor, frame_time, crop)
 
             if self.classifier is not None:
                 # colour: blur doesn't matter much, so no sharpness penalty
@@ -623,6 +676,10 @@ class ArgusDetector:
         """Final list of objects + run stats + saved pictures."""
         objects = self._summarise(tracks, min_frames, min_answer_share,
                                   min_plate_reads, min_make_share)
+        for obj in objects:              # appearance fingerprints (people, vehicles)
+            views = _spread_views(tracks[obj["track_id"]]["views"])
+            obj["appearance"] = (self.appearance.describe([c for _, _, c in views])
+                                 if self.appearance is not None and views else None)
         self.last_run_stats = {
             "max_people_at_once": most_people,
             "max_people_time_seconds": most_people_time,
@@ -650,16 +707,40 @@ class ArgusDetector:
             if obj["detection_type"] == "weapon":
                 continue                  # weapons save their own (weapons.py)
             t = tracks[obj["track_id"]]
+            # up to 2 more pictures from other moments (for the crops grid)
+            views = _spread_views(t["views"], count=3)
+            extras = []
             if obj["detection_type"] == "person":
                 person_path, face_path = t["person"].save_images(folder, obj["track_id"])
                 if person_path:
                     obj["person_crop_path"], obj["face_crop_path"] = person_path, face_path
+                    face_time = t["person"].best_face_time or 0.0
+                    views = [v for v in views if abs(v[1] - face_time) >= 0.4]   # not the same moment
+                elif views:
+                    # no clear face: still keep the clearest body view (the
+                    # clothing is evidence too); face_crop_path stays empty
+                    path = folder / f"person_{obj['track_id']}.png"
+                    cv2.imwrite(str(path), views[0][2])
+                    obj["person_crop_path"], obj["face_crop_path"] = str(path), None
+                    views = views[1:]
+                else:
+                    views = []
+                for number, (_, _, crop) in enumerate(views[:2], start=2):
+                    path = folder / f"person_{obj['track_id']}_{number}.png"
+                    cv2.imwrite(str(path), crop)
+                    extras.append(str(path))
+                obj["extra_crop_paths"] = extras
                 continue
             crop = t.get("best_crop")
             if crop is not None:
                 path = folder / f"vehicle_{obj['track_id']}.png"
                 cv2.imwrite(str(path), crop)
                 obj["crop_path"] = str(path)
+            for number, (_, _, view) in enumerate(views[1:3], start=2):
+                path = folder / f"vehicle_{obj['track_id']}_{number}.png"
+                cv2.imwrite(str(path), view)
+                extras.append(str(path))
+            obj["extra_crop_paths"] = extras
             votes = t.get("plate_votes")
             if votes is not None and votes.best_image is not None:
                 obj["plate_crop_path"] = votes.save_best_image(

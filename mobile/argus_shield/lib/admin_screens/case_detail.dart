@@ -16,6 +16,9 @@
 //     one. Removing never deletes it: it goes back to "Pending review" and
 //     keeps all its footage and history.
 //   * read the case history (who did what, when)
+//   * read the AI summary and the people / vehicles / weapons the AI found
+//     across all the case's submissions, and open each one's pictures
+//     (case_evidence_section.dart)
 // A closed case can't get new submissions or investigators until reopened.
 
 import 'package:flutter/material.dart';
@@ -27,6 +30,8 @@ import 'package:argus_shield/models/case_assignment_info.dart';
 import 'package:argus_shield/models/crime_scene_summary.dart';
 import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
+import 'package:argus_shield/admin_screens/case_evidence_section.dart';
+import 'package:argus_shield/case_evidence_source.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/review_actions.dart';
 import 'package:argus_shield/admin_screens/submission_detail.dart';
@@ -39,7 +44,13 @@ class CaseDetailPage extends StatefulWidget {
   /// Optional so tests can pass in a fake; the app uses the real service.
   final SupabaseService? service;
 
-  const CaseDetailPage({super.key, required this.caseId, this.service});
+  /// Where the AI's people / vehicles / weapons come from. The app uses
+  /// CaseEvidenceSource.standard; a test that passes a fake [service] gets
+  /// no AI section unless it passes a source here too.
+  final CaseEvidenceSource? evidenceSource;
+
+  const CaseDetailPage(
+      {super.key, required this.caseId, this.service, this.evidenceSource});
 
   /// Status chips: label → database value.
   static const statuses = <(String, String)>[
@@ -427,6 +438,12 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
           ),
         ),
         if (_busy) const LinearProgressIndicator(),
+
+        // ---- AI summary + people / vehicles / weapons ------------------------
+        if (widget.evidenceSource ??
+                (widget.service == null ? CaseEvidenceSource.standard : null)
+            case final source?)
+          CaseEvidenceSection(caseId: c.caseId, source: source),
 
         // ---- Status ----------------------------------------------------------
         const SectionLabel('Status'),

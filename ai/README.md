@@ -150,9 +150,45 @@ video (the sound analysis takes only seconds). To skip a step while testing,
 | Sound | YAMNet scores each 0.48 s of sound for gunfire / explosion; bangs are found where loudness (above 500 Hz) jumps 10 dB+; their spacing gives automatic / semi-automatic / unclear | `audio.py` |
 | People | Most people visible at the same time is counted (safer than counting IDs: someone hidden for a while can come back with a new ID). For each person: upper/lower clothing colours are voted over frames, and a face finder (YuNet) looks for their face; the clearest frame with a face at least 36 px tall and sharp is saved | `people.py`, `colours.py` |
 | Decide | The make / colour with the highest total wins ("soft voting"); objects seen in fewer than 3 frames are dropped | `detector.py` (`_summarise`) |
+| Where / when | GPS and recording time are read from the file itself (video tags or photo EXIF). Missing when WhatsApp / TikTok stripped them; then the app uses the phone's GPS at upload | `metadata.py` |
+| Appearance | Each person and vehicle gets a "fingerprint" of how it looks (512 numbers from YOLO26s-cls + clothing colours) from its clearest views, plus up to 3 pictures from different moments | `appearance.py` |
 
 If the make/colour models can't load (e.g. `MNN` not installed), it still
 runs: colour falls back to a k-means method and make is left empty.
+
+## Cases: linking submissions and combining what they found
+
+`case_matcher.py` does the case side, on the `results.json` files, so it can be
+tried on a laptop before the Supabase part exists (cases are kept in `cases/`):
+
+```powershell
+python case_matcher.py create "crops\submission 1\results.json" --title "N1 Midrand CIT robbery"
+python case_matcher.py suggest "crops\submission 2\results.json"    # which case? (Submissions tab)
+python case_matcher.py add 1 "crops\submission 2\results.json"      # admin accepted it
+python case_matcher.py questions 1                                    # "Is this Person 2?"
+python case_matcher.py confirm 1 s2/f1/person/3 yes                   # or no
+python case_matcher.py show 1
+python case_matcher.py view 1 > case_1_view.json                      # what the app shows
+```
+
+* **Suggest:** a case is suggested when one of its submissions was filmed
+  within **1 km** (GPS) and **14 days** of the new one, or shows the same
+  plate. Extra evidence (same plate, same-looking vehicle or person) raises
+  the score and is listed as reasons. Nothing joins a case until an admin
+  accepts. No GPS in the files? Give the phone's: `--lat -26.0045 --lon 28.1271`.
+* **Merge:** each person / vehicle / weapon of the accepted submission is
+  matched to the case's existing ones. Vehicles: same plate (or one character
+  off with make and colour agreeing) = same vehicle; same make, colour and
+  type without a plate = "Is this Vehicle 2?". People: appearance + clothing,
+  very alike = same person, fairly alike = "Is this Person 2?" (never across
+  more than 12 hours: clothes change). Weapons follow the person holding them.
+  Two people on screen at the same time in one clip are never merged.
+* **Combine:** pictures are added to the matched person's / vehicle's list,
+  and their details are re-voted over all linked views, so a new clip can
+  fill in a plate nobody could read before ("updated" in the view).
+* Person matching was calibrated on only a few clips (same person 0.85-0.95,
+  different people at most 0.79): treat matches as suggestions. Plates are
+  the strongest link. No face recognition is used.
 
 ## Training the weapon model
 
@@ -195,6 +231,9 @@ training data, and train again.
 | `people.py` | Face finding (pictures for investigators), clothing colours |
 | `weapons.py` | Weapon finding (YOLOE or our trained model) + who is holding it |
 | `audio.py` | Gunfire / explosion detection in the sound + automatic vs semi-automatic |
+| `metadata.py` | GPS + recording time from the video / photo file |
+| `appearance.py` | Appearance fingerprint of people and vehicles, and how alike two are |
+| `case_matcher.py` | Suggests cases for submissions; merges accepted submissions into one people / vehicles / weapons list per case |
 | `training/` | Colab notebook that trains the weapon model |
 | `weapon_models/` | Our trained weapon model (`best.pt`, later) + YOLOE's saved prompts |
 | `audio_models/` | YAMNet sound model (converted to ONNX) + class names + licence |
@@ -219,7 +258,10 @@ Sound recognition: **YAMNet** (Apache 2.0, Google),
 Converted to ONNX for this project (no TensorFlow needed); our sound
 preparation matches the original to within 0.0001. Licence in `audio_models/LICENSE`.
 
-Weapons (stopgap): **YOLOE** (Ultralytics, AGPL-3.0), open-vocabulary detection.
+Weapons: our own model (`weapon_models/best.pt`, YOLO26s trained in
+`training/train_weapon_model_v3.ipynb`); **YOLOE** (Ultralytics, AGPL-3.0,
+open-vocabulary detection) is the fallback (`USE_TRAINED_MODEL` in `weapons.py`).
+Appearance fingerprints: **YOLO26s-cls** (Ultralytics, AGPL-3.0, ImageNet).
 Weapon training data: **Subh775/WeaponDetection** (CC BY 4.0, Hugging Face, from a
 Roboflow Universe dataset) and **Open Images V7** (Google; annotations CC BY 4.0).
 
@@ -242,8 +284,10 @@ Tracking", CVPR 2025).
 
 * Check plate accuracy on full-resolution SA footage; if SA plates are misread
   often, fine-tune fast-plate-ocr on labelled SA plate crops
-* Run `training/train_weapon_model_v3.ipynb` on Colab and add the resulting
-  `weapon_models/best.pt` (see "Training the weapon model")
+* Add labelled machete / panga and real CIT pictures to the weapon training
+  data (knives and machetes are the weakest classes)
 * Test the sound analysis on real gunfire recordings
-* Save results to Supabase (`detection`, `vehicledetail`) with the service key
-* Real capture time from the video's metadata
+* Save results to Supabase (`detection`, `vehicledetail`) with the service key,
+  and store each case's combined evidence (`case_matcher.case_view`) there for
+  the app (it shows a bundled sample until then)
+* Calibrate person matching on more clips (same people filmed by two phones)

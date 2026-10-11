@@ -6,6 +6,7 @@
 
 # Output of test runs
 /crops/
+/cases/
 /output_detections.json
 __pycache__/
 

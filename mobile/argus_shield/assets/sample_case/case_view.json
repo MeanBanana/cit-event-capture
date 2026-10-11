@@ -1,0 +1,996 @@
+{
+ "case_id": 1,
+ "title": "Pretoria range test",
+ "ai_summary": "4 submissions, filmed 11 Oct 14:00 to 12 Oct 10:20. AI found 3 people, 10 vehicles and 9 weapons. Person 1 was seen with a handgun and a long gun. Person 2 was seen with a long gun and a handgun. Person 3 was seen with a handgun. 3 possible matches to review. AI-generated - check against the footage.",
+ "submissions": [
+  {
+   "submission": 6,
+   "capture_time": "2026-10-12T10:00:00+02:00",
+   "location": {
+    "latitude": -25.7479,
+    "longitude": 28.2293,
+    "source": "file"
+   },
+   "file_count": 1
+  },
+  {
+   "submission": 7,
+   "capture_time": "2026-10-12T10:20:00+02:00",
+   "location": {
+    "latitude": -25.7495,
+    "longitude": 28.2293,
+    "source": "file"
+   },
+   "file_count": 2
+  },
+  {
+   "submission": 1,
+   "capture_time": "2026-10-11T14:00:00+02:00",
+   "location": {
+    "latitude": -26.0045,
+    "longitude": 28.1271,
+    "source": "file"
+   },
+   "file_count": 1
+  },
+  {
+   "submission": 2,
+   "capture_time": "2026-10-11T14:40:00+02:00",
+   "location": {
+    "latitude": -26.0072,
+    "longitude": 28.1271,
+    "source": "file"
+   },
+   "file_count": 1
+  }
+ ],
+ "counts": {
+  "people": 3,
+  "vehicles": 10,
+  "weapons": 9
+ },
+ "open_questions": 3,
+ "people": [
+  {
+   "entity_id": "p1",
+   "kind": "person",
+   "label": "Person 1",
+   "description": "top orange, bottom black \u00b7 no clear face",
+   "attributes": {
+    "upper_clothing": "orange",
+    "upper_clothing_share": 1.0,
+    "lower_clothing": "black",
+    "lower_clothing_share": 1.0,
+    "face_visible": false,
+    "face_size_px": 0,
+    "submissions": [
+     6
+    ]
+   },
+   "cover": "assets/sample_case/001_person_1.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/001_person_1.jpg",
+     "type": "person",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.02,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/002_person_1_2.jpg",
+     "type": "person",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.02,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/003_person_1_3.jpg",
+     "type": "person",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.02,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    }
+   ],
+   "questions": [
+    {
+     "member_key": "s7/f1/person/15",
+     "submission": 7,
+     "file_name": "s_g2b.mp4",
+     "score": 0.788,
+     "reasons": [
+      "looks 81% alike",
+      "same clothing (orange top)",
+      "clothing differs (bottom orange vs black)"
+     ],
+     "crops": [
+      {
+       "path": "assets/sample_case/004_person_15.jpg",
+       "type": "person",
+       "submission": 7,
+       "file_name": "s_g2b.mp4",
+       "track_id": 15,
+       "seen_seconds": 12.98,
+       "capture_time": "2026-10-12T10:20:00+02:00"
+      }
+     ]
+    }
+   ],
+   "updated": []
+  },
+  {
+   "entity_id": "p2",
+   "kind": "person",
+   "label": "Person 2",
+   "description": "top black, bottom black \u00b7 no clear face",
+   "attributes": {
+    "upper_clothing": "black",
+    "upper_clothing_share": 1.0,
+    "lower_clothing": "black",
+    "lower_clothing_share": 1.0,
+    "face_visible": false,
+    "face_size_px": 0,
+    "submissions": [
+     6
+    ]
+   },
+   "cover": "assets/sample_case/005_person_14.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/005_person_14.jpg",
+     "type": "person",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 14,
+     "seen_seconds": 5.53,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    }
+   ],
+   "questions": [
+    {
+     "member_key": "s7/f1/person/1",
+     "submission": 7,
+     "file_name": "s_g2b.mp4",
+     "score": 0.866,
+     "reasons": [
+      "looks 81% alike",
+      "same clothing (black top, black bottom)"
+     ],
+     "crops": [
+      {
+       "path": "assets/sample_case/006_person_1.jpg",
+       "type": "person",
+       "submission": 7,
+       "file_name": "s_g2b.mp4",
+       "track_id": 1,
+       "seen_seconds": 0.02,
+       "capture_time": "2026-10-12T10:20:00+02:00"
+      },
+      {
+       "path": "assets/sample_case/007_person_1_2.jpg",
+       "type": "person",
+       "submission": 7,
+       "file_name": "s_g2b.mp4",
+       "track_id": 1,
+       "seen_seconds": 0.02,
+       "capture_time": "2026-10-12T10:20:00+02:00"
+      },
+      {
+       "path": "assets/sample_case/008_person_1_3.jpg",
+       "type": "person",
+       "submission": 7,
+       "file_name": "s_g2b.mp4",
+       "track_id": 1,
+       "seen_seconds": 0.02,
+       "capture_time": "2026-10-12T10:20:00+02:00"
+      }
+     ]
+    }
+   ],
+   "updated": []
+  },
+  {
+   "entity_id": "p3",
+   "kind": "person",
+   "label": "Person 3",
+   "description": "top yellow, bottom green \u00b7 face seen",
+   "attributes": {
+    "upper_clothing": "yellow",
+    "upper_clothing_share": 1.0,
+    "lower_clothing": "green",
+    "lower_clothing_share": 1.0,
+    "face_visible": true,
+    "face_size_px": 124,
+    "submissions": [
+     7
+    ]
+   },
+   "cover": "assets/sample_case/009_person_1.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/009_person_1.jpg",
+     "type": "person",
+     "submission": 7,
+     "file_name": "womanGun.jpg",
+     "track_id": 1,
+     "seen_seconds": 0.0,
+     "capture_time": null
+    },
+    {
+     "path": "assets/sample_case/010_face_1.jpg",
+     "type": "face",
+     "submission": 7,
+     "file_name": "womanGun.jpg",
+     "track_id": 1,
+     "seen_seconds": 0.0,
+     "capture_time": null
+    }
+   ],
+   "questions": [],
+   "updated": []
+  }
+ ],
+ "vehicles": [
+  {
+   "entity_id": "v1",
+   "kind": "vehicle",
+   "label": "Vehicle 1",
+   "description": "truck \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "truck",
+    "make": null,
+    "make_share": 0.0,
+    "colour": null,
+    "colour_share": 0.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     1
+    ]
+   },
+   "cover": "assets/sample_case/011_vehicle_2.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/011_vehicle_2.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 2,
+     "seen_seconds": 0.23,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/012_vehicle_2_2.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 2,
+     "seen_seconds": 0.23,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/013_vehicle_2_3.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 2,
+     "seen_seconds": 0.23,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v2",
+   "kind": "vehicle",
+   "label": "Vehicle 2",
+   "description": "white truck \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "truck",
+    "make": null,
+    "make_share": 0.0,
+    "colour": "white",
+    "colour_share": 1.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     1
+    ]
+   },
+   "cover": "assets/sample_case/014_vehicle_4.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/014_vehicle_4.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 4,
+     "seen_seconds": 2.97,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/015_vehicle_4_2.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 4,
+     "seen_seconds": 2.97,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/016_vehicle_4_3.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 4,
+     "seen_seconds": 2.97,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    }
+   ],
+   "questions": [
+    {
+     "member_key": "s2/f1/vehicle/3",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "score": 0.688,
+     "reasons": [
+      "both a white truck",
+      "looks 88% alike",
+      "no plate or make to compare"
+     ],
+     "crops": [
+      {
+       "path": "assets/sample_case/017_vehicle_3.jpg",
+       "type": "vehicle",
+       "submission": 2,
+       "file_name": "s_v2b.mp4",
+       "track_id": 3,
+       "seen_seconds": 2.37,
+       "capture_time": "2026-10-11T14:40:00+02:00"
+      },
+      {
+       "path": "assets/sample_case/018_vehicle_3_2.jpg",
+       "type": "vehicle",
+       "submission": 2,
+       "file_name": "s_v2b.mp4",
+       "track_id": 3,
+       "seen_seconds": 2.37,
+       "capture_time": "2026-10-11T14:40:00+02:00"
+      },
+      {
+       "path": "assets/sample_case/019_vehicle_3_3.jpg",
+       "type": "vehicle",
+       "submission": 2,
+       "file_name": "s_v2b.mp4",
+       "track_id": 3,
+       "seen_seconds": 2.37,
+       "capture_time": "2026-10-11T14:40:00+02:00"
+      }
+     ]
+    }
+   ],
+   "updated": []
+  },
+  {
+   "entity_id": "v3",
+   "kind": "vehicle",
+   "label": "Vehicle 3",
+   "description": "car \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "car",
+    "make": null,
+    "make_share": 0.0,
+    "colour": null,
+    "colour_share": 0.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     1
+    ]
+   },
+   "cover": "assets/sample_case/020_vehicle_1.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/020_vehicle_1.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/021_vehicle_1_2.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/022_vehicle_1_3.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v4",
+   "kind": "vehicle",
+   "label": "Vehicle 4",
+   "description": "truck \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "truck",
+    "make": null,
+    "make_share": 0.0,
+    "colour": null,
+    "colour_share": 0.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     1
+    ]
+   },
+   "cover": "assets/sample_case/023_vehicle_5.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/023_vehicle_5.jpg",
+     "type": "vehicle",
+     "submission": 1,
+     "file_name": "s_v2a.mp4",
+     "track_id": 5,
+     "seen_seconds": 10.1,
+     "capture_time": "2026-10-11T14:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v5",
+   "kind": "vehicle",
+   "label": "Vehicle 5",
+   "description": "white truck \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "truck",
+    "make": null,
+    "make_share": 0.0,
+    "colour": "white",
+    "colour_share": 1.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     2
+    ]
+   },
+   "cover": "assets/sample_case/024_vehicle_1.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/024_vehicle_1.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/025_vehicle_1_2.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/026_vehicle_1_3.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 1,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v6",
+   "kind": "vehicle",
+   "label": "Vehicle 6",
+   "description": "car \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "car",
+    "make": null,
+    "make_share": 0.0,
+    "colour": null,
+    "colour_share": 0.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     2
+    ]
+   },
+   "cover": "assets/sample_case/027_vehicle_4.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/027_vehicle_4.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 4,
+     "seen_seconds": 8.53,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v7",
+   "kind": "vehicle",
+   "label": "Vehicle 7",
+   "description": "white truck \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "truck",
+    "make": null,
+    "make_share": 0.0,
+    "colour": "white",
+    "colour_share": 1.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     2
+    ]
+   },
+   "cover": "assets/sample_case/028_vehicle_2.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/028_vehicle_2.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 2,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/029_vehicle_2_2.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 2,
+     "seen_seconds": 0.03,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v8",
+   "kind": "vehicle",
+   "label": "Vehicle 8",
+   "description": "car \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "car",
+    "make": null,
+    "make_share": 0.0,
+    "colour": null,
+    "colour_share": 0.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     2
+    ]
+   },
+   "cover": "assets/sample_case/030_vehicle_5.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/030_vehicle_5.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 5,
+     "seen_seconds": 9.0,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v9",
+   "kind": "vehicle",
+   "label": "Vehicle 9",
+   "description": "car \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "car",
+    "make": null,
+    "make_share": 0.0,
+    "colour": null,
+    "colour_share": 0.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     2
+    ]
+   },
+   "cover": "assets/sample_case/031_vehicle_7.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/031_vehicle_7.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 7,
+     "seen_seconds": 12.67,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "v10",
+   "kind": "vehicle",
+   "label": "Vehicle 10",
+   "description": "car \u00b7 no readable plate",
+   "attributes": {
+    "class_name": "car",
+    "make": null,
+    "make_share": 0.0,
+    "colour": null,
+    "colour_share": 0.0,
+    "plate": null,
+    "plate_share": 0.0,
+    "plate_seen_in": 0,
+    "submissions": [
+     2
+    ]
+   },
+   "cover": "assets/sample_case/032_vehicle_6.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/032_vehicle_6.jpg",
+     "type": "vehicle",
+     "submission": 2,
+     "file_name": "s_v2b.mp4",
+     "track_id": 6,
+     "seen_seconds": 11.67,
+     "capture_time": "2026-10-11T14:40:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  }
+ ],
+ "weapons": [
+  {
+   "entity_id": "w1",
+   "kind": "weapon",
+   "label": "Weapon 1",
+   "description": "handgun \u00b7 held by Person 1",
+   "attributes": {
+    "kind": "handgun",
+    "kind_share": 1.0,
+    "held_by": "Person 1",
+    "submissions": [
+     6
+    ]
+   },
+   "cover": "assets/sample_case/033_weapon_5.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/033_weapon_5.jpg",
+     "type": "weapon",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 5,
+     "seen_seconds": 1.55,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w2",
+   "kind": "weapon",
+   "label": "Weapon 2",
+   "description": "long gun \u00b7 held by Person 1",
+   "attributes": {
+    "kind": "long_gun",
+    "kind_share": 1.0,
+    "held_by": "Person 1",
+    "submissions": [
+     6
+    ]
+   },
+   "cover": "assets/sample_case/034_weapon_16.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/034_weapon_16.jpg",
+     "type": "weapon",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 16,
+     "seen_seconds": 8.08,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/035_weapon_2.jpg",
+     "type": "weapon",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 2,
+     "seen_seconds": 0.02,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w3",
+   "kind": "weapon",
+   "label": "Weapon 3",
+   "description": "handgun \u00b7 held by Person 1",
+   "attributes": {
+    "kind": "handgun",
+    "kind_share": 1.0,
+    "held_by": "Person 1",
+    "submissions": [
+     6
+    ]
+   },
+   "cover": "assets/sample_case/036_weapon_8.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/036_weapon_8.jpg",
+     "type": "weapon",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 8,
+     "seen_seconds": 2.25,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w4",
+   "kind": "weapon",
+   "label": "Weapon 4",
+   "description": "handgun \u00b7 held by Person 1",
+   "attributes": {
+    "kind": "handgun",
+    "kind_share": 1.0,
+    "held_by": "Person 1",
+    "submissions": [
+     6
+    ]
+   },
+   "cover": "assets/sample_case/037_weapon_10.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/037_weapon_10.jpg",
+     "type": "weapon",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 10,
+     "seen_seconds": 4.28,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w5",
+   "kind": "weapon",
+   "label": "Weapon 5",
+   "description": "long gun",
+   "attributes": {
+    "kind": "long_gun",
+    "kind_share": 1.0,
+    "held_by": null,
+    "submissions": [
+     6
+    ]
+   },
+   "cover": "assets/sample_case/038_weapon_12.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/038_weapon_12.jpg",
+     "type": "weapon",
+     "submission": 6,
+     "file_name": "s_g2a.mp4",
+     "track_id": 12,
+     "seen_seconds": 5.05,
+     "capture_time": "2026-10-12T10:00:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w6",
+   "kind": "weapon",
+   "label": "Weapon 6",
+   "description": "long gun \u00b7 held by Person 2",
+   "attributes": {
+    "kind": "long_gun",
+    "kind_share": 1.0,
+    "held_by": "Person 2",
+    "submissions": [
+     7
+    ]
+   },
+   "cover": "assets/sample_case/039_weapon_3.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/039_weapon_3.jpg",
+     "type": "weapon",
+     "submission": 7,
+     "file_name": "s_g2b.mp4",
+     "track_id": 3,
+     "seen_seconds": 1.08,
+     "capture_time": "2026-10-12T10:20:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/040_weapon_14.jpg",
+     "type": "weapon",
+     "submission": 7,
+     "file_name": "s_g2b.mp4",
+     "track_id": 14,
+     "seen_seconds": 11.35,
+     "capture_time": "2026-10-12T10:20:00+02:00"
+    },
+    {
+     "path": "assets/sample_case/041_weapon_2.jpg",
+     "type": "weapon",
+     "submission": 7,
+     "file_name": "s_g2b.mp4",
+     "track_id": 2,
+     "seen_seconds": 0.02,
+     "capture_time": "2026-10-12T10:20:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w7",
+   "kind": "weapon",
+   "label": "Weapon 7",
+   "description": "long gun \u00b7 held by Person 2",
+   "attributes": {
+    "kind": "long_gun",
+    "kind_share": 1.0,
+    "held_by": "Person 2",
+    "submissions": [
+     7
+    ]
+   },
+   "cover": "assets/sample_case/042_weapon_6.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/042_weapon_6.jpg",
+     "type": "weapon",
+     "submission": 7,
+     "file_name": "s_g2b.mp4",
+     "track_id": 6,
+     "seen_seconds": 1.52,
+     "capture_time": "2026-10-12T10:20:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w8",
+   "kind": "weapon",
+   "label": "Weapon 8",
+   "description": "handgun \u00b7 held by Person 2",
+   "attributes": {
+    "kind": "handgun",
+    "kind_share": 1.0,
+    "held_by": "Person 2",
+    "submissions": [
+     7
+    ]
+   },
+   "cover": "assets/sample_case/043_weapon_7.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/043_weapon_7.jpg",
+     "type": "weapon",
+     "submission": 7,
+     "file_name": "s_g2b.mp4",
+     "track_id": 7,
+     "seen_seconds": 5.68,
+     "capture_time": "2026-10-12T10:20:00+02:00"
+    }
+   ],
+   "questions": [],
+   "updated": []
+  },
+  {
+   "entity_id": "w9",
+   "kind": "weapon",
+   "label": "Weapon 9",
+   "description": "handgun \u00b7 held by Person 3",
+   "attributes": {
+    "kind": "handgun",
+    "kind_share": 1.0,
+    "held_by": "Person 3",
+    "submissions": [
+     7
+    ]
+   },
+   "cover": "assets/sample_case/044_weapon_1.jpg",
+   "submission_count": 1,
+   "crops": [
+    {
+     "path": "assets/sample_case/044_weapon_1.jpg",
+     "type": "weapon",
+     "submission": 7,
+     "file_name": "womanGun.jpg",
+     "track_id": 1,
+     "seen_seconds": 0.0,
+     "capture_time": null
+    }
+   ],
+   "questions": [],
+   "updated": []
+  }
+ ],
+ "note": "SAMPLE generated by ai/case_matcher.py from test clips (not a real case)"
+}
