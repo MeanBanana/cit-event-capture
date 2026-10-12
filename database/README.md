@@ -494,6 +494,9 @@ await supabase.rpc('accept_suggested_matches', params: {
 | `20261005203100_submission_views_and_ai.sql` | AI fields (`media.aidescription`, `crimescene.aisummary` + status), GPS and `locationkey` on `crimescene`; `list_submissions` and `list_cases` page with a cursor and return the AI summary, chips and case previews; `list_location_groups`, `list_linked_groups`, `list_incident_media`; suggestions (`match_incidents`, `suggest_incidents_for_case`, `suggest_cases_for_incident`) and the one-tap review (`list_suggested_matches`, `accept_suggested_matches`) |
 | `20261006081759_remote_schema.sql` | Re-sync pulled from Supabase Cloud (`supabase db pull`): re-creates the existing functions as they are on the live database, drops and re-adds the check constraints on `caseassignment`, `crimescene`, `crossreferencelink`, `detection` and `media`, adds the unique constraint on `"User".username` and makes `"User".authid` **`NOT NULL`** (see the note on `authid` above) |
 | `20261006090000_suspect_review_and_case_cards.sql` | Suspect review for POPIA: `detection.suspectstatus` (`possible` / `confirmed` / `dismissed`) with reviewer, time and reason; only assigned investigators confirm or dismiss (`review_possible_suspect`, `update_suspect_details`), admins or investigators undo (`undo_suspect_review`); admins lose direct write access to `suspect`; suspect decisions logged in `caseevent`. `list_submissions` and `list_cases` return `possiblesuspects` / `confirmedsuspects`; `case_card_suggestions` gives each case card its best suggested submission and most relevant plate |
+| `20261012100000_ai_pipeline_tables.sql` | AI pipeline tables: pgvector; job queue `aijob` + `aiworker` heartbeat; `caseentity` (Person 1 / Vehicle 2 of a case) and `entitymatchrejection`; `detection` gets one row per tracked object (track, seen from/to, details, crops, appearance fingerprint, case entity link); `weapondetail` allows `long_gun` / `machete` and records who held it; `crimescene.gpssource` / `aimerged`, `media.latitude/longitude`, `cases.aisummary*`. See [AI_PIPELINE.md](AI_PIPELINE.md) |
+| `20261012100100_ai_pipeline_functions.sql` | `submit_for_analysis`; worker functions (`claim_next_job`, `finish_job`, `ai_save_analysis`, `ai_load_case`, `ai_load_submission`, `ai_save_case`, heartbeat); `get_case_evidence`, `answer_entity_match`, `ai_worker_status`; triggers that queue merges and take a removed submission's pictures out of its case; `list_cases` returns the case AI summary |
+| `20261012100200_case_suggestion_rule.sql` | New suggestion rule in `match_incidents()`: within 1 km and 14 days, or the same / 1-character-off plate; "may show Person 2" reason from the appearance fingerprints |
 
 ---
 
@@ -584,24 +587,26 @@ ROLLBACK;
 
 **Mock data for suspects and case cards.** `mock_suspects_and_case_cards.sql` adds four `[MOCK]` cases with possible, confirmed and dismissed suspects and pending submissions that are suggested for them (one with a plate also in the case, one where the plate with the highest confidence is picked), so the case cards have something to show. `mock_cleanup.sql` removes it. Like the demo data they are kept **outside** the repository (ask Carel). The mock users have no login; use your own admin account.
 
+**AI pipeline tests:** `supabase test db` runs the pgTAP tests in `supabase/tests/`; `python tests/test_ai_pipeline_db.py` (from the repo root, needs `pip install "psycopg[binary]"`) runs the end-to-end tests against the local database, including the real `ai/case_matcher.py`. Both roll back everything they create. See [AI_PIPELINE.md](AI_PIPELINE.md#tests).
+
 **App tests:** run `flutter analyze` and `flutter test` in `mobile/argus_shield/`. The admin screens are tested against an in-memory fake (`test/admin_fake_service.dart`), so they need no Supabase project.
 
 ---
 
 ## The AI pipeline: what it writes
 
-There is no pipeline yet (`ai/` is empty), but the database is ready for it. It connects with the **service role key** (bypasses RLS; the only key allowed to write the AI fields). For each incident:
+The AI worker (GPU laptop / server, **service role key**) takes jobs from the
+`aijob` queue and writes its results through database functions, one
+transaction per save: one `detection` row per tracked person / vehicle / weapon
+(with `vehicledetail` / `weapondetail`), the files' capture time and GPS, the
+submission summary, and per case the combined people / vehicles / weapons
+(`caseentity`) with the case summary. Person detections are always **possible
+suspects** only; the AI never writes `suspect` rows (see
+[Suspects and POPIA](#suspects-and-popia)).
 
-1. **Start:** set `crimescene.aisummarystatus = 'processing'` and each clip's `media.processingstatus = 'processing'`. Read each file's **capture time** from its metadata (`ffprobe` `creation_time` for video, EXIF `DateTimeOriginal` for photos, with the right time zone) into `media.capturetimestamp`. Leave it empty if the file has none (e.g. forwarded on WhatsApp) — never fill it with the upload time. The matching uses it before the time the citizen typed.
-2. **Per clip** (`media` row):
-   * one `detection` row per **distinct object** in the clip (track objects across frames; don't write one row per frame, or the vehicle / person counts on the cards will be wrong), plus `vehicledetail` (make, model, colour, `licenceplatenumber`, `plateconfidence`) or `weapondetail` rows. Person detections become **possible suspects** automatically; the pipeline never writes `suspect` rows or a `suspectstatus` (the database refuses it: only an investigator on the case decides, see [Suspects and POPIA](#suspects-and-popia));
-   * `media.aidescription` = 1–3 sentences on what happens in this clip, and `aidescribedat = now()`;
-   * `media.processingstatus = 'completed'` (or `'failed'`).
-3. **Cross-references:** when a vehicle (or an already **confirmed** suspect) matches one in another incident, insert a `crossreferencelink` (`entitytype`, the two `vehicledetectionid`s / `suspectid`s, `matchconfidence` 0–1, `verificationstatus = 'pending'`). `linkedby` must be a real `"User"` row (e.g. a dedicated "AI pipeline" admin account).
-4. **Combined summary**, once every clip of the incident is done: one more model call that turns the clip descriptions into `crimescene.aisummary` — at most 600 characters, 2–3 sentences. Tell the model to **state disagreements between clips** ("clips disagree on the second car's colour") instead of picking one. Then set `aisummarystatus = 'ready'` and `aisummaryat = now()` (or `'failed'`).
-5. **New footage:** when a citizen adds a clip to an incident whose summary is `ready`, the database sets it to `outdated` by itself. The pipeline should pick up `outdated` incidents and repeat step 4 (and step 2 for the new clip).
-
-The app shows `aisummary` on every submission card next to the citizen's description, each clip's `aidescription` on the details page, and chips for vehicles / people / weapons / plates from the detections.
+Everything — the job kinds, the worker loop, which function does what, who may
+call it, the tests and how it differs from `SUPABASE_AI_PIPELINE.md` — is in
+**[AI_PIPELINE.md](AI_PIPELINE.md)**.
 
 ---
 
@@ -620,13 +625,13 @@ What exists today, so nobody builds on something that isn't there yet:
 | Suspect review (POPIA) | **Database ready** (`review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`, logged in `caseevent`); admin cards show possible / confirmed counts. Confirming needs the investigator screens |
 | Creating investigator accounts from the app | **Built**: **+ New investigator** on the Investigators tab and the `create-investigator` Edge Function. Must be **deployed** before it works (see [Creating investigator accounts](#creating-investigator-accounts)) |
 | Footage storage | **Not built yet**: no Supabase Storage bucket or storage policies |
-| AI / computer vision pipeline | **Not built yet** (`ai/` is empty). The database is ready for it; demo data stands in for it |
+| AI / computer vision pipeline | Pipeline runs locally (`ai/`). **Database side built** (job queue, results in tables, case people / vehicles / weapons, "Is this Person 2?", case AI summary, see [AI_PIPELINE.md](AI_PIPELINE.md)); the app's case screen reads it (`SupabaseEvidenceSource`). The **worker loop** that connects the two is still to be written |
 
 ---
 
 ## Still to do
 
-* **AI pipeline** — see [The AI pipeline: what it writes](#the-ai-pipeline-what-it-writes).
+* **AI worker** — the loop that takes jobs and calls the database functions; see [AI_PIPELINE.md](AI_PIPELINE.md#the-worker-loop-sketch).
 * **Citizen app on the database** — the profile page is live, but the citizen upload and My submissions pages still use a local demo store (`mobile/argus_shield/lib/citizen/citizen_store.dart`). They should insert `crimescene` + `media` rows (with the phone's GPS in `latitude`/`longitude`), upload the file to Storage, and read the citizen's own rows back (RLS already limits them to their own).
 * **Storage bucket for footage** — `media.storagepath` expects files in Supabase Storage, but no bucket or storage policies exist yet.
 * **Email** — a custom SMTP provider (Authentication → Emails → SMTP Settings), so reset and confirmation emails reach real users.
