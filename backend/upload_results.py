@@ -172,6 +172,13 @@ def check_media(client, incident_id, media_ids):
 def upload_results(result, json_path, incident_id, media_ids, client=None):
     """Upload one run (results.json + its pictures) and point the media rows
     at it. Returns the results.json path in the bucket."""
+    return upload_run(result, json_path, incident_id, media_ids, client)[0]
+
+
+def upload_run(result, json_path, incident_id, media_ids, client=None):
+    """Same as upload_results, but returns (bucket path of results.json,
+    the uploaded results.json as a dict) - the worker saves that dict in
+    the database with ai_save_analysis()."""
     client = client or get_client()
     check_media(client, incident_id, media_ids)
     out, folder, pictures = prepare(result, json_path, incident_id, media_ids)
@@ -193,7 +200,7 @@ def upload_results(result, json_path, incident_id, media_ids, client=None):
             "airesultat": when,
             "processingstatus": "failed" if "error" in f else "completed",
         }).eq("mediaid", f["mediaid"]).execute()
-    return json_bucket_path
+    return json_bucket_path, out
 
 
 def main(argv=None):

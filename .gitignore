@@ -1,4 +1,10 @@
-
-
 # Backend secrets (Supabase service key)
 backend/.env
+
+# Python virtual environments (each PC makes its own)
+.venv/
+venv/
+
+# AI worker: files while a job runs, and its log
+backend/work/
+backend/worker.log*

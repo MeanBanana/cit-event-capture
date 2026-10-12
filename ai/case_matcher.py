@@ -540,6 +540,34 @@ def _revote(entity, case=None):
 # Admin answers "Is this Person 2?"
 # ---------------------------------------------------------------------------
 
+def place_member(case, member):
+    """Puts ONE member into its best entity (rejected pairs skipped), or
+    into a new entity. Used after an admin's "No" (the worker's 'rematch'
+    job). Returns the entity; member["status"] says how it was placed."""
+    person_entity_of = {m["key"]: e["entity_id"] for e in case["entities"]
+                        if e["kind"] == "person" for m in e["members"]}
+    found = _candidates(member, case["entities"], case, person_entity_of)
+    if found:
+        decision, score, reasons, target = found[0]
+        _link(member, target, "auto" if decision == "auto" else "suggested", score, reasons)
+    else:
+        target = _new_entity(case, member)
+        if member["kind"] == "weapon":
+            target["held_by_entity"] = person_entity_of.get(member.get("held_by"))
+        _link(member, target, "first")
+    _revote(target, case)
+    return target
+
+
+def revote_case(case):
+    """Re-votes every entity's details and rewrites the summary (after an
+    admin's answer, or a submission leaving the case)."""
+    for entity in case["entities"]:
+        _revote(entity, case)
+    case["summary"] = summary_text(case)
+    case["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
 def open_questions(case):
     return [(e, m) for e in case["entities"] for m in e["members"] if m["status"] == "suggested"]
 
@@ -564,20 +592,13 @@ def confirm_match(case, member_key, accept):
     else:
         entity["members"].remove(member)
         case["rejected"].append([member_key, entity["entity_id"]])
-        person_entity_of = {m["key"]: e["entity_id"] for e in case["entities"]
-                            if e["kind"] == "person" for m in e["members"]}
-        found = _candidates(member, case["entities"], case, person_entity_of)
-        if found:
-            decision, score, reasons, target = found[0]
-            _link(member, target, "auto" if decision == "auto" else "suggested", score, reasons)
-            result = f"{member_key} is not {entity['label']}; " + (
-                f"linked to {target['label']}" if decision == "auto"
-                else f"asking about {target['label']} instead")
-        else:
-            target = _new_entity(case, member)
-            _link(member, target, "first")
+        target = place_member(case, member)
+        if member["status"] == "first":
             result = f"{member_key} is not {entity['label']}; now {target['label']}"
-        _revote(target, case)
+        else:
+            result = f"{member_key} is not {entity['label']}; " + (
+                f"linked to {target['label']}" if member["status"] == "auto"
+                else f"asking about {target['label']} instead")
     _revote(entity, case)
     for field in _SHOWN_FIELDS[entity["kind"]]:
         if before.get(field) != entity["attributes"].get(field):

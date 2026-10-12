@@ -231,26 +231,14 @@ def print_file_summary(result, vehicles, people, weapons, is_image):
 # The submission
 # ---------------------------------------------------------------------------
 
-def main():
-    files = [Path(a) for a in sys.argv[1:]]
-    if not files:
-        print("Usage: python main.py file1 [file2 ... file5]   "
-              "(videos and/or photos; all files together are ONE submission)")
-        return
-    if len(files) > MAX_FILES:
-        print(f"Too many files: {len(files)}. A submission can have at most {MAX_FILES}.")
-        return
-    missing = [str(f) for f in files if not f.is_file()]
-    if missing:
-        print("File(s) not found: " + ", ".join(missing))
-        return
-
-    number, folder = next_submission_folder()
-    print(f"Submission {number}: {len(files)} file(s) -> {folder}")
-    detector = ArgusDetector()                 # load the models once for all files
-
+def analyse_submission(detector, files, folder, number):
+    """Runs every file of ONE submission and writes folder/results.json.
+    Returns the submission dict (also used by backend/worker.py)."""
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
     results = []
     for index, source in enumerate(files, start=1):
+        source = Path(source)
         print(f"\n=== File {index}/{len(files)}: {source.name} ===")
         file_crops = folder / file_folder_name(index, source)
         try:
@@ -284,14 +272,85 @@ def main():
         },
         "files": results,
     }
-    for path in (folder / "results.json", Path("output_detections.json")):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(submission, f, indent=2)
+    with open(folder / "results.json", "w", encoding="utf-8") as f:
+        json.dump(submission, f, indent=2)
+    return submission
 
+
+def submission_summary(submission):
+    """Short plain summary of one submission for the app (max 600 chars),
+    e.g. "2 files. 3 people (most at once: 2), 1 vehicle: white Toyota,
+    plate ND123456. 1 long gun, held by a person. Gunfire heard (automatic)."""
+    ok = [f for f in submission["files"] if "error" not in f]
+    if not ok:
+        return "The AI could not analyse these files."
+    parts = []
+    people = sum(f["person_count"] for f in ok)
+    most = max((f.get("max_people_at_once") or 0) for f in ok)
+    if people:
+        parts.append(plural(people, "person", "people")
+                     + (f" (most at once: {most})" if most and most < people else ""))
+    vehicles = [d for f in ok for d in f["detections"] if d["detection_type"] == "vehicle"]
+    if vehicles:
+        described = []
+        for v in vehicles[:3]:
+            look = " ".join(x for x in (v.get("colour"), v.get("make"), v.get("class_name")) if x)
+            described.append(look + (f", plate {v['plate']}" if v.get("plate") else ""))
+        parts.append(plural(len(vehicles), "vehicle") + ": " + "; ".join(described)
+                     + ("; ..." if len(vehicles) > 3 else ""))
+    weapons = [d for f in ok for d in f["detections"] if d["detection_type"] == "weapon"]
+    if weapons:
+        kinds = {}
+        for w in weapons:
+            kind = (w.get("class_name") or "unclear weapon").replace("_", " ")
+            kinds[kind] = kinds.get(kind, 0) + 1
+        held = sum(1 for w in weapons if w.get("held_by_person") is not None)
+        parts.append(", ".join(plural(n, k) for k, n in kinds.items())
+                     + (f" ({held} held by a person)" if held else ""))
+    events = [e for f in ok for e in f.get("audio_events", [])]
+    gunfire = [e for e in events if e["event_type"] == "gunfire"]
+    if gunfire:
+        modes = sorted({e["fire_mode"].replace("_", " ") for e in gunfire})
+        parts.append("gunfire heard (" + ", ".join(modes) + ")")
+    if any(e["event_type"] == "explosion" for e in events):
+        parts.append("explosion heard")
+    text = (f"{plural(len(submission['files']), 'file')}. "
+            + (". ".join(p[0].upper() + p[1:] for p in parts) + "." if parts
+               else "No vehicles, people or weapons found."))
+    return (text + " AI-generated - check against the footage.")[:600]
+
+
+def plural(n, one, many=None):
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def main():
+    files = [Path(a) for a in sys.argv[1:]]
+    if not files:
+        print("Usage: python main.py file1 [file2 ... file5]   "
+              "(videos and/or photos; all files together are ONE submission)")
+        return
+    if len(files) > MAX_FILES:
+        print(f"Too many files: {len(files)}. A submission can have at most {MAX_FILES}.")
+        return
+    missing = [str(f) for f in files if not f.is_file()]
+    if missing:
+        print("File(s) not found: " + ", ".join(missing))
+        return
+
+    number, folder = next_submission_folder()
+    print(f"Submission {number}: {len(files)} file(s) -> {folder}")
+    detector = ArgusDetector()                 # load the models once for all files
+    submission = analyse_submission(detector, files, folder, number)
+    with open("output_detections.json", "w", encoding="utf-8") as f:
+        json.dump(submission, f, indent=2)
+
+    ok = [r for r in submission["files"] if "error" not in r]
     t = submission["totals"]
     print(f"\n=== Submission {number} done: {len(ok)}/{len(files)} file(s) processed - "
           f"{t['vehicles']} vehicle(s), {t['people']} person(s), {t['weapons']} weapon(s), "
           f"{t['audio_events']} gunfire/explosion sound(s) ===")
+    print(f"Summary: {submission_summary(submission)}")
     if t["weapons"] or t["audio_events"]:
         print("Reminder: CIT guards are armed too - a weapon or shot is a lead "
               "for the investigator, not proof of who the robber is.")
