@@ -2,8 +2,10 @@
 // or by tapping a submission card).
 //
 // Shows everything about the incident: the citizen's description, the
-// AI's summary, each clip with what the AI saw in it, and the admin's
-// review, with the actions that fit its review status:
+// AI SUMMARY with each person / vehicle / weapon the AI found under it
+// (each with View crops -> its pictures), each clip with what the AI saw in it (View -> play
+// the video / open the photo), and the admin's review, with the actions that
+// fit its review status:
 //   pending            Reject · Duplicate · Accept
 //   accepted (in case) Open case · Move to another case · Remove from case
 //   rejected/duplicate Reopen for review
@@ -19,6 +21,10 @@ import 'package:argus_shield/admin_screens/submissions.dart'
     show AiFactChips, WhenLines;
 import 'package:argus_shield/admin_screens/review_actions.dart';
 import 'package:argus_shield/admin_screens/case_detail.dart';
+import 'package:argus_shield/admin_screens/case_evidence_section.dart';
+import 'package:argus_shield/admin_screens/footage_list.dart';
+import 'package:argus_shield/case_evidence_source.dart';
+import 'package:argus_shield/submission_evidence_source.dart';
 
 class SubmissionDetailPage extends StatefulWidget {
   final CrimeSceneSummary submission;
@@ -26,10 +32,16 @@ class SubmissionDetailPage extends StatefulWidget {
   /// Optional so tests can pass in a fake; the app uses the real service.
   final SupabaseService? service;
 
+  /// Where the AI's people / vehicles / weapons of this submission come
+  /// from. The app uses SubmissionEvidenceSource; a test that passes a FAKE
+  /// service gets no AI section unless it passes a source here too.
+  final CaseEvidenceSource? evidenceSource;
+
   const SubmissionDetailPage({
     super.key,
     required this.submission,
     this.service,
+    this.evidenceSource,
   });
 
   @override
@@ -39,10 +51,11 @@ class SubmissionDetailPage extends StatefulWidget {
 class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
   late final SupabaseService _service = widget.service ?? SupabaseService();
   late CrimeSceneSummary _s = widget.submission;
+  late final CaseEvidenceSource? _evidence = widget.evidenceSource ??
+      (usesRealDatabase(widget.service) ? SubmissionEvidenceSource() : null);
 
-  /// The clips / photos with what the AI saw in each. Loaded the first
-  /// time the footage section is shown.
-  Future<List<MediaItem>>? _media;
+  /// Changes after a refresh, so the AI section loads again.
+  int _evidenceVersion = 0;
 
   /// Fetches this incident again after an action changed it.
   Future<void> _refresh() async {
@@ -51,7 +64,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
       if (mounted && fresh != null) {
         setState(() {
           _s = fresh;
-          _media = null; // reload the clips too
+          _evidenceVersion++; // reload the clips and what the AI found
         });
       }
     } catch (_) {
@@ -150,47 +163,55 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
                   '${s.longitude!.toStringAsFixed(5)}',
             ),
 
-          // ---- What was reported and what the AI saw ------------------------
-          const SectionLabel('Descriptions'),
-          SubmissionDescriptions(
-            citizen: s.description,
-            ai: s.aiSummary,
-            aiStatus: s.aiSummaryStatus,
-            mediaCount: s.mediaCount,
-          ),
-          if (s.aiSummaryAt != null)
-            Text('AI summary written ${formatDateTime(s.aiSummaryAt!)}',
-                style: AppText.bodyMuted.copyWith(fontSize: 12)),
-          if (s.hasAiFacts) ...[
-            const SizedBox(height: 8),
-            AiFactChips(submission: s),
+          // ---- What the citizen reported --------------------------------------
+          if (_evidence == null) ...[
+            // (tests with a fake service: the plain descriptions)
+            const SectionLabel('Descriptions'),
+            SubmissionDescriptions(
+              citizen: s.description,
+              ai: s.aiSummary,
+              aiStatus: s.aiSummaryStatus,
+              mediaCount: s.mediaCount,
+            ),
+            if (s.hasAiFacts) ...[
+              const SizedBox(height: 8),
+              AiFactChips(submission: s),
+            ],
+          ] else ...[
+            const SectionLabel('Description'),
+            SubmissionDescriptions(
+              citizen: s.description,
+              ai: s.aiSummary,
+              showAi: false,
+            ),
+
+            // ---- AI summary: the text, then each person / vehicle / weapon
+            //      with View crops (like the pipeline's console output) -------
+            CaseEvidenceSection(
+              key: ValueKey('evidence-${s.incidentId}-$_evidenceVersion'),
+              caseId: s.incidentId,
+              source: _evidence,
+              title: 'AI summary',
+              summary: s.aiSummary ?? '',
+              summaryNote: _aiNote(s),
+              belowSummary: s.hasAiFacts ? AiFactChips(submission: s) : null,
+              perSubmission: true,
+              emptyText: s.mediaCount == 0
+                  ? 'No footage was sent with this report.'
+                  : s.aiSummaryStatus == 'processing' || s.aiSummaryStatus == 'pending'
+                      ? 'The AI is still analysing the footage. Come back shortly.'
+                      : 'The AI found no people, vehicles or weapons in this footage.',
+            ),
           ],
 
-          // ---- Each clip ----------------------------------------------------
+          // ---- Each clip, with View (play the video / open the photo) -------
           if (s.mediaCount > 0) ...[
             const SectionLabel('Footage'),
-            FutureBuilder<List<MediaItem>>(
-              future: _media ??= _service.getIncidentMedia(s.incidentId),
-              builder: (context, snap) {
-                if (snap.hasError) {
-                  return const Text('Could not load the footage list.',
-                      style: AppText.bodyMuted);
-                }
-                if (!snap.hasData) {
-                  return const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-                final clips = snap.data!;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < clips.length; i++)
-                      _ClipCard(number: i + 1, clip: clips[i]),
-                  ],
-                );
-              },
+            FootageList(
+              key: ValueKey('footage-${s.incidentId}-$_evidenceVersion'),
+              service: _service,
+              incidentId: s.incidentId,
+              reference: s.reference,
             ),
           ],
 
@@ -203,6 +224,16 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
         ],
       ),
     );
+  }
+
+  /// "AI analysis in progress… · Written 12 Oct 2026 19:42" (null if none).
+  String? _aiNote(CrimeSceneSummary s) {
+    final parts = [
+      aiStatusNote(s.aiSummaryStatus,
+          hasSummary: s.aiSummary != null, mediaCount: s.mediaCount),
+      if (s.aiSummaryAt != null) 'Written ${formatDateTime(s.aiSummaryAt!)}',
+    ].whereType<String>();
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 
   List<Widget> _reviewDetails(CrimeSceneSummary s) {
@@ -310,73 +341,5 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
           ]),
         ];
     }
-  }
-}
-
-/// One clip / photo and what the AI saw in it.
-class _ClipCard extends StatelessWidget {
-  final int number;
-  final MediaItem clip;
-
-  const _ClipCard({required this.number, required this.clip});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = clip;
-    final icon = switch (c.mediaType) {
-      'image' => Icons.photo_outlined,
-      'audio' => Icons.mic_none,
-      _ => Icons.videocam_outlined,
-    };
-    final (statusText, statusColor) = switch (c.processingStatus) {
-      'completed' => ('Analysed', AppColors.success),
-      'processing' => ('Analysing…', AppColors.accent),
-      'failed' => ('Analysis failed', AppColors.danger),
-      _ => ('Waiting for analysis', AppColors.textHint),
-    };
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.header,
-        border: Border.all(color: AppColors.fieldBorder),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppColors.accent, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Clip $number'
-                  '${c.captured == null ? '' : ' · ${formatDateTime(c.captured!)}'}',
-                  style: AppText.body.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ),
-              StatusTag(label: statusText, color: statusColor),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            c.aiDescription ?? 'No AI description yet.',
-            style: c.aiDescription == null
-                ? AppText.bodyMuted.copyWith(fontStyle: FontStyle.italic)
-                : AppText.body.copyWith(fontSize: 15),
-          ),
-          if (c.detections > 0) ...[
-            const SizedBox(height: 6),
-            Text(
-              '${plural(c.detections, 'detection')}'
-              '${c.verified > 0 ? ' · ${c.verified} confirmed by an investigator' : ''}',
-              style: AppText.bodyMuted.copyWith(fontSize: 12),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }

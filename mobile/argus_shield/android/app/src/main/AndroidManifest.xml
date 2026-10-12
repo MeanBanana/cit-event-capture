@@ -2,6 +2,11 @@
     <!-- Download button on case pictures (gal): only needed up to Android 9 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
+    <!-- Upload page: the phone's location for a report (geolocator) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Upload page: sending footage to Supabase -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:requestLegacyExternalStorage="true"
         android:label="argus_shield"

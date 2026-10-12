@@ -1,3 +1,6 @@
+import 'dart:math';
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/investigator_summary.dart';
 import 'models/system_stats.dart';
@@ -7,6 +10,7 @@ import 'models/case_summary.dart';
 import 'models/case_assignment_info.dart';
 import 'models/submission_groups.dart';
 import 'models/citizen_profile.dart';
+import 'models/my_submission.dart';
 
 /// Sort order for submission lists (by date reported).
 enum SubmissionOrder { newest, oldest }
@@ -809,5 +813,106 @@ class SupabaseService {
   Future<void> unassignInvestigator(int assignmentId) async {
     await supabase.rpc('unassign_investigator',
         params: {'p_assignmentid': assignmentId});
+  }
+
+  // ------------------------------------------------- CITIZEN SUBMISSIONS
+  //
+  // How a citizen's report reaches the AI worker (all as the signed-in
+  // citizen; the database rules only let them touch their OWN incident):
+  //   1. createIncident        -> crimescene row (reportedby = them)
+  //   2. uploadIncidentFile    -> submissions/<id>/media/<random>.<ext>
+  //                               + media row, once per file (1-5)
+  //   3. submitForAnalysis     -> queues the AI worker's 'analyse' job
+
+  /// The bucket for footage and AI results (migration 20261009090000).
+  static const submissionsBucket = 'submissions';
+
+  /// The bucket's upload limit per file (config.toml [storage]).
+  static const maxFileBytes = 50 * 1024 * 1024;
+
+  /// Creates the citizen's incident; returns its id. [latitude]/[longitude]
+  /// = the phone's GPS (null if the citizen didn't share it).
+  Future<int> createIncident({
+    required int reporterId,
+    required String location,
+    required String description,
+    required DateTime when,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final hasGps = latitude != null && longitude != null;
+    final row = await supabase
+        .from('crimescene')
+        .insert({
+          'location': location,
+          'description': description,
+          'datetime': when.toUtc().toIso8601String(),
+          'reportedby': reporterId,
+          'latitude': hasGps ? double.parse(latitude.toStringAsFixed(6)) : null,
+          'longitude': hasGps ? double.parse(longitude.toStringAsFixed(6)) : null,
+          'gpssource': hasGps ? 'phone' : 'typed',
+        })
+        .select('incidentid')
+        .single();
+    return (row['incidentid'] as num).toInt();
+  }
+
+  /// Uploads one file of an incident and records it. Returns its path in
+  /// the bucket. [mediaType] = 'image' or 'video'.
+  Future<String> uploadIncidentFile({
+    required int incidentId,
+    required int uploaderId,
+    required String fileName,
+    required Uint8List bytes,
+    required String contentType,
+    required String mediaType,
+  }) async {
+    final dot = fileName.lastIndexOf('.');
+    final ext = dot < 0 ? '' : fileName.substring(dot).toLowerCase();
+    // random name: the citizen's file names can contain anything
+    final random = Random.secure();
+    final name = List.generate(16, (_) => random.nextInt(16).toRadixString(16)).join();
+    final path = '$incidentId/media/$name$ext';
+
+    await supabase.storage.from(submissionsBucket).uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(contentType: contentType, upsert: false),
+        );
+    await supabase.from('media').insert({
+      'incidentid': incidentId,
+      'uploadedby': uploaderId,
+      'mediatype': mediaType,
+      'storagepath': path,
+      'filesize': bytes.length,
+    });
+    return path;
+  }
+
+  /// The citizen's own reports, newest first.
+  Future<List<MySubmission>> getMySubmissions(int reporterId, {int limit = 50}) async {
+    final rows = await supabase
+        .from('crimescene')
+        .select('incidentid, location, datetime, datereported, description, '
+            'reviewstatus, aisummarystatus')
+        .eq('reportedby', reporterId)
+        .order('datereported', ascending: false)
+        .limit(limit) as List;
+    if (rows.isEmpty) return const [];
+    final ids = [for (final r in rows) (r['incidentid'] as num).toInt()];
+    final media = await supabase
+        .from('media')
+        .select('incidentid')
+        .inFilter('incidentid', ids) as List;
+    final counts = <int, int>{};
+    for (final m in media) {
+      final id = (m['incidentid'] as num).toInt();
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    return [
+      for (final r in rows)
+        MySubmission.fromMap(r as Map<String, dynamic>,
+            fileCount: counts[(r['incidentid'] as num).toInt()] ?? 0),
+    ];
   }
 }

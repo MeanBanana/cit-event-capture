@@ -30,6 +30,8 @@ class _CitizenHomeState extends State<CitizenHome> {
     // Start fetching the profile straight after login, so it's usually ready
     // by the time the citizen opens the Profile tab.
     _store.loadProfile();
+    // and the citizen's reports for the Submissions tab
+    _store.loadSubmissions();
   }
 
   @override

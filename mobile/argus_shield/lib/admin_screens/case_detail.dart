@@ -32,6 +32,7 @@ import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/case_evidence_section.dart';
 import 'package:argus_shield/case_evidence_source.dart';
+import 'package:argus_shield/admin_screens/footage_list.dart' show usesRealDatabase;
 import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/review_actions.dart';
 import 'package:argus_shield/admin_screens/submission_detail.dart';
@@ -441,7 +442,9 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
 
         // ---- AI summary + people / vehicles / weapons ------------------------
         if (widget.evidenceSource ??
-                (widget.service == null ? CaseEvidenceSource.standard : null)
+                (usesRealDatabase(widget.service)
+                    ? CaseEvidenceSource.standard
+                    : null)
             case final source?)
           CaseEvidenceSection(caseId: c.caseId, source: source),
 

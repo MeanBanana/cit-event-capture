@@ -121,6 +121,10 @@ class EvidenceEntity {
   final List<MatchQuestion> questions;
   final List<EvidenceUpdate> updated;
 
+  /// Which clip of the submission (only on the submission page, where each
+  /// clip's people are listed separately).
+  final int? clip;
+
   const EvidenceEntity({
     required this.entityId,
     required this.kind,
@@ -132,6 +136,7 @@ class EvidenceEntity {
     this.crops = const [],
     this.questions = const [],
     this.updated = const [],
+    this.clip,
   });
 
   factory EvidenceEntity.fromMap(Map<String, dynamic> m) => EvidenceEntity(
@@ -154,7 +159,46 @@ class EvidenceEntity {
           for (final u in (m['updated'] as List? ?? const []))
             EvidenceUpdate.fromMap(Map<String, dynamic>.from(u as Map)),
         ],
+        clip: (m['clip'] as num?)?.toInt(),
       );
+
+  /// The one-line description in the AI summary, worded like the pipeline's
+  /// console output:
+  ///   person   "top white / bottom black · face visible (picture captured)"
+  ///   vehicle  "white Toyota car · plate ND123456"
+  ///   weapon   "long gun · held by Person 1"
+  /// Falls back to [description] when there are no details.
+  String get summaryLine {
+    String? text(String key) {
+      final v = attributes[key];
+      if (v == null || (v is String && v.trim().isEmpty)) return null;
+      return v.toString().replaceAll('_', ' ');
+    }
+
+    if (attributes.isEmpty) return description;
+    switch (kind) {
+      case 'person':
+        final upper = text('upper_clothing'), lower = text('lower_clothing');
+        return [
+          if (upper != null || lower != null)
+            'top ${upper ?? 'unsure'} / bottom ${lower ?? 'unsure'}',
+          attributes['face_visible'] == true
+              ? 'face visible (picture captured)'
+              : 'face not clear enough',
+        ].join(' · ');
+      case 'vehicle':
+        final look = [text('colour'), text('make'), text('class_name')]
+            .whereType<String>()
+            .join(' ');
+        final plate = text('plate');
+        return '${look.isEmpty ? 'vehicle' : look} · '
+            '${plate == null ? 'no readable plate' : 'plate $plate'}';
+      default:
+        final held = text('held_by');
+        return '${text('kind') ?? 'unsure what kind'}'
+            '${held == null ? '' : ' · held by $held'}';
+    }
+  }
 
   /// The details as label → value lines for the crops page, e.g.
   /// ("Top", "black (82%)"). Unknown values are left out.

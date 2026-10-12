@@ -1,10 +1,13 @@
-// submissions_page.dart — live session report list and its card helper.
+// submissions_page.dart — the citizen's own reports, from Supabase, with
+// where each one is: received / added to a case, and whether its footage has
+// been analysed. Pull down to refresh. Citizens never see the AI's findings
+// (other people's faces and number plates) - only that it was analysed.
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'citizen_store.dart';
 
-/// Builds report cards from the shared store rather than fixed sample records.
+/// Lists the citizen's reports from the shared store.
 class SubmissionsPage extends StatelessWidget {
   final CitizenStore store;
 
@@ -17,41 +20,66 @@ class SubmissionsPage extends StatelessWidget {
       listenable: store,
       builder: (context, child) {
         final submissions = store.submissions;
-        return ListView(
-          padding: AppSpacing.page,
-          children: [
-            const Text('My submissions', style: AppText.sectionTitle),
-            const SizedBox(height: AppSpacing.small),
-            const Text(
-              'Track the reports you have submitted to Argus Shield.',
-              style: AppText.bodyMuted,
-            ),
-            const SizedBox(height: AppSpacing.large),
-            // An empty state is shown until the citizen adds the first report.
-            if (submissions.isEmpty)
-              const Text('No reports added yet.', style: AppText.bodyMuted),
-            // ... inserts each card and spacing widget into the children list.
-            for (final submission in submissions) ...[
-              SubmissionCard(
-                reference: submission.reference,
-                location: submission.location,
-                date: _formatDate(submission.createdAt),
-                status: 'Draft demo',
-                statusColor: AppColors.accent,
-                description: '${submission.description}\n\n'
-                    'File: ${submission.attachment.name}',
+        return RefreshIndicator(
+          onRefresh: store.loadSubmissions,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: AppSpacing.page,
+            children: [
+              const Text('My submissions', style: AppText.sectionTitle),
+              const SizedBox(height: AppSpacing.small),
+              const Text(
+                'Track the reports you have submitted to Argus Shield. '
+                'Pull down to refresh.',
+                style: AppText.bodyMuted,
               ),
-              const SizedBox(height: AppSpacing.medium),
+              const SizedBox(height: AppSpacing.large),
+              if (store.submissionsLoading && submissions.isEmpty)
+                const Center(child: CircularProgressIndicator()),
+              if (store.submissionsError != null) ...[
+                Text(store.submissionsError!,
+                    style: AppText.body.copyWith(color: AppColors.danger)),
+                TextButton(
+                  onPressed: store.loadSubmissions,
+                  child: const Text('Try again'),
+                ),
+                const SizedBox(height: AppSpacing.medium),
+              ],
+              // An empty state is shown until the citizen sends the first report.
+              if (!store.submissionsLoading &&
+                  store.submissionsError == null &&
+                  submissions.isEmpty)
+                const Text('No reports sent yet.', style: AppText.bodyMuted),
+              for (final s in submissions) ...[
+                SubmissionCard(
+                  reference: s.reference,
+                  location: s.location,
+                  date: s.reportedAt == null ? '' : _formatDate(s.reportedAt!),
+                  status: s.statusLabel,
+                  statusColor: switch (s.reviewStatus) {
+                    'accepted' => AppColors.success,
+                    'rejected' || 'duplicate' => AppColors.textHint,
+                    _ => AppColors.accent,
+                  },
+                  description: [
+                    if ((s.description ?? '').isNotEmpty) s.description!,
+                    '${s.fileCount} file${s.fileCount == 1 ? '' : 's'} · ${s.aiLabel}',
+                  ].join('\n\n'),
+                ),
+                const SizedBox(height: AppSpacing.medium),
+              ],
             ],
-          ],
+          ),
         );
       },
     );
   }
 
-  /// Formats the creation date for display without another package.
-  String _formatDate(DateTime date) =>
-      '${date.day}/${date.month}/${date.year}';
+  /// 12/10/2026 19:42 — formatted without another package.
+  String _formatDate(DateTime date) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${date.day}/${date.month}/${date.year} ${two(date.hour)}:${two(date.minute)}';
+  }
 }
 
 /// Reusable presentation widget for one report; it does not modify stored data.
@@ -87,9 +115,12 @@ class SubmissionCard extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(reference, style: AppText.cardTitle)),
-              Text(
-                status.toUpperCase(),
-                style: AppText.caption.copyWith(color: statusColor),
+              Flexible(
+                child: Text(
+                  status.toUpperCase(),
+                  textAlign: TextAlign.right,
+                  style: AppText.caption.copyWith(color: statusColor),
+                ),
               ),
             ],
           ),

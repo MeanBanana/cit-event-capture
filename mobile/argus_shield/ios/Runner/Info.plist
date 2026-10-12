@@ -83,6 +83,8 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Argus Shield adds your location to a report (if you allow it) so it can be linked to other reports of the same incident.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Argus Shield saves case pictures you download to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

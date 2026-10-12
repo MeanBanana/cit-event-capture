@@ -5,44 +5,99 @@
 // notifyListeners() and any ListenableBuilder watching it rebuilds.
 //
 //   * Profile     loaded from / saved to Supabase through SupabaseService.
-//   * Submissions still a local demo (kept in memory, not uploaded).
+//   * Submissions sent to Supabase (incident + footage), then analysed by
+//                 the AI worker; the Submissions tab lists them from there.
 
 import 'dart:collection';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../supabase_service.dart';
 import '../saved_contact_details.dart';
 import '../models/citizen_profile.dart';
+import '../models/my_submission.dart';
 
-// Files that import citizen_store.dart can keep using CitizenProfile.
+// Files that import citizen_store.dart can keep using these models.
 export '../models/citizen_profile.dart';
+export '../models/my_submission.dart';
 
-/// Metadata about the selected file. This does not upload or encrypt the file.
-class MediaAttachment {
-  /// Display name reported by the picker.
+/// One video or photo the citizen picked or recorded (not uploaded yet).
+class FootageFile {
+  /// Display name reported by the picker, e.g. "VID_20261012_191502.mp4".
   final String name;
-  /// Temporary picker path; no permanent copy is created by this prototype.
-  final String path;
 
-  const MediaAttachment({required this.name, required this.path});
+  /// Size in bytes (checked against the 50 MB upload limit).
+  final int size;
+
+  /// Reads the file when it is sent (not before: videos are big).
+  final Future<Uint8List> Function() readBytes;
+
+  /// The picker's MIME type, if it gave one.
+  final String? mimeType;
+
+  const FootageFile({
+    required this.name,
+    required this.size,
+    required this.readBytes,
+    this.mimeType,
+  });
+
+  static const _imageTypes = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif',
+    '.bmp': 'image/bmp', '.gif': 'image/gif', '.tif': 'image/tiff',
+    '.tiff': 'image/tiff',
+  };
+  static const _videoTypes = {
+    '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.m4v': 'video/x-m4v',
+    '.3gp': 'video/3gpp', '.webm': 'video/webm', '.mkv': 'video/x-matroska',
+    '.avi': 'video/x-msvideo',
+  };
+
+  String get _ext {
+    final dot = name.lastIndexOf('.');
+    return dot < 0 ? '' : name.substring(dot).toLowerCase();
+  }
+
+  /// 'image' or 'video' (what the media table and the AI need).
+  String get mediaType => _imageTypes.containsKey(_ext) ||
+          (mimeType?.startsWith('image/') ?? false)
+      ? 'image'
+      : 'video';
+
+  /// The upload's content type; the bucket only accepts these types.
+  String get contentType =>
+      _imageTypes[_ext] ?? _videoTypes[_ext] ??
+      (mimeType != null && (mimeType!.startsWith('image/') || mimeType!.startsWith('video/'))
+          ? mimeType!
+          : (mediaType == 'image' ? 'image/jpeg' : 'video/mp4'));
+
+  /// "12.4 MB"
+  String get sizeLabel => size >= 1024 * 1024
+      ? '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'
+      : '${(size / 1024).ceil()} KB';
 }
 
-/// An immutable snapshot of an incident report added in this app session.
-class CitizenSubmission {
-  /// Demo reference that is unique within one store instance.
-  final String reference;
-  final String location;
-  /// Time the report was added; not the time the incident occurred.
-  final DateTime createdAt;
-  final String description;
-  final MediaAttachment attachment;
+/// How far a report has got, for the progress bar on the Upload page.
+class SendProgress {
+  final String message;
+  final double fraction; // 0..1
 
-  const CitizenSubmission({
-    required this.reference,
-    required this.location,
-    required this.createdAt,
-    required this.description,
-    required this.attachment,
-  });
+  const SendProgress(this.message, this.fraction);
+}
+
+/// Sending stopped part-way (no connection, file refused ...). The incident
+/// may already exist: pass [incidentId] and [uploaded] back to
+/// CitizenStore.sendReport to carry on where it stopped, without making a
+/// second incident or uploading a file twice.
+class SendReportFailed implements Exception {
+  final String message;
+  final int? incidentId;
+  final int uploaded;
+
+  const SendReportFailed(this.message, {this.incidentId, this.uploaded = 0});
+
+  @override
+  String toString() => message;
 }
 
 /// Holds the citizen's data and the operations the tabs use.
@@ -58,17 +113,24 @@ class CitizenStore extends ChangeNotifier {
   final SavedContactStore _savedContacts;
 
   // Underscore names are private to this Dart file/library.
-  final List<CitizenSubmission> _submissions = [];
-  int _nextReference = 1;
+  List<MySubmission> _submissions = const [];
+  bool _submissionsLoading = false;
+  String? _submissionsError;
 
   CitizenProfile? _profile;
   bool _profileLoading = false;
   String? _profileError;
   bool _disposed = false;
 
-  /// Read-only view: pages cannot add/remove records through this getter.
-  UnmodifiableListView<CitizenSubmission> get submissions =>
+  /// The citizen's reports from Supabase, newest first (read-only view).
+  UnmodifiableListView<MySubmission> get submissions =>
       UnmodifiableListView(_submissions);
+
+  /// True while the reports are being fetched.
+  bool get submissionsLoading => _submissionsLoading;
+
+  /// A message to show if loading the reports failed, otherwise null.
+  String? get submissionsError => _submissionsError;
 
   /// Null until loadProfile() succeeds.
   CitizenProfile? get profile => _profile;
@@ -179,35 +241,124 @@ class CitizenStore extends ChangeNotifier {
 
   // ------------------------------------------------------------ SUBMISSIONS
 
-  /// Adds validated incident details and attachment metadata to memory.
-  /// Throws ArgumentError for missing values; does not upload the media file.
-  CitizenSubmission submitReport({
+  /// Most files in one report (the AI worker treats them as one submission).
+  static const maxFiles = 5;
+
+  /// Fetches the citizen's own reports. Errors go to [submissionsError].
+  Future<void> loadSubmissions() async {
+    if (_submissionsLoading) return;
+    _submissionsLoading = true;
+    _submissionsError = null;
+    _notify();
+    try {
+      final profile = _profile ?? await _ensureProfile();
+      _submissions = await _service.getMySubmissions(profile.userId);
+    } catch (e) {
+      debugPrint('loadSubmissions failed: $e');
+      _submissionsError =
+          'Your reports could not be loaded. Check your connection and try again.';
+    } finally {
+      _submissionsLoading = false;
+      _notify();
+    }
+  }
+
+  /// Sends a report to Supabase: creates the incident, uploads every file,
+  /// then starts the AI analysis. Returns the incident id.
+  ///
+  /// [latitude]/[longitude] = the phone's GPS, only if the citizen agreed.
+  /// Throws ArgumentError for invalid input (nothing sent) and
+  /// [SendReportFailed] if it stopped part-way - pass its incidentId and
+  /// uploaded count back as [resumeIncidentId] / [alreadyUploaded] to retry.
+  Future<int> sendReport({
     required String location,
     required String description,
-    required MediaAttachment attachment,
-  }) {
+    required List<FootageFile> files,
+    double? latitude,
+    double? longitude,
+    int? resumeIncidentId,
+    int alreadyUploaded = 0,
+    void Function(SendProgress progress)? onProgress,
+  }) async {
     // Store-level validation protects the data even if a caller bypasses the form.
     final error = (location.trim().isEmpty ? 'Enter the incident location' : null) ??
-        (description.trim().isEmpty ? 'Enter a description' : null);
+        (description.trim().isEmpty ? 'Enter a description' : null) ??
+        (files.isEmpty ? 'Please select or record footage first.' : null) ??
+        (files.length > maxFiles ? 'A report can have at most $maxFiles files.' : null);
     if (error != null) throw ArgumentError(error);
-    if (attachment.name.trim().isEmpty || attachment.path.trim().isEmpty) {
-      throw ArgumentError('Please select or record footage first.');
+    final tooBig = files.where((f) => f.size > SupabaseService.maxFileBytes).toList();
+    if (tooBig.isNotEmpty) {
+      throw ArgumentError('${tooBig.first.name} is ${tooBig.first.sizeLabel}: '
+          'files can be at most 50 MB. Trim the video and try again.');
     }
 
-    // final model fields form a snapshot instead of sharing editable controllers.
-    final submission = CitizenSubmission(
-      // The counter increments after use; padding displays DEMO-0001, etc.
-      reference: 'DEMO-${(_nextReference++).toString().padLeft(4, '0')}',
-      location: location.trim(),
-      createdAt: DateTime.now(),
-      description: description.trim(),
-      attachment: attachment,
-    );
-    // Insert at zero so the newest report appears first.
-    _submissions.insert(0, submission);
-    // Listening widgets refresh after a successful change.
-    _notify();
-    return submission;
+    void progress(String message, double fraction) =>
+        onProgress?.call(SendProgress(message, fraction));
+
+    int? incidentId = resumeIncidentId;
+    var uploaded = alreadyUploaded;
+    try {
+      progress('Preparing your report…', 0.02);
+      final profile = _profile ?? await _ensureProfile();
+
+      final id = incidentId ?? await _service.createIncident(
+        reporterId: profile.userId,
+        location: location.trim(),
+        description: description.trim(),
+        when: DateTime.now(),
+        latitude: latitude,
+        longitude: longitude,
+      );
+      incidentId = id;
+
+      for (var i = uploaded; i < files.length; i++) {
+        final file = files[i];
+        progress('Uploading ${file.name} (${i + 1} of ${files.length}, ${file.sizeLabel})…',
+            0.05 + 0.85 * i / files.length);
+        await _service.uploadIncidentFile(
+          incidentId: id,
+          uploaderId: profile.userId,
+          fileName: file.name,
+          bytes: await file.readBytes(),
+          contentType: file.contentType,
+          mediaType: file.mediaType,
+        );
+        uploaded = i + 1;
+      }
+
+      progress('Starting the analysis…', 0.95);
+      await _service.submitForAnalysis(id);
+      progress('Sent', 1);
+
+      // Show it in the Submissions tab straight away (not awaited: the
+      // report is already sent even if this refresh fails).
+      loadSubmissions();
+      return id;
+    } catch (e) {
+      debugPrint('sendReport failed: $e');
+      throw SendReportFailed(
+        incidentId == null
+            ? 'Your report could not be sent. Check your connection and try again.'
+            : 'Sending stopped after $uploaded of ${files.length} file(s). '
+                'Check your connection and tap Try again - nothing is lost.',
+        incidentId: incidentId,
+        uploaded: uploaded,
+      );
+    }
+  }
+
+  /// The profile (its userId is the reporter / uploader id), loading it
+  /// first if needed. Waits for a load that is already running.
+  Future<CitizenProfile> _ensureProfile() async {
+    while (_profileLoading) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (_profile == null) await loadProfile();
+    final profile = _profile;
+    if (profile == null) {
+      throw StateError(_profileError ?? 'Your profile could not be loaded.');
+    }
+    return profile;
   }
 
   // ---------------------------------------------------------------- HELPERS

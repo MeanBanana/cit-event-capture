@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
+import 'package:argus_shield/admin_screens/case_evidence_section.dart';
+import 'package:argus_shield/admin_screens/footage_list.dart';
+import 'package:argus_shield/case_evidence_source.dart';
+import 'package:argus_shield/submission_evidence_source.dart';
 import 'package:argus_shield/models/case_summary.dart';
 import 'package:argus_shield/models/crime_scene_summary.dart';
 import 'package:argus_shield/models/submission_groups.dart';
@@ -8,6 +12,10 @@ import 'package:argus_shield/theme/app_theme.dart';
 
 /// Assigned-case brief for investigators. Administrative review and
 /// assignment controls are intentionally omitted from this surface.
+///
+/// Shows the case's combined AI SUMMARY (each person / vehicle / weapon over
+/// all its reports, with View crops), then each report with its own AI
+/// summary and its footage (View plays the video / opens the photo).
 class InvestigatorCaseDetailPage extends StatefulWidget {
   final int caseId;
   final SupabaseService? service;
@@ -26,6 +34,14 @@ class InvestigatorCaseDetailPage extends StatefulWidget {
 class _InvestigatorCaseDetailPageState
     extends State<InvestigatorCaseDetailPage> {
   late final SupabaseService _service = widget.service ?? SupabaseService();
+
+  /// The AI pictures / footage read Supabase directly: not with the fake
+  /// services of the widget tests.
+  late final bool _showEvidence = usesRealDatabase(widget.service);
+  final _reportEvidence = SubmissionEvidenceSource();
+
+  /// Changes on pull-to-refresh, so the AI sections load again.
+  int _version = 0;
   CaseSummary? _case;
   List<CrimeSceneSummary> _incidents = const [];
   List<CaseEvent> _events = const [];
@@ -51,6 +67,7 @@ class _InvestigatorCaseDetailPageState
         _case = results[0] as CaseSummary?;
         _incidents = results[1] as List<CrimeSceneSummary>;
         _events = results[2] as List<CaseEvent>;
+        _version++;
         _error = _case == null ? 'This case is no longer available.' : null;
         _loading = false;
       });
@@ -121,6 +138,13 @@ class _InvestigatorCaseDetailPageState
                 updating: _updating,
                 onStatusChanged: _changeStatus,
               ),
+              if (_showEvidence)
+                CaseEvidenceSection(
+                  key: ValueKey('case-evidence-${current.caseId}-$_version'),
+                  caseId: current.caseId,
+                  source: CaseEvidenceSource.standard,
+                  title: 'AI summary (whole case)',
+                ),
               const SectionLabel('Incident reports'),
               if (_incidents.isEmpty)
                 const Text(
@@ -129,7 +153,12 @@ class _InvestigatorCaseDetailPageState
                 )
               else
                 for (final incident in _incidents)
-                  _IncidentEvidenceCard(incident: incident),
+                  _IncidentEvidenceCard(
+                    key: ValueKey('incident-${incident.incidentId}-$_version'),
+                    incident: incident,
+                    service: _showEvidence ? _service : null,
+                    evidence: _showEvidence ? _reportEvidence : null,
+                  ),
               const SectionLabel('Case activity'),
               if (_events.isEmpty)
                 const Text('No activity recorded yet.', style: AppText.bodyMuted)
@@ -209,7 +238,60 @@ class _CaseStatusPanel extends StatelessWidget {
 class _IncidentEvidenceCard extends StatelessWidget {
   final CrimeSceneSummary incident;
 
-  const _IncidentEvidenceCard({required this.incident});
+  /// Both set in the app: the report's AI summary with each person /
+  /// vehicle / weapon (View crops) and its footage (View). Null in tests.
+  final SupabaseService? service;
+  final CaseEvidenceSource? evidence;
+
+  const _IncidentEvidenceCard({
+    super.key,
+    required this.incident,
+    this.service,
+    this.evidence,
+  });
+
+  /// People / vehicles / weapons / suspects / plates as chips.
+  Widget _chips() =>
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (incident.vehicleCount > 0)
+            _EvidenceChip(
+              icon: Icons.directions_car_outlined,
+              label: '${incident.vehicleCount} vehicle(s)',
+            ),
+          if (incident.personCount > 0)
+            _EvidenceChip(
+              icon: Icons.people_outline,
+              label: '${incident.personCount} people',
+            ),
+          if (incident.weaponCount > 0)
+            _EvidenceChip(
+              icon: Icons.warning_amber,
+              label: '${incident.weaponCount} weapon(s)',
+            ),
+          if (incident.possibleSuspects > 0)
+            _EvidenceChip(
+              icon: Icons.person_search_outlined,
+              label:
+                  '${incident.possibleSuspects} possible suspect(s) to review',
+              color: AppColors.accent,
+            ),
+          if (incident.confirmedSuspects > 0)
+            _EvidenceChip(
+              icon: Icons.verified_user_outlined,
+              label:
+                  '${incident.confirmedSuspects} confirmed suspect(s)',
+              color: AppColors.success,
+            ),
+          for (final plate in incident.plates)
+            _EvidenceChip(
+              icon: Icons.pin_outlined,
+              label: plate,
+            ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -251,52 +333,39 @@ class _IncidentEvidenceCard extends StatelessWidget {
               const SectionLabel('Reported details'),
               Text(incident.description!, style: AppText.bodyMuted),
             ],
-            if (incident.aiSummary?.isNotEmpty == true) ...[
-              const SectionLabel('Footage intelligence'),
-              Text(incident.aiSummary!, style: AppText.bodyMuted),
-            ],
-            if (incident.hasAiFacts) ...[
-              const SectionLabel('Detection summary'),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (incident.vehicleCount > 0)
-                    _EvidenceChip(
-                      icon: Icons.directions_car_outlined,
-                      label: '${incident.vehicleCount} vehicle(s)',
-                    ),
-                  if (incident.personCount > 0)
-                    _EvidenceChip(
-                      icon: Icons.people_outline,
-                      label: '${incident.personCount} people',
-                    ),
-                  if (incident.weaponCount > 0)
-                    _EvidenceChip(
-                      icon: Icons.warning_amber,
-                      label: '${incident.weaponCount} weapon(s)',
-                    ),
-                  if (incident.possibleSuspects > 0)
-                    _EvidenceChip(
-                      icon: Icons.person_search_outlined,
-                      label:
-                          '${incident.possibleSuspects} possible suspect(s) to review',
-                      color: AppColors.accent,
-                    ),
-                  if (incident.confirmedSuspects > 0)
-                    _EvidenceChip(
-                      icon: Icons.verified_user_outlined,
-                      label:
-                          '${incident.confirmedSuspects} confirmed suspect(s)',
-                      color: AppColors.success,
-                    ),
-                  for (final plate in incident.plates)
-                    _EvidenceChip(
-                      icon: Icons.pin_outlined,
-                      label: plate,
-                    ),
-                ],
+            if (evidence != null && service != null) ...[
+              CaseEvidenceSection(
+                caseId: incident.incidentId,
+                source: evidence,
+                title: 'AI summary',
+                summary: incident.aiSummary ?? '',
+                summaryNote: aiStatusNote(incident.aiSummaryStatus,
+                    hasSummary: incident.aiSummary != null,
+                    mediaCount: incident.mediaCount),
+                belowSummary: incident.hasAiFacts ? _chips() : null,
+                perSubmission: true,
+                emptyText: incident.mediaCount == 0
+                    ? 'No footage was sent with this report.'
+                    : 'The AI found no people, vehicles or weapons in this footage.',
               ),
+              if (incident.mediaCount > 0) ...[
+                const SectionLabel('Footage'),
+                FootageList(
+                  service: service!,
+                  incidentId: incident.incidentId,
+                  reference: incident.reference,
+                  roleLabel: 'Investigator',
+                ),
+              ],
+            ] else ...[
+              if (incident.aiSummary?.isNotEmpty == true) ...[
+                const SectionLabel('Footage intelligence'),
+                Text(incident.aiSummary!, style: AppText.bodyMuted),
+              ],
+              if (incident.hasAiFacts) ...[
+                const SectionLabel('Detection summary'),
+                _chips(),
+              ],
             ],
             if (incident.mediaCount > 0) ...[
               const SizedBox(height: AppSpacing.small),

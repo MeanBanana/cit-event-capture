@@ -1,5 +1,5 @@
-// Tests for the AI section of the case page: summary, people / vehicles /
-// weapons cards, the 3-column pictures page, the enlarged picture with its
+// Tests for the AI section of the case page: summary, one line per person /
+// vehicle / weapon with View crops, the 3-column pictures page, the enlarged picture with its
 // Download button, and answering "Is this Person 1?".
 
 import 'dart:typed_data';
@@ -132,7 +132,22 @@ void main() {
     expect(e.people.single.detailLines, contains(('Top', 'black (80%)')));
   });
 
-  testWidgets('summary, counts and one card per person / vehicle / weapon',
+  test('one-line descriptions are worded like the console output', () {
+    final e = CaseEvidence.fromMap(_sample());
+    expect(e.people.single.summaryLine,
+        'top black / bottom unsure · face not clear enough');
+    expect(e.vehicles.single.summaryLine, 'vehicle · plate ND123456');
+    expect(e.weapons.single.summaryLine, 'long gun · held by Person 1');
+    final full = EvidenceEntity(
+      entityId: 'p9', kind: 'person', label: 'Person 9', description: '',
+      attributes: {'upper_clothing': 'white', 'lower_clothing': 'black',
+                   'face_visible': true},
+    );
+    expect(full.summaryLine,
+        'top white / bottom black · face visible (picture captured)');
+  });
+
+  testWidgets('AI summary, counts, then one line per person / vehicle / weapon',
       (tester) async {
     await _pump(tester, FakeEvidenceSource(_sample()));
 
@@ -140,11 +155,12 @@ void main() {
     expect(find.textContaining('AI found 1 person'), findsOneWidget);
     expect(find.text('1 person · 1 vehicle · 1 weapon · 1 match to check'),
         findsOneWidget);
-    expect(find.text('Person 1'), findsOneWidget);
-    expect(find.text('Vehicle 1'), findsOneWidget);
-    expect(find.text('Weapon 1'), findsOneWidget);
+    expect(find.text('Person 1: top black / bottom unsure · face not clear enough'),
+        findsOneWidget);
+    expect(find.text('Vehicle 1: vehicle · plate ND123456'), findsOneWidget);
+    expect(find.text('Weapon 1: long gun · held by Person 1'), findsOneWidget);
     expect(find.text('2 submissions · 7 pictures · 1 to check'), findsOneWidget);
-    expect(find.text('View'), findsNWidgets(3));
+    expect(find.text('View crops'), findsNWidgets(3));
   });
 
   testWidgets('no evidence yet', (tester) async {
@@ -156,7 +172,7 @@ void main() {
       (tester) async {
     await _pump(tester, FakeEvidenceSource(_sample()));
 
-    await tester.tap(find.text('View').first);
+    await tester.tap(find.text('View crops').first);
     await tester.pumpAndSettle();
 
     expect(find.text('PICTURES (7)'), findsOneWidget);
@@ -181,7 +197,7 @@ void main() {
       (tester) async {
     final source = FakeEvidenceSource(_sample());
     await _pump(tester, source);
-    await tester.tap(find.text('View').first);
+    await tester.tap(find.text('View crops').first);
     await tester.pumpAndSettle();
 
     expect(find.text('Is this Person 1?'), findsOneWidget);

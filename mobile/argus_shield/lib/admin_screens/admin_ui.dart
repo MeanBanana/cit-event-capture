@@ -309,6 +309,10 @@ class SubmissionDescriptions extends StatelessWidget {
   final int mediaCount;
   final int? maxLines;
 
+  /// False leaves out the AI SUMMARY block (the submission page shows it in
+  /// its own section, with the people / vehicles / weapons under it).
+  final bool showAi;
+
   const SubmissionDescriptions({
     super.key,
     required this.citizen,
@@ -316,6 +320,7 @@ class SubmissionDescriptions extends StatelessWidget {
     this.aiStatus = 'none',
     this.mediaCount = 1,
     this.maxLines,
+    this.showAi = true,
   });
 
   @override
@@ -363,7 +368,7 @@ class SubmissionDescriptions extends StatelessWidget {
             overflow: overflow,
           ),
         ),
-        block(
+        if (showAi) block(
           'AI SUMMARY',
           Icons.auto_awesome_outlined,
           Column(
