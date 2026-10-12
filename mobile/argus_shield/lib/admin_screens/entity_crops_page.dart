@@ -285,15 +285,18 @@ class _QuestionCard extends StatelessWidget {
               style: AppText.bodyMuted.copyWith(
                   fontSize: 12, fontStyle: FontStyle.italic)),
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          // Wrap, not Row: on a narrow phone the two buttons don't fit side
+          // by side, so the second one moves to the next line
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               SmallActionButton(
                 label: 'No, someone else',
                 color: AppColors.danger,
                 onPressed: onAnswer == null ? null : () => onAnswer!(false),
               ),
-              const SizedBox(width: 8),
               SmallActionButton(
                 label: 'Yes, same',
                 color: AppColors.success,

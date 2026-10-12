@@ -3,8 +3,8 @@
 // each with all of its crops.
 //
 // The data has the exact shape ai/case_matcher.py's case_view() produces
-// ("python case_matcher.py view 1"). Until the Supabase side stores it, the
-// app shows a bundled sample (see case_evidence_source.dart).
+// ("python case_matcher.py view 1"). The app gets it from the database
+// function get_case_evidence (see case_evidence_source.dart).
 
 /// One picture of a person / vehicle / weapon.
 class EvidenceCrop {

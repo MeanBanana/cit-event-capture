@@ -537,6 +537,27 @@ class SupabaseService {
         .toList();
   }
 
+  // -------------------------------------------------------------- AI WORKER
+
+  /// Starts the AI analysis of a submission. Call it ONCE, after the LAST
+  /// file of the submission (1-5 files) is uploaded and its media row
+  /// inserted. Only the citizen who reported it (or an admin) may; calling
+  /// again while it is waiting or running does nothing. Returns the job id.
+  /// The submission then shows "AI processing" until the worker is done
+  /// (crimescene.aisummarystatus: processing -> ready / failed).
+  Future<int> submitForAnalysis(int incidentId) async {
+    final jobId = await supabase
+        .rpc('submit_for_analysis', params: {'p_incidentid': incidentId});
+    return (jobId as num).toInt();
+  }
+
+  /// Admins: is an AI worker running? {online, workers: [{workerid, gpu,
+  /// version, lastseen, seconds_ago, online}], queued, running, failed_24h}
+  Future<Map<String, dynamic>> getAiWorkerStatus() async {
+    final status = await supabase.rpc('ai_worker_status');
+    return Map<String, dynamic>.from(status as Map);
+  }
+
   // --------------------------------------------------------------- GROUPING
 
   /// Submissions grouped by location, most recently reported first.

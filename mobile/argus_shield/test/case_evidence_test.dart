@@ -160,11 +160,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('PICTURES (7)'), findsOneWidget);
+    // the grid is below the "Is this Person 1?" card: scroll to it so the
+    // list builds it
+    await tester.ensureVisible(find.text('PICTURES (7)'));
+    await tester.pumpAndSettle();
     final grid = tester.widget<SliverGrid>(find.byType(SliverGrid));
     final layout =
         grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
     expect(layout.crossAxisCount, 3);
 
+    await tester.ensureVisible(find.text('S1 · person').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('S1 · person').first);
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsOneWidget);
