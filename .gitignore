@@ -8,3 +8,7 @@ venv/
 # AI worker: files while a job runs, and its log
 backend/work/
 backend/worker.log*
+
+# Python bytecode (made automatically on each PC)
+__pycache__/
+*.pyc
