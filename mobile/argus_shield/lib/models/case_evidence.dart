@@ -181,7 +181,7 @@ class EvidenceEntity {
         final upper = text('upper_clothing'), lower = text('lower_clothing');
         return [
           if (upper != null || lower != null)
-            'top ${upper ?? 'unsure'} / bottom ${lower ?? 'unsure'}',
+            'top ${clothingWord(upper)} / bottom ${clothingWord(lower)}',
           attributes['face_visible'] == true
               ? 'face visible (picture captured)'
               : 'face not clear enough',
@@ -211,6 +211,7 @@ class EvidenceEntity {
     String? value(String key) {
       final v = attributes[key];
       if (v == null || (v is String && v.isEmpty)) return null;
+      if (v == 'none' && key.endsWith('_clothing')) return 'no clothing';
       return v.toString().replaceAll('_', ' ');
     }
 
@@ -277,6 +278,13 @@ class CaseEvidence {
       isSample: isSample,
     );
   }
+}
+
+/// A clothing value as it reads: "black", "no clothing" (the AI stores
+/// "none" for bare skin, e.g. no shirt), "unsure" (not seen / can't tell).
+String clothingWord(String? value) {
+  if (value == null || value.isEmpty) return 'unsure';
+  return value == 'none' ? 'no clothing' : value;
 }
 
 DateTime? _date(Object? value) {

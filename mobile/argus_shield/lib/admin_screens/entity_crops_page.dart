@@ -133,7 +133,7 @@ class _EntityCropsPageState extends State<EntityCropsPage> {
       children: [
         Text(e.label, style: AppText.sectionTitle),
         const SizedBox(height: 4),
-        Text(e.description, style: AppText.body.copyWith(fontSize: 15)),
+        Text(e.summaryLine, style: AppText.body.copyWith(fontSize: 15)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 6,

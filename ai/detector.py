@@ -55,6 +55,7 @@ from ultralytics import YOLO
 
 from colours import dominant_colour
 from people import FaceFinder, PersonRecord
+from clothing import PoseFinder
 
 try:
     from vehicle_classifier import VehicleClassifier, sharpness
@@ -330,6 +331,17 @@ class ArgusDetector:
         except Exception as error:       # model file missing, etc.
             print(f"Face finding not available ({error}). "
                   "People will have no pictures.")
+
+        # Body joints (shoulders / hips / knees) for clothing colours: where
+        # the top and the bottom are, and whether they're bare skin. Optional:
+        # without it clothing falls back to fixed parts of the box (much less
+        # reliable in close-ups). yolo26s-pose.pt downloads itself once.
+        self.pose = None
+        try:
+            self.pose = PoseFinder(str(Path(__file__).parent / "yolo26s-pose.pt"))
+        except Exception as error:
+            print(f"Body pose model not available ({error}). "
+                  "Clothing colours will be less reliable.")
 
         # Weapon finder (handgun / long gun / knife / machete). Optional.
         self.weapons = None
@@ -615,7 +627,8 @@ class ArgusDetector:
             if not is_vehicle:
                 if height >= min_person_height and t["person"] is not None:
                     t["person"].add_view(frame, xyxy, confidence, frame_time,
-                                         self.faces, min_face_px=min_face_px)
+                                         self.faces, min_face_px=min_face_px,
+                                         pose=self.pose)
                     # (cut-off views too, at half weight: in close-up phone
                     # footage people are often partly out of the picture)
                     crop = crop_box(frame, xyxy)

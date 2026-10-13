@@ -148,7 +148,7 @@ video (the sound analysis takes only seconds). To skip a step while testing,
 | Plates | On the same good views, FastALPR finds the plate and reads each character with a confidence. Only clear readings count (every character ≥ 40% sure, average ≥ 75%); readings matching South African formats count more, and look-alike mix-ups (O/0, I/1, B/8, S/5, Z/2, G/6) are fixed when that makes a valid SA plate. Readings one character apart are merged | `plate_reader.py` |
 | Weapons | YOLOE (or our trained model, once `weapon_models/best.pt` exists) finds handguns, long guns, knives and machetes on every 2nd frame, with its own tracker; each weapon's kind is voted over frames and it's linked to the person whose (slightly widened) box it's in most often | `weapons.py` |
 | Sound | YAMNet scores each 0.48 s of sound for gunfire / explosion; bangs are found where loudness (above 500 Hz) jumps 10 dB+; their spacing gives automatic / semi-automatic / unclear | `audio.py` |
-| People | Most people visible at the same time is counted (safer than counting IDs: someone hidden for a while can come back with a new ID). For each person: upper/lower clothing colours are voted over frames, and a face finder (YuNet) looks for their face; the clearest frame with a face at least 36 px tall and sharp is saved | `people.py`, `colours.py` |
+| People | Most people visible at the same time is counted (safer than counting IDs: someone hidden for a while can come back with a new ID). For each person: upper/lower clothing colours are voted over frames - a pose model (YOLO26s-pose, downloads itself) finds the torso (shoulders to hips) and thighs (hips to knees), skin is left out (matched to the person's own face / forearm colour), mostly-skin = "no clothing", and the colour is named in CIELAB. A part whose joints aren't visible isn't guessed. A face finder (YuNet) looks for their face; the clearest frame with a face at least 36 px tall and sharp is saved | `people.py`, `clothing.py` |
 | Decide | The make / colour with the highest total wins ("soft voting"); objects seen in fewer than 3 frames are dropped | `detector.py` (`_summarise`) |
 | Where / when | GPS and recording time are read from the file itself (video tags or photo EXIF). Missing when WhatsApp / TikTok stripped them; then the app uses the phone's GPS at upload | `metadata.py` |
 | Appearance | Each person and vehicle gets a "fingerprint" of how it looks (512 numbers from YOLO26s-cls + clothing colours) from its clearest views, plus up to 3 pictures from different moments | `appearance.py` |
@@ -228,7 +228,8 @@ training data, and train again.
 | `argus_tracker.yaml` | Tracker settings (TrackTrack, tuned to keep IDs through short occlusions) |
 | `vehicle_classifier.py` | Runs the make and colour models on a vehicle picture |
 | `plate_reader.py` | Finds and reads number plates; SA plate formats; combines readings |
-| `people.py` | Face finding (pictures for investigators), clothing colours |
+| `people.py` | Face finding (pictures for investigators), clothing colour votes |
+| `clothing.py` | Top / bottom colour or "no clothing" from body joints + skin detection |
 | `weapons.py` | Weapon finding (YOLOE or our trained model) + who is holding it |
 | `audio.py` | Gunfire / explosion detection in the sound + automatic vs semi-automatic |
 | `metadata.py` | GPS + recording time from the video / photo file |
@@ -237,7 +238,7 @@ training data, and train again.
 | `training/` | Colab notebook that trains the weapon model |
 | `weapon_models/` | Our trained weapon model (`best.pt`, later) + YOLOE's saved prompts |
 | `audio_models/` | YAMNet sound model (converted to ONNX) + class names + licence |
-| `colours.py` | Shared "main colour of a patch" helper (k-means + colour names) |
+| `colours.py` | "Main colour of a patch" helper for vehicles (k-means + colour names) |
 | `people_models/` | YuNet face-finder model + its licence |
 | `vehicle_models/` | The two pretrained models + their label lists and licence |
 

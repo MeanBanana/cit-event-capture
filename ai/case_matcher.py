@@ -60,6 +60,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from appearance import PERSON_MAYBE, PERSON_SAME, similarity
+from clothing import clothing_word
 
 CASES_DIR = Path("cases")
 SUGGEST_KM = 1.0
@@ -270,9 +271,10 @@ def compare_person(member, entity):
         if mine and theirs:
             (agree if mine == theirs else conflict).append((part, mine, theirs))
     if agree:
-        reasons.append("same clothing (" + ", ".join(f"{m} {p}" for p, m, _ in agree) + ")")
+        reasons.append("same clothing (" + ", ".join(f"{p} {clothing_word(m)}" for p, m, _ in agree) + ")")
     if conflict:
-        reasons.append("clothing differs (" + ", ".join(f"{p} {m} vs {t}" for p, m, t in conflict) + ")")
+        reasons.append("clothing differs (" + ", ".join(
+            f"{p} {clothing_word(m)} vs {clothing_word(t)}" for p, m, t in conflict) + ")")
     score = sim + 0.03 * len(agree) - 0.05 * len(conflict)
     gaps = [h for h in (_hours_apart(member["capture_time"], o["capture_time"]) for o in others)
             if h is not None]
@@ -688,8 +690,8 @@ def describe(entity):
     if entity["kind"] == "person":
         parts = []
         if a.get("upper_clothing") or a.get("lower_clothing"):
-            parts.append(f"top {a.get('upper_clothing') or 'unsure'}, "
-                         f"bottom {a.get('lower_clothing') or 'unsure'}")
+            parts.append(f"top {clothing_word(a.get('upper_clothing'))}, "
+                         f"bottom {clothing_word(a.get('lower_clothing'))}")
         parts.append("face seen" if a.get("face_visible") else "no clear face")
         return " · ".join(parts)
     if entity["kind"] == "vehicle":

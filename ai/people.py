@@ -6,7 +6,8 @@ For every tracked person this collects, over all the frames they appear in:
     big enough for an investigator to look at (roughly: within ~5 m on normal
     phone video). Without a clear face, detector.py still saves the clearest
     body view (clothing is evidence too), with no face close-up.
-  * their upper and lower clothing colours (AI-suggested, voted over frames)
+  * their upper and lower clothing colours (AI-suggested, voted over frames),
+    or "none" when that part of the body is bare skin - see clothing.py
 
 Privacy (POPIA): this module only FINDS where a face is in the picture so we
 can choose a good frame. It never identifies anyone - no face recognition, no
@@ -32,14 +33,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from colours import dominant_colour
+from clothing import body_regions, describe_region, skin_reference
 
 MODELS = Path(__file__).parent / "people_models"
 FACE_MODEL = MODELS / "face_detection_yunet_2026may.onnx"
-
-# For clothing, "silver" means grey.
-_CLOTHING_NAMES = {"silver": "grey"}
-
 
 def _sharpness(bgr):
     """Variance of the Laplacian (higher = sharper), on a fixed-size copy."""
@@ -75,23 +72,38 @@ class FaceFinder:
         return int(best[0]), int(best[1]), int(best[2]), int(best[3]), float(best[-1])
 
 
-def clothing_colours(frame, box):
-    """(upper colour, lower colour) of a person in box [x1, y1, x2, y2].
+def clothing_colours(frame, box, pose=None, face_box=None, known_skin=None):
+    """(upper, lower, skin) of a person in box [x1, y1, x2, y2]: upper /
+    lower are a colour word, "none" (bare skin) or None (not visible / can't
+    tell); skin is the person's skin colour found in THIS frame (from the
+    face or a bare forearm), or None. See clothing.py.
 
-    Upper = torso (20-50% down the box), lower = legs (55-90% down), using the
-    middle half of the width so background and arms count less. Either can be
-    None if that part is too small or off the picture.
+    known_skin: the person's skin colour from earlier frames, used when this
+    frame shows neither face nor forearm (e.g. filmed from behind).
+
+    With the pose model, the torso and thighs are found from the body's
+    joints. Without it (model missing) the box is split by fixed fractions
+    (torso 22-48% down, legs 58-85%), which is much less reliable in
+    close-ups, so that is only a fallback.
     """
     clipped = _clip(box, frame)
     if clipped is None:
-        return None, None
+        return None, None, None
+    kp = pose.keypoints(frame, clipped) if pose is not None else None
+    found = skin_reference(frame, face_box, kp)
+    skin = found if found is not None else known_skin
+    if kp is not None:
+        torso, thighs = body_regions(kp, clipped)
+        return (describe_region(frame, torso, skin)[0],
+                describe_region(frame, thighs, skin)[0], found)
+    if pose is not None:
+        return None, None, found     # the pose model saw no body: don't guess
     x1, y1, x2, y2 = clipped
     w, h = x2 - x1, y2 - y1
-    left, right = x1 + int(w * 0.25), x1 + int(w * 0.75)
-    upper = frame[y1 + int(h * 0.20):y1 + int(h * 0.50), left:right]
-    lower = frame[y1 + int(h * 0.55):y1 + int(h * 0.90), left:right]
-    up, low = dominant_colour(upper), dominant_colour(lower)
-    return _CLOTHING_NAMES.get(up, up), _CLOTHING_NAMES.get(low, low)
+    left, right = x1 + w * 0.3, x1 + w * 0.7
+    torso = [(left, y1 + h * 0.22), (right, y1 + h * 0.22), (right, y1 + h * 0.48), (left, y1 + h * 0.48)]
+    legs = [(left, y1 + h * 0.58), (right, y1 + h * 0.58), (right, y1 + h * 0.85), (left, y1 + h * 0.85)]
+    return describe_region(frame, torso, skin)[0], describe_region(frame, legs, skin)[0], found
 
 
 class PersonRecord:
@@ -101,6 +113,7 @@ class PersonRecord:
         self.upper_votes = Counter()     # colour -> weight
         self.lower_votes = Counter()
         self.clothing_views = 0
+        self.skin_seen = []              # this person's skin colour (CIELAB) per frame it was visible
         self.face_views = 0              # frames where a big-enough face was seen
         self.biggest_face_px = 0
         self._best_quality = -1.0
@@ -109,17 +122,29 @@ class PersonRecord:
         self.best_face_time = None
 
     def add_view(self, frame, box, confidence, frame_time, faces,
-                 min_face_px=36, min_face_sharpness=40):
-        """Learn from one frame where this person is clearly visible."""
+                 min_face_px=36, min_face_sharpness=40, pose=None):
+        """Learn from one frame where this person is clearly visible.
+        pose = clothing.PoseFinder (None: fallback clothing regions)."""
         clipped = _clip(box, frame)
         if clipped is None:
             return
         x1, y1, x2, y2 = clipped
         height = y2 - y1
 
-        # --- clothing: bigger, surer views count more
+        # --- face: look in the top half of the person (where the head is)
+        face = None
+        if faces is not None:
+            head_area = frame[y1:y1 + max(1, int(height * 0.5)), x1:x2]
+            face = faces.biggest_face(head_area)
+
+        # --- clothing: bigger, surer views count more. The face (if any)
+        # tells what this person's skin looks like (bare chest / legs).
         weight = min(1.0, height / 300) * confidence
-        upper, lower = clothing_colours(frame, (x1, y1, x2, y2))
+        face_box = None if face is None else (x1 + face[0], y1 + face[1], face[2], face[3])
+        known = np.median(self.skin_seen, axis=0) if self.skin_seen else None
+        upper, lower, skin = clothing_colours(frame, (x1, y1, x2, y2), pose, face_box, known)
+        if skin is not None and len(self.skin_seen) < 50:
+            self.skin_seen.append(skin)
         if upper:
             self.upper_votes[upper] += weight
         if lower:
@@ -127,11 +152,6 @@ class PersonRecord:
         if upper or lower:
             self.clothing_views += 1
 
-        # --- face: look in the top half of the person (where the head is)
-        if faces is None:
-            return
-        head_area = frame[y1:y1 + max(1, int(height * 0.5)), x1:x2]
-        face = faces.biggest_face(head_area)
         if face is None:
             return
         fx, fy, fw, fh, score = face
@@ -180,7 +200,7 @@ class PersonRecord:
             "face_size_px": self.biggest_face_px,     # biggest face seen (0 = none)
             "face_views": self.face_views,
             "best_face_time_seconds": self.best_face_time,
-            "upper_clothing": upper,                  # None = unsure / not seen
+            "upper_clothing": upper,                  # colour, "none" = bare skin, None = unsure / not seen
             "upper_clothing_confidence": upper_share,
             "upper_clothing_top3": upper_top,
             "lower_clothing": lower,

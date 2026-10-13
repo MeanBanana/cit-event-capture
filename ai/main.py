@@ -48,6 +48,7 @@ os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 from detector import IMAGE_TYPES, ArgusDetector
 from metadata import file_metadata
+from clothing import clothing_word
 
 try:
     from audio import AudioAnalyser
@@ -199,7 +200,7 @@ def print_file_summary(result, vehicles, people, weapons, is_image):
                   f"(at {result['max_people_time_seconds']} s)")
     for p in people:
         clothing = " / ".join(
-            f"{part} {p[key] or 'unsure'}" for part, key in
+            f"{part} {clothing_word(p[key])}" for part, key in
             (("top", "upper_clothing"), ("bottom", "lower_clothing")))
         face = (f"face visible ({p['face_size_px']} px) - picture saved"
                 if p["face_visible"] else

@@ -145,6 +145,15 @@ void main() {
     );
     expect(full.summaryLine,
         'top white / bottom black · face visible (picture captured)');
+    final bare = EvidenceEntity(
+      entityId: 'p8', kind: 'person', label: 'Person 8', description: '',
+      attributes: {'upper_clothing': 'none', 'lower_clothing': 'light_blue',
+                   'lower_clothing_share': 0.7},
+    );
+    expect(bare.summaryLine,
+        'top no clothing / bottom light blue · face not clear enough');
+    expect(bare.detailLines, contains(('Top', 'no clothing')));
+    expect(bare.detailLines, contains(('Bottom', 'light blue (70%)')));
   });
 
   testWidgets('AI summary, counts, then one line per person / vehicle / weapon',

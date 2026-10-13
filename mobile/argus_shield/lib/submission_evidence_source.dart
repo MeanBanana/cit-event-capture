@@ -179,8 +179,8 @@ String describeDetection(String kind, Map<String, dynamic> a) {
     case 'person':
       final parts = <String>[];
       if (text('upper_clothing') != null || text('lower_clothing') != null) {
-        parts.add('top ${text('upper_clothing') ?? 'unsure'}, '
-            'bottom ${text('lower_clothing') ?? 'unsure'}');
+        parts.add('top ${clothingWord(text('upper_clothing'))}, '
+            'bottom ${clothingWord(text('lower_clothing'))}');
       }
       parts.add(a['face_visible'] == true ? 'face seen' : 'no clear face');
       return parts.join(' · ');
