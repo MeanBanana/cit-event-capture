@@ -271,6 +271,7 @@ class CaseEvent {
       'suspect_edited' => '${inc}Suspect details edited',
       'ai_match_confirmed' => '${inc}AI match confirmed',
       'ai_match_rejected' => '${inc}AI match rejected',
+      'detection_corrected' => '${inc}AI finding corrected',
       _ => eventType,
     };
     return detail == null || detail!.isEmpty ? what : '$what · $detail';
