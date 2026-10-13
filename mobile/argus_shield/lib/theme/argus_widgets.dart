@@ -191,6 +191,60 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
+/// The partner of [PrimaryButton] for the other choices on a screen
+/// ("Use the AI's value", "Not a real weapon"): same square shape and
+/// full width, outlined instead of filled and a little lower, so the
+/// primary action stays the obvious one. [color] defaults to the accent;
+/// pass AppColors.danger for destructive choices.
+class SecondaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final Color color;
+
+  const SecondaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.color = AppColors.accent,
+  });
+
+  static const double height = 56;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = FittedBox(fit: BoxFit.scaleDown, child: Text(label));
+    return SizedBox(
+      width: AppSpacing.buttonMaxWidth, // shrinks to fit narrower screens
+      height: height,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          disabledForegroundColor: color.withValues(alpha: 0.4),
+          side: BorderSide(
+              color: onPressed == null ? color.withValues(alpha: 0.4) : color,
+              width: 2),
+          shape: const RoundedRectangleBorder(),
+          textStyle: AppText.buttonSmall.copyWith(fontSize: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+        ),
+        child: icon == null
+            ? text
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 22),
+                  const SizedBox(width: 8),
+                  Flexible(child: text),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
 /// A box whose border is a line of dashes that keeps running around the
 /// edge, like a warning tape. Used to draw attention to something urgent
 /// (e.g. the Active cases tile on the admin Overview).

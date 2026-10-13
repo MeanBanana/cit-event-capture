@@ -11,6 +11,7 @@ import 'models/case_assignment_info.dart';
 import 'models/submission_groups.dart';
 import 'models/citizen_profile.dart';
 import 'models/my_submission.dart';
+import 'models/crime_scene.dart';
 
 /// Sort order for submission lists (by date reported).
 enum SubmissionOrder { newest, oldest }
@@ -539,6 +540,44 @@ class SupabaseService {
     return rows
         .map((row) => MediaItem.fromMap(row as Map<String, dynamic>))
         .toList();
+  }
+
+  // ------------------------------------------------- CRIME SCENES + CORRECTIONS
+  // A case groups several crime scenes. Admins and investigators assigned
+  // to the case may see them (the database checks).
+
+  /// One card per crime scene in the case: description, location, how many
+  /// suspects / vehicles / weapons, and where the AI is with its footage.
+  Future<List<CrimeSceneCardInfo>> listCaseCrimeScenes(int caseId) async {
+    final rows = await supabase
+        .rpc('list_case_crime_scenes', params: {'p_caseid': caseId}) as List;
+    return rows
+        .map((row) => CrimeSceneCardInfo.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// One crime scene in full: its files, what the AI found (with each
+  /// correctable field) and the corrections log. Null if it doesn't exist.
+  Future<CrimeSceneDetail?> getCrimeScene(int incidentId) async {
+    final data = await supabase
+        .rpc('get_crime_scene', params: {'p_incidentid': incidentId});
+    if (data == null) return null;
+    return CrimeSceneDetail.fromMap(Map<String, dynamic>.from(data as Map));
+  }
+
+  /// Corrects one field of what the AI found ('plate', 'make', 'colour',
+  /// 'weapon_type', 'dismissed' ...). [value] null / '' = none. Logged in
+  /// correctionlog with [note]. Fails while the AI is still analysing the
+  /// footage, or when the case is closed (investigators).
+  Future<void> correctDetection(int detectionId, String field, String? value,
+      {String? note}) async {
+    final text = note?.trim() ?? '';
+    await supabase.rpc('correct_detection', params: {
+      'p_detectionid': detectionId,
+      'p_field': field,
+      'p_value': value,
+      'p_note': text.isEmpty ? null : text,
+    });
   }
 
   // -------------------------------------------------------------- AI WORKER

@@ -15,7 +15,6 @@ import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/theme/argus_widgets.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/crime_scene_summary.dart';
-import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/submissions.dart'
     show AiFactChips, WhenLines;

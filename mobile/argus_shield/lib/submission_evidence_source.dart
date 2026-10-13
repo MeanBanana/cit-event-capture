@@ -12,25 +12,19 @@
 // investigators on the case may read them (RLS), citizens never.
 
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:argus_shield/case_evidence_source.dart';
 import 'package:argus_shield/models/case_evidence.dart';
 
 class SubmissionEvidenceSource extends SupabaseEvidenceSource {
   /// [client] only for tests; the app uses Supabase.instance.client.
-  SubmissionEvidenceSource([SupabaseClient? client])
-      : _client2 = client,
-        super(client);
-
-  final SupabaseClient? _client2;
-  SupabaseClient get _db => _client2 ?? Supabase.instance.client;
+  SubmissionEvidenceSource([super.client]);
 
   /// [incidentId] (not a case id): this submission's detections.
   @override
   Future<CaseEvidence?> load(int incidentId) async {
     try {
-      final media = await _db
+      final media = await db
           .from('media')
           .select('mediaid, storagepath')
           .eq('incidentid', incidentId)
@@ -39,9 +33,9 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
       final clipNumber = {
         for (var i = 0; i < media.length; i++) (media[i]['mediaid'] as num).toInt(): i + 1,
       };
-      final rows = await _db
+      final rows = await db
           .from('detection')
-          .select('detectionid, mediaid, detectiontype, trackid, firstseen, attributes, crops')
+          .select('detectionid, mediaid, detectiontype, trackid, firstseen, attributes, crops, corrections')
           .inFilter('mediaid', clipNumber.keys.toList())
           .order('mediaid')
           .order('firstseen') as List;
@@ -53,7 +47,7 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
       ];
       final heldBy = <int, int>{};
       if (weaponIds.isNotEmpty) {
-        final wd = await _db
+        final wd = await db
             .from('weapondetail')
             .select('detectionid, heldbydetectionid')
             .inFilter('detectionid', weaponIds) as List;
@@ -75,6 +69,17 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
   @override
   Future<void> answer(int caseId, String memberKey, {required bool yes}) async {}
 }
+
+/// Corrected field (detection.corrections) -> the attribute it replaces.
+const correctedAttribute = <String, String>{
+  'upper_clothing': 'upper_clothing',
+  'lower_clothing': 'lower_clothing',
+  'vehicle_type': 'class_name',
+  'make': 'make',
+  'colour': 'colour',
+  'plate': 'plate',
+  'weapon_type': 'class_name',
+};
 
 /// The get_case_evidence-shaped map for one submission's detection rows
 /// (separate from the database calls so it can be tested).
@@ -104,6 +109,13 @@ Map<String, dynamic> buildSubmissionEvidence(
     final label = '${kind[0].toUpperCase()}${kind.substring(1)} $number';
     labelOf[id] = label;
     final a = Map<String, dynamic>.from((r['attributes'] as Map?) ?? const {});
+    // an investigator's corrections win over the AI (correct_detection)
+    final fixes = Map<String, dynamic>.from((r['corrections'] as Map?) ?? const {});
+    for (final fix in fixes.entries) {
+      final key = correctedAttribute[fix.key];
+      if (key != null) a[key] = fix.value;
+    }
+    final dismissed = fixes['dismissed'] == true;
     final clip = clipNumber[(r['mediaid'] as num).toInt()] ?? 1;
     final seen = ((r['firstseen'] as num?) ?? 0).toDouble();
 
@@ -146,7 +158,9 @@ Map<String, dynamic> buildSubmissionEvidence(
       'entity_id': '${kind[0]}$number',
       'kind': kind,
       'label': label,
-      'description': describeDetection(kind, attributes),
+      'description': dismissed
+          ? 'not a real $kind (an investigator dismissed it)'
+          : describeDetection(kind, attributes),
       'clip': clip,
       'attributes': attributes,
       'cover': crops.isEmpty ? null : crops.first['path'],

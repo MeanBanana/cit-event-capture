@@ -54,6 +54,10 @@ class SupabaseEvidenceSource implements CaseEvidenceSource {
   // A getter, so this can be created before Supabase is initialised.
   SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
+  /// The client, for subclasses (SubmissionEvidenceSource).
+  @protected
+  SupabaseClient get db => _supabase;
+
   @override
   Future<CaseEvidence?> load(int caseId) async {
     try {
