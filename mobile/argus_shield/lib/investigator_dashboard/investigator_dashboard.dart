@@ -254,104 +254,80 @@ class _InvestigatorCaseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (status, color) = statusStyle(caseSummary.status);
-    final latest = caseSummary.preview.isEmpty
-        ? null
-        : caseSummary.preview.first.location;
+    final c = caseSummary;
+    final (status, color) = statusStyle(c.status);
+    final latest = c.preview.isEmpty ? null : c.preview.first.location;
+    final description = c.description?.trim() ?? '';
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: AppSpacing.medium),
-      child: InkWell(
+    // Same parts as the admin's case cards (cases.dart CaseCard): AdminCard,
+    // Courier reference + status tag, title, divider, icon lines and fact
+    // chips - with fewer lines, so it stays compact. Grey outline like the
+    // admin's case cards: they only turn gold when no investigator is
+    // assigned, and every case here is assigned to this investigator.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AdminCard(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.medium),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(caseSummary.reference, style: AppText.caption),
-                        const SizedBox(height: 4),
-                        Text(caseSummary.title, style: AppText.cardTitle),
-                      ],
-                    ),
-                  ),
-                  StatusTag(label: status, color: color),
-                ],
-              ),
-              if (latest != null) ...[
-                const SizedBox(height: AppSpacing.small),
-                DetailLine(icon: Icons.place_outlined, text: latest),
+        borderColor: AppColors.fieldBorder,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: Text(c.reference, style: AppText.cardTitle)),
+                const SizedBox(width: AppSpacing.small),
+                StatusTag(label: status, color: color),
               ],
-              const Divider(),
+            ),
+            const SizedBox(height: 6),
+            Text(c.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.bodyMuted),
+            ],
+            const SizedBox(height: 10),
+            const Divider(color: AppColors.fieldBorder, height: 1),
+            const SizedBox(height: 10),
+            if (latest != null)
+              DetailLine(icon: Icons.location_on_outlined, text: latest),
+            DetailLine(
+              icon: Icons.description_outlined,
+              text: [
+                plural(c.incidentCount, 'report'),
+                if (c.mediaCount > 0)
+                  '${c.mediaCount} media ${c.mediaCount == 1 ? 'file' : 'files'}',
+              ].join(' · '),
+            ),
+            if (c.plates.isNotEmpty ||
+                c.possibleSuspects > 0 ||
+                c.confirmedSuspects > 0)
               Wrap(
-                spacing: AppSpacing.medium,
-                runSpacing: AppSpacing.small,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
-                  _CardFact(
-                    icon: Icons.assignment_outlined,
-                    label:
-                        '${caseSummary.incidentCount} ${caseSummary.incidentCount == 1 ? 'report' : 'reports'}',
-                  ),
-                  if (caseSummary.plates.isNotEmpty)
-                    _CardFact(
-                      icon: Icons.directions_car_outlined,
-                      label: caseSummary.plates.take(2).join(' · '),
-                    ),
-                  if (caseSummary.possibleSuspects > 0)
-                    _CardFact(
-                      icon: Icons.person_search_outlined,
-                      label:
-                          'About ${caseSummary.possibleSuspects} possible people to review',
-                      color: AppColors.accent,
-                    ),
+                  for (final plate in c.plates.take(2))
+                    FactChip(plate,
+                        icon: Icons.pin_outlined, color: AppColors.accent),
+                  if (c.confirmedSuspects > 0)
+                    FactChip(plural(c.confirmedSuspects, 'confirmed suspect'),
+                        icon: Icons.person_outline, color: AppColors.danger),
+                  if (c.possibleSuspects > 0)
+                    FactChip(
+                        'about ${plural(c.possibleSuspects, 'possible suspect')} to review',
+                        icon: Icons.person_search_outlined,
+                        color: AppColors.accent),
                 ],
               ),
-              const SizedBox(height: AppSpacing.small),
-              const Align(
-                alignment: Alignment.centerRight,
-                child: Icon(Icons.arrow_forward, color: AppColors.accent),
-              ),
-            ],
-          ),
+          ],
         ),
       ),
-    );
-  }
-}
-
-class _CardFact extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color? color;
-
-  const _CardFact({
-    required this.icon,
-    required this.label,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: color ?? AppColors.textMuted),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: AppText.bodyMuted.copyWith(
-            fontSize: 12,
-            color: color ?? AppColors.textMuted,
-          ),
-        ),
-      ],
     );
   }
 }
