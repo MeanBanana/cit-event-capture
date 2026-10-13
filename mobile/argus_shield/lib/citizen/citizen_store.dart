@@ -9,7 +9,6 @@
 //                 the AI worker; the Submissions tab lists them from there.
 
 import 'dart:collection';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../supabase_service.dart';
 import '../saved_contact_details.dart';
