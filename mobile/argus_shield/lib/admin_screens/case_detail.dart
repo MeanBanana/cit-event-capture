@@ -16,6 +16,8 @@
 //     one. Removing never deletes it: it goes back to "Pending review" and
 //     keeps all its footage and history.
 //   * read the case history (who did what, when)
+//   * open a crime scene's page (⋮ > Crime scene & corrections): its
+//     footage, what the AI found, and the corrections made to it
 //   * read the AI summary and the people / vehicles / weapons the AI found
 //     across all the case's submissions, and open each one's pictures
 //     (case_evidence_section.dart)
@@ -31,6 +33,7 @@ import 'package:argus_shield/models/crime_scene_summary.dart';
 import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/case_evidence_section.dart';
+import 'package:argus_shield/admin_screens/crime_scene_page.dart';
 import 'package:argus_shield/case_evidence_source.dart';
 import 'package:argus_shield/admin_screens/footage_list.dart' show usesRealDatabase;
 import 'package:argus_shield/admin_screens/pickers.dart';
@@ -340,6 +343,20 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     if (mounted) await _load();
   }
 
+  Future<void> _openScene(CrimeSceneSummary s) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CrimeScenePage(
+          incidentId: s.incidentId,
+          service: widget.service,
+          roleLabel: 'Admin',
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
   Future<void> _incidentAction(ReviewAction action, CrimeSceneSummary s) async {
     final changed = await action(context, _service, s);
     if (changed && mounted) await _load();
@@ -559,6 +576,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
               onTap: () => _openIncident(s),
               menu: _IncidentMenu(
                 onOpen: () => _openIncident(s),
+                onScene: () => _openScene(s),
                 onMove: s.isDuplicate || c.isClosed
                     ? null
                     : () => _incidentAction(moveToCase, s),
@@ -656,14 +674,17 @@ class _AssignmentRow extends StatelessWidget {
   }
 }
 
-/// ⋮ menu on a submission in the case: view, move, remove.
+/// ⋮ menu on a submission in the case: view, crime scene & corrections,
+/// move, remove.
 class _IncidentMenu extends StatelessWidget {
   final VoidCallback onOpen;
+  final VoidCallback onScene;
   final VoidCallback? onMove; // null hides "Move" (duplicates, closed case)
   final VoidCallback onRemove;
 
   const _IncidentMenu({
     required this.onOpen,
+    required this.onScene,
     required this.onMove,
     required this.onRemove,
   });
@@ -677,6 +698,8 @@ class _IncidentMenu extends StatelessWidget {
       onSelected: (value) {
         if (value == 'open') {
           onOpen();
+        } else if (value == 'scene') {
+          onScene();
         } else if (value == 'move') {
           onMove?.call();
         } else {
@@ -686,6 +709,9 @@ class _IncidentMenu extends StatelessWidget {
       itemBuilder: (context) => [
         const PopupMenuItem(
             value: 'open', child: Text('View', style: AppText.body)),
+        const PopupMenuItem(
+            value: 'scene',
+            child: Text('Crime scene & corrections', style: AppText.body)),
         if (onMove != null)
           const PopupMenuItem(
               value: 'move',

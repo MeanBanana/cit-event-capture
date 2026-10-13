@@ -97,7 +97,8 @@ class ClipCard extends StatelessWidget {
   /// Opens the video / photo (null hides the View button).
   final VoidCallback? onView;
 
-  const ClipCard({required this.number, required this.clip, this.onView});
+  const ClipCard(
+      {super.key, required this.number, required this.clip, this.onView});
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +137,6 @@ class ClipCard extends StatelessWidget {
                   style: AppText.body.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
-              StatusTag(label: statusText, color: statusColor),
               if (onView != null) ...[
                 const SizedBox(width: 8),
                 SmallActionButton(
@@ -147,6 +147,10 @@ class ClipCard extends StatelessWidget {
               ],
             ],
           ),
+          // own line: a long tag ("Waiting for analysis") plus the View
+          // button don't fit next to the title on a phone
+          const SizedBox(height: 6),
+          StatusTag(label: statusText, color: statusColor),
           const SizedBox(height: 6),
           Text(
             c.aiDescription ?? 'No AI description yet.',
