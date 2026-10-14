@@ -119,6 +119,12 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
         _error = 'Could not load this crime scene. Pull down to try again.';
         _loading = false;
       });
+      // one failed check (e.g. no network for a moment) mustn't stop the
+      // checks while the AI was still busy at the last successful one
+      final every = widget.refreshEvery;
+      if (_scene != null && _scene!.analysis.inProgress && every != null) {
+        _timer = Timer(every, _load);
+      }
     }
   }
 
@@ -352,8 +358,8 @@ class _SceneHeader extends StatelessWidget {
     final description = s.description?.trim() ?? '';
     final message = analysisMessage(s.analysis,
         files: s.fileCount, filesFailed: s.filesFailed);
-    int count(String kind) =>
-        s.ofKind(kind).where((d) => !d.dismissed).length;
+    // the same numbers as the crime scene card (see countOf)
+    final count = s.countOf;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),

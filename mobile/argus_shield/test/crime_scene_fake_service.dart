@@ -151,6 +151,9 @@ class CrimeSceneFakeService extends SupabaseService {
   /// Makes correctDetection fail with this database message.
   String? failWith;
 
+  /// How many of the next getCrimeScene calls fail (e.g. no network).
+  int failLoads = 0;
+
   @override
   Future<CaseSummary?> getCase(int caseId) async => CaseSummary(
         caseId: caseId,
@@ -174,6 +177,10 @@ class CrimeSceneFakeService extends SupabaseService {
   @override
   Future<CrimeSceneDetail?> getCrimeScene(int incidentId) async {
     calls.add('getCrimeScene:$incidentId');
+    if (failLoads > 0) {
+      failLoads--;
+      throw Exception('No internet connection');
+    }
     final s = scenes[incidentId];
     return s == null ? null : CrimeSceneDetail.fromMap(s);
   }
