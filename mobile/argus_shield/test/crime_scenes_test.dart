@@ -460,6 +460,88 @@ void main() {
       expect(find.text('No footage was sent with this report.'),
           findsNWidgets(2));
     });
+
+    testWidgets('the header counts like the crime scene card', (tester) async {
+      // Clip 1: two possible suspects, one confirmed, a guard dismissed as a
+      // suspect and someone marked "not a real person". Clip 2: one possible
+      // suspect (perhaps the same person again) and a vehicle in each clip.
+      Map<String, dynamic> who(int id, int number, int clip, String status,
+              {bool dismissed = false}) =>
+          fakeDetection(id, 'person', number, {'upper_clothing': 'black'},
+              clip: clip)
+            ..['suspect_status'] = status
+            ..['dismissed'] = dismissed;
+      final scene = fakeScene(42, detections: [
+        who(1, 1, 1, 'possible'),
+        who(2, 2, 1, 'possible'),
+        who(3, 3, 1, 'confirmed'),
+        who(4, 4, 1, 'dismissed'),
+        who(5, 5, 1, 'possible', dismissed: true),
+        who(6, 6, 2, 'possible'),
+        fakeDetection(7, 'vehicle', 1, {'make': 'Toyota'}, clip: 1),
+        fakeDetection(8, 'vehicle', 2, {'make': 'Toyota'}, clip: 2),
+      ]);
+      scene['files'] = [
+        for (final n in [1, 2])
+          {
+            'media_id': 100 + n,
+            'number': n,
+            'media_type': 'video',
+            'storage_path': '42/media/clip$n.mp4',
+            'status': 'completed',
+          },
+      ];
+      await openScene(tester, CrimeSceneFakeService(scenes: [scene]));
+
+      // list_case_crime_scenes: the most in one clip, possible or
+      // confirmed, without dismissed ones -> 3 suspects, 1 vehicle
+      expect(find.text('3 suspects'), findsOneWidget);
+      expect(find.text('1 vehicle'), findsOneWidget);
+      expect(find.text('0 weapons'), findsOneWidget);
+    });
+
+    testWidgets('keeps checking after one failed check while the AI is busy',
+        (tester) async {
+      const every = Duration(seconds: 20);
+      final fake =
+          CrimeSceneFakeService(scenes: [fakeScene(42, status: 'analysing')]);
+      await tester.pumpWidget(MaterialApp(
+        home: CrimeScenePage(incidentId: 42, service: fake, refreshEvery: every),
+      ));
+      await tester.pump();
+      expect(find.text('AI ANALYSING'), findsOneWidget);
+
+      fake.failLoads = 1; // the next check has no network
+      await tester.pump(every);
+      await tester.pump();
+      expect(fake.calls.where((c) => c.startsWith('getCrimeScene')).length, 2);
+      expect(find.text('AI ANALYSING'), findsOneWidget); // still shows what it knew
+
+      fake.scenes[42] = fakeScene(42); // meanwhile the AI finished
+      await tester.pump(every);
+      await tester.pump();
+      expect(fake.calls.where((c) => c.startsWith('getCrimeScene')).length, 3);
+      expect(find.text('ANALYSED'), findsWidgets);
+
+      // done: no more checks
+      await tester.pump(every * 3);
+      expect(fake.calls.where((c) => c.startsWith('getCrimeScene')).length, 3);
+    });
+
+    testWidgets('a failed first load does not keep checking', (tester) async {
+      const every = Duration(seconds: 20);
+      final fake =
+          CrimeSceneFakeService(scenes: [fakeScene(42, status: 'analysing')])
+            ..failLoads = 1;
+      await tester.pumpWidget(MaterialApp(
+        home: CrimeScenePage(incidentId: 42, service: fake, refreshEvery: every),
+      ));
+      await tester.pump();
+      expect(find.textContaining('Could not load this crime scene'),
+          findsOneWidget);
+      await tester.pump(every * 2);
+      expect(fake.calls, ['getCrimeScene:42']);
+    });
   });
 
   group('Pictures of a finding', () {
