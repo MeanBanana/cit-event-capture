@@ -352,8 +352,8 @@ class _SceneHeader extends StatelessWidget {
     final description = s.description?.trim() ?? '';
     final message = analysisMessage(s.analysis,
         files: s.fileCount, filesFailed: s.filesFailed);
-    int count(String kind) =>
-        s.ofKind(kind).where((d) => !d.dismissed).length;
+    // the same numbers as the crime scene card (see countOf)
+    final count = s.countOf;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),

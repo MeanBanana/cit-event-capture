@@ -373,6 +373,29 @@ class CrimeSceneDetail {
 
   List<SceneDetection> ofKind(String kind) =>
       [for (final d in detections) if (d.kind == kind) d];
+
+  /// How many suspects / vehicles / weapons, counted the way the crime scene
+  /// card is (list_case_crime_scenes), so both show the same number: the
+  /// most in any ONE analysed clip (the same person in two clips counts
+  /// once), without dismissed detections. Suspects are people who are still
+  /// possible or confirmed suspects (not ones dismissed as a suspect).
+  int countOf(String kind) {
+    final analysed = {
+      for (final f in files)
+        if (f.status == 'completed') f.number,
+    };
+    final perClip = <int, int>{};
+    for (final d in detections) {
+      if (d.kind != kind || d.dismissed || !analysed.contains(d.clip)) continue;
+      if (kind == 'person' &&
+          d.suspectStatus != 'possible' &&
+          d.suspectStatus != 'confirmed') {
+        continue;
+      }
+      perClip[d.clip] = (perClip[d.clip] ?? 0) + 1;
+    }
+    return perClip.values.fold(0, (most, n) => n > most ? n : most);
+  }
 }
 
 // ---- Field names and values -------------------------------------------------
