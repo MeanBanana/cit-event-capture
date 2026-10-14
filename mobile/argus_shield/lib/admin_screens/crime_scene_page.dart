@@ -52,6 +52,11 @@ class CrimeScenePage extends StatefulWidget {
   /// the real database, no pictures with a fake service (tests).
   final CaseEvidenceSource? pictures;
 
+  /// Where a detection's own pictures (the Pictures button) come from. Null =
+  /// the submission's detections when [service] is the real database, no
+  /// Pictures button with a fake service (tests).
+  final CaseEvidenceSource? detectionPictures;
+
   /// How often to check again while the AI is still busy (null = never).
   final Duration? refreshEvery;
 
@@ -61,6 +66,7 @@ class CrimeScenePage extends StatefulWidget {
     this.service,
     this.roleLabel = 'Investigator',
     this.pictures,
+    this.detectionPictures,
     this.refreshEvery = const Duration(seconds: 20),
   });
 
@@ -73,6 +79,8 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
   late final bool _realDatabase = usesRealDatabase(widget.service);
   late final CaseEvidenceSource? _pictures = widget.pictures ??
       (_realDatabase ? CaseEvidenceSource.standard : null);
+  late final CaseEvidenceSource? _detectionPictures = widget.detectionPictures ??
+      (_realDatabase ? SubmissionEvidenceSource() : null);
 
   CrimeSceneDetail? _scene;
   bool _loading = true;
@@ -131,15 +139,15 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
     }
   }
 
-  Future<void> _openPictures(SceneDetection d) async {
-    final number = d.label.split(' ').last;
+  Future<void> _openPictures(SceneDetection d, CaseEvidenceSource source) async {
+    // by detection id: the label's number could point at another detection
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => EntityCropsPage(
           caseId: widget.incidentId,
-          entityId: '${d.kind[0]}$number',
-          source: SubmissionEvidenceSource(),
+          detectionId: d.detectionId,
+          source: source,
         ),
       ),
     );
@@ -309,8 +317,8 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
                 detection: d,
                 pictures: _pictures,
                 onCorrect: d.canCorrect ? () => _correct(d) : null,
-                onPictures: _realDatabase && d.crops.isNotEmpty
-                    ? () => _openPictures(d)
+                onPictures: _detectionPictures != null && d.crops.isNotEmpty
+                    ? () => _openPictures(d, _detectionPictures)
                     : null,
               ),
           ],

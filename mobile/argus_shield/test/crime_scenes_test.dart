@@ -2,11 +2,17 @@
 // scene page and correcting what the AI found. Uses CrimeSceneFakeService,
 // which keeps everything in memory.
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus_shield/admin_screens/crime_scene_card.dart';
 import 'package:argus_shield/admin_screens/crime_scene_page.dart';
+import 'package:argus_shield/admin_screens/entity_crops_page.dart';
+import 'package:argus_shield/case_evidence_source.dart';
+import 'package:argus_shield/models/case_evidence.dart';
+import 'package:argus_shield/submission_evidence_source.dart';
 import 'package:argus_shield/investigator_dashboard/investigator_case_detail.dart';
 import 'package:argus_shield/theme/argus_widgets.dart';
 
@@ -56,6 +62,32 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pumpAndSettle();
+}
+
+/// A 1x1 transparent PNG, so pictures "load" in tests.
+final _png = Uint8List.fromList(const [
+  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+  0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+  0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+]);
+
+/// The submission's detection rows, as SubmissionEvidenceSource reads them.
+class _RowsSource implements CaseEvidenceSource {
+  _RowsSource(this.rows);
+  final List<Map> rows;
+
+  @override
+  Future<CaseEvidence?> load(int incidentId) async => CaseEvidence.fromMap(
+      buildSubmissionEvidence(incidentId, rows, {101: 1}, const {}));
+  @override
+  ImageProvider image(String path) => MemoryImage(_png);
+  @override
+  Future<Uint8List> bytes(String path) async => _png;
+  @override
+  Future<void> answer(int caseId, String memberKey, {required bool yes}) async {}
 }
 
 /// Opens the correction sheet of detection [id] (on the Findings tab).
@@ -427,6 +459,89 @@ void main() {
       // the header banner and the empty Footage tab
       expect(find.text('No footage was sent with this report.'),
           findsNWidgets(2));
+    });
+  });
+
+  group('Pictures of a finding', () {
+    // Three people in one clip: one with no first-seen time, two seen at the
+    // same moment. get_crime_scene numbers them 31, 32, 33 (unknown time
+    // first, then by detection id); the rows reach the pictures page in
+    // another order.
+    Map<String, dynamic> sceneDetection(
+            int id, int number, double? seen, String top) =>
+        fakeDetection(id, 'person', number,
+            {'upper_clothing': top, 'lower_clothing': 'blue'})
+          ..['first_seen'] = seen
+          ..['crops'] = [
+            {'path': '42/ai/run/1_clip/person_$id.png', 'type': 'person'},
+          ];
+    Map row(int id, double? seen, String top) => {
+          'detectionid': id,
+          'mediaid': 101,
+          'detectiontype': 'person',
+          'trackid': id,
+          'firstseen': seen,
+          'attributes': {
+            'upper_clothing': top,
+            'lower_clothing': 'blue',
+            'face_visible': true,
+          },
+          'crops': [
+            {'path': '42/ai/run/1_clip/person_$id.png', 'type': 'person'},
+          ],
+        };
+
+    Future<void> openPicturesOf(WidgetTester tester, int detectionId) async {
+      final fake = CrimeSceneFakeService(scenes: [
+        fakeScene(42, detections: [
+          sceneDetection(31, 1, null, 'red'),
+          sceneDetection(32, 2, 5.0, 'green'),
+          sceneDetection(33, 3, 5.0, 'yellow'),
+        ]),
+      ]);
+      final source = _RowsSource([
+        row(33, 5.0, 'yellow'),
+        row(32, 5.0, 'green'),
+        row(31, null, 'red'),
+      ]);
+      await tester.pumpWidget(MaterialApp(
+        home: CrimeScenePage(
+          incidentId: 42,
+          service: fake,
+          pictures: source,
+          detectionPictures: source,
+          refreshEvery: null,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await openTab(tester, 'Findings');
+      await tapVisible(
+          tester,
+          find.descendant(
+              of: find.byKey(ValueKey('detection-$detectionId')),
+              matching: find.text('Pictures')));
+      expect(find.byType(EntityCropsPage), findsOneWidget);
+    }
+
+    testWidgets('a person with no first-seen time opens their own pictures',
+        (tester) async {
+      await openPicturesOf(tester, 31);
+      expect(find.text('Person 1'), findsOneWidget);
+      expect(find.textContaining('top red'), findsOneWidget);
+    });
+
+    testWidgets('people seen at the same moment open their own pictures',
+        (tester) async {
+      await openPicturesOf(tester, 33);
+      expect(find.text('Person 3'), findsOneWidget);
+      expect(find.textContaining('top yellow'), findsOneWidget);
+    });
+
+    testWidgets('no Pictures button without a pictures source',
+        (tester) async {
+      await openScene(tester, CrimeSceneFakeService(scenes: [fakeScene(42)]));
+      await openTab(tester, 'Findings');
+      expect(find.text('Pictures'), findsNothing);
     });
   });
 }
