@@ -345,6 +345,59 @@ def test_corrections_survive_a_new_analysis(db, w):
                   [car]) == "ND654321"
 
 
+def reanalyse(db, w, inc, media, car):
+    """Analysed again: same tracks, the AI reads the vehicle as `car`."""
+    db.rpc("submit_for_analysis", who=w.admin, p_incidentid=inc)
+    worker_analyse(db, inc, results(inc, media, [[person(1, look(PERSON_A, 0.97, 10)),
+                                                  car, weapon(1, held_by=1)]], location=SANDTON))
+
+
+def vehicledetail(db, detection_id):
+    return db.one("SELECT * FROM public.vehicledetail WHERE detectionid = %s", [detection_id])
+
+
+def test_a_new_analysis_refreshes_the_uncorrected_details(db, w):
+    inc, media, case_id = case_with_investigator(db, w)
+    car = detections(db, inc, "vehicle")[0]["detectionid"]
+    correct(db, w.investigator, car, "make", "Nissan")
+    run_case_jobs(db)
+
+    # the new run reads the colour as silver: the corrected make stays
+    reanalyse(db, w, inc, media, vehicle(2, colour="silver"))
+    vd = vehicledetail(db, car)
+    assert (vd["make"], vd["colour"], vd["licenceplatenumber"]) == ("Nissan", "silver", "ND123456"), vd
+    view = det_by_label(scene(db, inc, w.investigator), "Vehicle 1")
+    assert (field(view, "make")["value"], field(view, "colour")["value"]) == ("Nissan", "silver")
+
+
+def test_details_follow_the_ai_again_after_an_undo(db, w):
+    inc, media, case_id = case_with_investigator(db, w)
+    car = detections(db, inc, "vehicle")[0]["detectionid"]
+    correct(db, w.investigator, car, "make", "Nissan")
+    correct(db, w.investigator, car, "make", "Toyota")           # undone: the AI's value again
+    run_case_jobs(db)
+
+    reanalyse(db, w, inc, media, vehicle(2, plate="CA 777", make="Ford", colour="blue"))
+    vd = vehicledetail(db, car)
+    assert (vd["make"], vd["colour"], vd["licenceplatenumber"], vd["platedetected"]) == \
+        ("Ford", "blue", "CA777", True), vd
+    assert float(vd["plateconfidence"]) == 0.93, vd
+
+
+def test_an_unknown_weapon_class_is_other(db, w):
+    inc, media = report(db, w.citizen, files=1)
+    db.rpc("submit_for_analysis", who=w.citizen, p_incidentid=inc)
+    worker_analyse(db, inc, results(inc, media, [[person(1, look(PERSON_A, 0.97, 10)),
+                                                  weapon(1, held_by=1, kind="pistol")]]))
+    gun = detections(db, inc, "weapon")[0]["detectionid"]
+    view = det_by_label(scene(db, inc, w.admin), "Weapon 1")
+    assert field(view, "weapon_type") == {"field": "weapon_type", "ai": "other", "value": "other",
+                                          "corrected": False}, field(view, "weapon_type")
+    assert db.val("SELECT weapontype FROM public.weapondetail WHERE detectionid = %s", [gun]) == "other"
+    # 'other' is the AI's own value now: nothing to correct
+    db.fails(correct, db, w.admin, gun, "weapon_type", "other", contains="Nothing changed")
+
+
 def test_case_summary_uses_the_corrected_values(db, w):
     inc, media, case_id = case_with_investigator(db, w)
     car = detections(db, inc, "vehicle")[0]["detectionid"]
