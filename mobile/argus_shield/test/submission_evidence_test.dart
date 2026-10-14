@@ -109,6 +109,22 @@ void main() {
     expect([for (final p in again.people) p.detectionId], [25, 22, 23, 21, 24]);
   });
 
+  test('a corrected model shows up', () {
+    final rows = <Map>[
+      {
+        ..._rows[2],
+        'attributes': {..._rows[2]['attributes'] as Map, 'model': 'Hilux'},
+        'corrections': {'model': 'Corolla'},
+      },
+    ];
+    final car = CaseEvidence.fromMap(
+        buildSubmissionEvidence(57, rows, {8: 1}, const {})).vehicles.single;
+    expect(car.attributes['model'], 'Corolla');
+    expect(car.summaryLine, 'white Toyota Corolla car · plate ND123456');
+    expect(car.detailLines, contains(('Model', 'Corolla')));
+    expect(car.description, contains('Corolla'));
+  });
+
   testWidgets('AI summary text, then each entry with its clip and View crops',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
