@@ -193,7 +193,7 @@ class EvidenceEntity {
               : 'face not clear enough',
         ].join(' · ');
       case 'vehicle':
-        final look = [text('colour'), text('make'), text('class_name')]
+        final look = [text('colour'), text('make'), text('model'), text('class_name')]
             .whereType<String>()
             .join(' ');
         final plate = text('plate');
@@ -235,6 +235,7 @@ class EvidenceEntity {
       case 'vehicle':
         add('Type', 'class_name');
         add('Make', 'make', 'make_share');
+        add('Model', 'model');
         add('Colour', 'colour', 'colour_share');
         add('Plate', 'plate', 'plate_share');
       default:

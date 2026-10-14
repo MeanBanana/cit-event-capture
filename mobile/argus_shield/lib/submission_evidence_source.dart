@@ -78,6 +78,7 @@ const correctedAttribute = <String, String>{
   'lower_clothing': 'lower_clothing',
   'vehicle_type': 'class_name',
   'make': 'make',
+  'model': 'model',
   'colour': 'colour',
   'plate': 'plate',
   'weapon_type': 'class_name',
@@ -130,6 +131,7 @@ Map<String, dynamic> buildSubmissionEvidence(
           'class_name': a['class_name'],
           'make': a['make'],
           'make_share': a['make_confidence'],
+          'model': a['model'],
           'colour': a['colour'],
           'colour_share': a['colour_confidence'],
           'plate': a['plate'],
@@ -220,7 +222,9 @@ String describeDetection(String kind, Map<String, dynamic> a) {
       parts.add(a['face_visible'] == true ? 'face seen' : 'no clear face');
       return parts.join(' · ');
     case 'vehicle':
-      final look = [text('colour'), text('make'), text('class_name')].whereType<String>().join(' ');
+      final look = [text('colour'), text('make'), text('model'), text('class_name')]
+          .whereType<String>()
+          .join(' ');
       final plate = text('plate');
       return '${look.isEmpty ? 'vehicle' : look} · '
           '${plate == null ? 'no readable plate' : 'plate $plate'}';
