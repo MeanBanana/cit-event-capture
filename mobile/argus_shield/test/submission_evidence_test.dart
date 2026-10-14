@@ -80,6 +80,35 @@ void main() {
     expect(e.openQuestions, 0);
   });
 
+  test('numbered like get_crime_scene: unknown first-seen first, ties by detection id',
+      () {
+    Map person(int id, int media, num? seen) => {
+          'detectionid': id, 'mediaid': media, 'detectiontype': 'person', 'trackid': id,
+          'firstseen': seen, 'attributes': const {}, 'crops': const [],
+        };
+    // in no particular order, as rows can arrive
+    final rows = [
+      person(24, 8, null),
+      person(23, 7, 4.0),
+      person(22, 7, 4.0),
+      person(25, 7, null),
+      person(21, 7, 9.0),
+    ];
+    final e = CaseEvidence.fromMap(buildSubmissionEvidence(57, rows, {7: 1, 8: 2}, const {}));
+    // database: ORDER BY mediaid, firstseen NULLS FIRST, detectionid
+    expect([for (final p in e.people) (p.label, p.detectionId)], [
+      ('Person 1', 25),
+      ('Person 2', 22),
+      ('Person 3', 23),
+      ('Person 4', 21),
+      ('Person 5', 24),
+    ]);
+    // and the same whatever order the rows came in
+    final again = CaseEvidence.fromMap(
+        buildSubmissionEvidence(57, rows.reversed.toList(), {7: 1, 8: 2}, const {}));
+    expect([for (final p in again.people) p.detectionId], [25, 22, 23, 21, 24]);
+  });
+
   testWidgets('AI summary text, then each entry with its clip and View crops',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
