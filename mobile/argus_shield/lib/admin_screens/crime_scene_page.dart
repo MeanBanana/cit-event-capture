@@ -119,6 +119,12 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
         _error = 'Could not load this crime scene. Pull down to try again.';
         _loading = false;
       });
+      // one failed check (e.g. no network for a moment) mustn't stop the
+      // checks while the AI was still busy at the last successful one
+      final every = widget.refreshEvery;
+      if (_scene != null && _scene!.analysis.inProgress && every != null) {
+        _timer = Timer(every, _load);
+      }
     }
   }
 
