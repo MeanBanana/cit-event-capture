@@ -37,8 +37,10 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
           .from('detection')
           .select('detectionid, mediaid, detectiontype, trackid, firstseen, attributes, crops, corrections')
           .inFilter('mediaid', clipNumber.keys.toList())
+          // the order get_crime_scene numbers them in (see [byLabelOrder])
           .order('mediaid')
-          .order('firstseen') as List;
+          .order('firstseen', nullsFirst: true)
+          .order('detectionid') as List;
       if (rows.isEmpty) return null;
 
       final weaponIds = [
@@ -96,10 +98,7 @@ Map<String, dynamic> buildSubmissionEvidence(
   };
 
   // people first, so weapons can say who held them
-  final sorted = [...rows]..sort((a, b) {
-      const order = {'person': 0, 'vehicle': 1, 'weapon': 2};
-      return (order[a['detectiontype']] ?? 3).compareTo(order[b['detectiontype']] ?? 3);
-    });
+  final sorted = [...rows]..sort(byLabelOrder);
 
   for (final r in sorted) {
     final kind = r['detectiontype'] as String;
@@ -156,6 +155,7 @@ Map<String, dynamic> buildSubmissionEvidence(
 
     groups[kind]!.add({
       'entity_id': '${kind[0]}$number',
+      'detection_id': id,
       'kind': kind,
       'label': label,
       'description': dismissed
@@ -179,6 +179,27 @@ Map<String, dynamic> buildSubmissionEvidence(
     'vehicles': groups['vehicle'],
     'weapons': groups['weapon'],
   };
+}
+
+/// The order detections are numbered in (Person 1, Person 2 ...): by kind,
+/// then the same as get_crime_scene / detection_label in the database:
+/// clip (mediaid), first seen with "not known" first, then detectionid. A
+/// total order, so the numbers never depend on the order rows arrived in.
+int byLabelOrder(Map a, Map b) {
+  const order = {'person': 0, 'vehicle': 1, 'weapon': 2};
+  int num0(Map r, String key) => (r[key] as num).toInt();
+  var c = (order[a['detectiontype']] ?? 3).compareTo(order[b['detectiontype']] ?? 3);
+  if (c != 0) return c;
+  c = num0(a, 'mediaid').compareTo(num0(b, 'mediaid'));
+  if (c != 0) return c;
+  final sa = a['firstseen'] as num?, sb = b['firstseen'] as num?;
+  if (sa == null || sb == null) {
+    c = sa == null ? (sb == null ? 0 : -1) : 1;
+  } else {
+    c = sa.compareTo(sb);
+  }
+  if (c != 0) return c;
+  return num0(a, 'detectionid').compareTo(num0(b, 'detectionid'));
 }
 
 /// "top black, bottom blue · face seen" / "white Toyota car · plate ND123456"

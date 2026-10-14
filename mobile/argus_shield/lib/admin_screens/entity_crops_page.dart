@@ -21,15 +21,20 @@ import 'package:argus_shield/admin_screens/admin_ui.dart';
 
 class EntityCropsPage extends StatefulWidget {
   final int caseId;
-  final String entityId;
+
+  /// Which entry to show: [entityId] ("p1"), or on a crime scene / submission
+  /// the [detectionId] of the detection (labels can be numbered differently).
+  final String? entityId;
+  final int? detectionId;
   final CaseEvidenceSource source;
 
   const EntityCropsPage({
     super.key,
     required this.caseId,
-    required this.entityId,
+    this.entityId,
+    this.detectionId,
     required this.source,
-  });
+  }) : assert(entityId != null || detectionId != null);
 
   @override
   State<EntityCropsPage> createState() => _EntityCropsPageState();
@@ -51,7 +56,10 @@ class _EntityCropsPageState extends State<EntityCropsPage> {
     if (!mounted) return;
     EvidenceEntity? found;
     for (final e in [...?evidence?.people, ...?evidence?.vehicles, ...?evidence?.weapons]) {
-      if (e.entityId == widget.entityId) found = e;
+      final match = widget.detectionId != null
+          ? e.detectionId == widget.detectionId
+          : e.entityId == widget.entityId;
+      if (match) found = e;
     }
     setState(() {
       _entity = found;

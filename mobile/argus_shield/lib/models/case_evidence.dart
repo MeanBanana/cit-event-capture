@@ -111,6 +111,10 @@ class EvidenceUpdate {
 /// Person 1, Vehicle 2, Weapon 1 ...
 class EvidenceEntity {
   final String entityId;
+
+  /// The detection this entry is (submission evidence only: one entry per
+  /// detection). Null on a case, where an entry combines several.
+  final int? detectionId;
   final String kind; // person | vehicle | weapon
   final String label;
   final String description; // "top black, bottom blue · face seen"
@@ -127,6 +131,7 @@ class EvidenceEntity {
 
   const EvidenceEntity({
     required this.entityId,
+    this.detectionId,
     required this.kind,
     required this.label,
     required this.description,
@@ -141,6 +146,7 @@ class EvidenceEntity {
 
   factory EvidenceEntity.fromMap(Map<String, dynamic> m) => EvidenceEntity(
         entityId: m['entity_id'] as String,
+        detectionId: (m['detection_id'] as num?)?.toInt(),
         kind: m['kind'] as String,
         label: m['label'] as String,
         description: (m['description'] as String?) ?? '',
