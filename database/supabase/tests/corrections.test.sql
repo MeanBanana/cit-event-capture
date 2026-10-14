@@ -9,7 +9,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(26);
+SELECT plan(29);
 
 -- Structure
 SELECT has_column('public', 'correctionlog', 'fieldname', 'correctionlog.fieldname');
@@ -61,6 +61,12 @@ SELECT is(public.detection_value('{"plate": "nd 123-456"}'::jsonb, '{}'::jsonb, 
           'the AI plate, normalised');
 SELECT is(public.detection_value('{"make": "Toyota"}'::jsonb, '{"make": "Nissan"}'::jsonb, 'make'), 'Nissan',
           'a correction wins over the AI');
+SELECT is(public.detection_ai_value('{"class_name": "Pistol"}'::jsonb, 'weapon_type'), 'other',
+          'a weapon class weapondetail does not know is other');
+SELECT is(public.detection_ai_value('{"class_name": "long_gun"}'::jsonb, 'weapon_type'), 'long_gun',
+          'a known weapon class is kept');
+SELECT is(public.detection_ai_value('{}'::jsonb, 'weapon_type'), NULL,
+          'no weapon class: the AI did not say');
 
 SELECT * FROM finish();
 ROLLBACK;
