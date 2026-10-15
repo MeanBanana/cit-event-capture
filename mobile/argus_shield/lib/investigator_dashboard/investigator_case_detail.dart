@@ -6,6 +6,7 @@ import 'package:argus_shield/admin_screens/crime_scene_page.dart';
 import 'package:argus_shield/admin_screens/footage_list.dart'
     show usesRealDatabase;
 import 'package:argus_shield/case_evidence_source.dart';
+import 'package:argus_shield/investigator_dashboard/case_chat_tab.dart';
 import 'package:argus_shield/models/case_summary.dart';
 import 'package:argus_shield/models/crime_scene.dart';
 import 'package:argus_shield/models/submission_groups.dart';
@@ -17,7 +18,7 @@ import 'package:argus_shield/theme/app_theme.dart';
 ///
 ///   N1 Midrand CIT robbery                       [OPEN]  Mark under review
 ///   Two vans hit on the N1 ...
-///   ┌ Crime scenes (2) ┬ AI summary ┬ Activity ┐
+///   ┌ Scenes (2) ┬ AI summary ┬ Activity ┬ Chat ┐
 ///   │ [card] INC-0042 · description · location · 2 suspects ...      │
 ///   │ [card] INC-0043 · ...                                          │
 ///
@@ -26,7 +27,8 @@ import 'package:argus_shield/theme/app_theme.dart';
 /// opens the crime scene page: its footage, everything the AI found and the
 /// corrections (crime_scene_page.dart). The case-wide AI summary (people /
 /// vehicles / weapons combined over all crime scenes) and the case history
-/// have their own tabs.
+/// have their own tabs. Chat is a group chat for the investigators assigned
+/// to the case (case_chat_tab.dart).
 class InvestigatorCaseDetailPage extends StatefulWidget {
   final int caseId;
   final SupabaseService? service;
@@ -155,7 +157,7 @@ class _InvestigatorCaseDetailPageState
                   ),
                 )
               : DefaultTabController(
-                  length: 3,
+                  length: 4,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -167,12 +169,16 @@ class _InvestigatorCaseDetailPageState
                       Material(
                         color: AppColors.header,
                         child: TabBar(
+                          // fixed tabs sharing the width: all four always on
+                          // screen, so labels are short and the side padding
+                          // small enough to fit a quarter of a phone
+                          labelPadding:
+                              const EdgeInsets.symmetric(horizontal: 4),
                           tabs: [
-                            // fixed tabs sharing the width: all three always on screen, so
-                            // labels are kept short enough to fit a third of a phone
                             Tab(text: 'Scenes (${_scenes.length})'),
                             const Tab(text: 'AI summary'),
                             const Tab(text: 'Activity'),
+                            const Tab(text: 'Chat'),
                           ],
                         ),
                       ),
@@ -182,6 +188,12 @@ class _InvestigatorCaseDetailPageState
                             _tab(_scenesTab()),
                             _tab(_summaryTab(current)),
                             _tab(_activityTab()),
+                            CaseChatTab(
+                              key: ValueKey('chat-${current.caseId}'),
+                              caseId: current.caseId,
+                              service: _service,
+                              readOnly: current.isClosed,
+                            ),
                           ],
                         ),
                       ),

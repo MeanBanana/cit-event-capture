@@ -12,6 +12,7 @@ import 'models/submission_groups.dart';
 import 'models/citizen_profile.dart';
 import 'models/my_submission.dart';
 import 'models/crime_scene.dart';
+import 'models/case_message.dart';
 
 /// Sort order for submission lists (by date reported).
 enum SubmissionOrder { newest, oldest }
@@ -953,5 +954,51 @@ class SupabaseService {
         MySubmission.fromMap(r as Map<String, dynamic>,
             fileCount: counts[(r['incidentid'] as num).toInt()] ?? 0),
     ];
+  }
+
+  // ------------------------------------------------------------- CASE CHAT
+  // A group chat per case for its assigned investigators (Chat tab of the
+  // investigator case page). The database decides who may read / post:
+  // migration 20261015100000_case_chat.sql.
+
+  /// The case's chat, oldest first (the newest 200). With [afterId]: only
+  /// the messages newer than that one (for live updates).
+  Future<List<CaseMessage>> getCaseMessages(int caseId,
+      {int? afterId, int limit = 200}) async {
+    final rows = await supabase.rpc('list_case_messages', params: {
+      'p_caseid': caseId,
+      'p_after_id': afterId,
+      'p_limit': limit,
+    }) as List;
+    return rows
+        .map((row) => CaseMessage.fromMap(row as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Posts [body] to the case's chat; returns the new message.
+  Future<CaseMessage> sendCaseMessage(int caseId, String body) async {
+    final rows = await supabase.rpc('send_case_message',
+        params: {'p_caseid': caseId, 'p_body': body}) as List;
+    return CaseMessage.fromMap(rows.single as Map<String, dynamic>);
+  }
+
+  /// Calls [onNewMessage] whenever someone posts in the case's chat
+  /// (Supabase Realtime). Returns a function that stops watching.
+  void Function() watchCaseMessages(int caseId, void Function() onNewMessage) {
+    final channel = supabase
+        .channel('case-chat-')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'casemessage',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'caseid',
+            value: caseId,
+          ),
+          callback: (_) => onNewMessage(),
+        )
+        .subscribe();
+    return () => supabase.removeChannel(channel);
   }
 }
