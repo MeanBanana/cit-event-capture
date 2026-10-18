@@ -421,3 +421,10 @@ enabled = true
 [functions.create-investigator]
 enabled = true
 verify_jwt = false
+
+# Web admin console "New admin" form (functions/create-admin). Only the root
+# admin may call it; verify_jwt is off because the function checks the caller
+# itself (logged in AND root admin), like create-investigator.
+[functions.create-admin]
+enabled = true
+verify_jwt = false
