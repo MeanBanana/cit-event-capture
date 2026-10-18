@@ -123,7 +123,7 @@ class _PagedListState<T> extends State<PagedList<T>> {
         middle = Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: AppText.bodyMuted, textAlign: TextAlign.center),
+            Text(_error!, style: mutedOnPage(context), textAlign: TextAlign.center),
             const SizedBox(height: AppSpacing.small),
             TextButton(onPressed: _loadMore, child: const Text('Try again')),
           ],
@@ -132,7 +132,7 @@ class _PagedListState<T> extends State<PagedList<T>> {
         middle = const CircularProgressIndicator();
       } else {
         middle = Text(widget.emptyText,
-            style: AppText.bodyMuted, textAlign: TextAlign.center);
+            style: mutedOnPage(context), textAlign: TextAlign.center);
       }
       return RefreshIndicator(
         onRefresh: _refresh,

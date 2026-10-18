@@ -123,7 +123,8 @@ class ClipCard extends StatelessWidget {
         border: Border.all(color: AppColors.fieldBorder),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Column(
+      child: NavyText(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -167,6 +168,7 @@ class ClipCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }

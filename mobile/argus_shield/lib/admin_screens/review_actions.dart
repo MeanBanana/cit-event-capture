@@ -518,13 +518,15 @@ class _ChoiceTile extends StatelessWidget {
         side: const BorderSide(color: AppColors.accent),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: ListTile(
+      child: NavyText(
+        child: ListTile(
         leading: Icon(icon, color: AppColors.accent, size: 30),
         title: Text(title,
             style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle, style: AppText.bodyMuted),
         trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
         onTap: onTap,
+      ),
       ),
     );
   }

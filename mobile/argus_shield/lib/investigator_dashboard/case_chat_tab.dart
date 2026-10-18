@@ -163,9 +163,11 @@ class _CaseChatTabState extends State<CaseChatTab>
           Container(
             color: AppColors.header,
             padding: const EdgeInsets.all(12),
-            child: Text('This case is closed: its chat is read-only.',
+            child: NavyText(
+              child: Text('This case is closed: its chat is read-only.',
                 textAlign: TextAlign.center,
                 style: AppText.bodyMuted.copyWith(fontSize: 13)),
+            ),
           )
         else
           _composer(),
@@ -311,7 +313,9 @@ class _DayLabel extends StatelessWidget {
             color: AppColors.header,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Text(text, style: AppText.bodyMuted.copyWith(fontSize: 12)),
+          child: NavyText(
+            child: Text(text, style: AppText.bodyMuted.copyWith(fontSize: 12)),
+          ),
         ),
       ),
     );
@@ -346,7 +350,8 @@ class _Bubble extends StatelessWidget {
               bottomRight: Radius.circular(mine ? 3 : 14),
             ),
           ),
-          child: Column(
+          child: NavyText(
+            child: Column(
             crossAxisAlignment:
                 mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
@@ -364,6 +369,7 @@ class _Bubble extends StatelessWidget {
               Text(_time(message.sentAt),
                   style: AppText.bodyMuted.copyWith(fontSize: 11)),
             ],
+          ),
           ),
         ),
       ),

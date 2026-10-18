@@ -6,6 +6,7 @@ import 'login.dart';
 import 'loadingscreen.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
+import 'app_settings.dart';
 
 
 class RegisterPage extends StatefulWidget{
@@ -32,7 +33,9 @@ class _RegisterPageState extends State<RegisterPage>{
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => Scaffold(
       appBar: const ArgusAppBar(),
       body:Padding(
         // Only left/right here. Top/bottom padding sits inside the scroll
@@ -50,22 +53,22 @@ class _RegisterPageState extends State<RegisterPage>{
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Text(
-                  "Register as citizen",
+                Text(
+                  appSettings.t('registerTitle'),
                   style: AppText.pageTitle,
                 ),
   
                 const SizedBox(height: 30),
   
-                const FieldLabel("Firstname"),
+                FieldLabel(appSettings.t('firstname')),
                 TextFormField(
                   controller: firstNameController,
                   decoration: const InputDecoration(),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty){
-                      return "Firstname is required";
+                      return appSettings.t('firstnameRequired');
                     }else if (!RegExp(r"^[A-Za-zÀ-ÿ' \-]+$").hasMatch(value.trim())){
-                      return "Firstname can only contain letters, spaces, hyphens and apostrophes.";
+                      return appSettings.t('lettersOnly');
                     }
                     return null;
                   },
@@ -73,15 +76,15 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                const FieldLabel("Surname"),
+                FieldLabel(appSettings.t('surname')),
                 TextFormField(
                   controller: surnameController,
                   decoration: const InputDecoration(),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty){
-                      return "Surname is required";
+                      return appSettings.t('surnameRequired');
                     }else if (!RegExp(r"^[A-Za-zÀ-ÿ' \-]+$").hasMatch(value.trim())){
-                      return "Surname can only contain letters, spaces, hyphens and apostrophes.";
+                      return appSettings.t('lettersOnly');
                     }
                     return null;
                   },
@@ -89,15 +92,15 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                const FieldLabel("Email"),
+                FieldLabel(appSettings.t('email')),
                 TextFormField(
                   controller: emailController,
                   decoration: const InputDecoration(),
                   validator: (value) {
                     if (value == null || value.isEmpty){
-                      return "Email is required";
+                      return appSettings.t('emailRequired');
                     }else if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim())){
-                      return "Enter a valid email address.";
+                      return appSettings.t('validEmail');
                     }
                     return null;
                   },
@@ -105,7 +108,7 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                const FieldLabel("Phone number"),
+                FieldLabel(appSettings.t('phoneNumber')),
                 TextFormField(
                   keyboardType: TextInputType.number,
                   inputFormatters: [
@@ -116,9 +119,9 @@ class _RegisterPageState extends State<RegisterPage>{
                   decoration: const InputDecoration(prefixText: "+27 "),
                   validator: (value) {
                     if (value == null || value.isEmpty){
-                      return "Phone is required";
+                      return appSettings.t('phoneRequired');
                     }else if (value.length != 9){
-                      return "Phone number must be 9 digits long, no initial 0 needed";
+                      return appSettings.t('phoneLength');
                     }
                     return null;
                   },
@@ -126,13 +129,13 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
   
-                const FieldLabel("Residence"),
+                FieldLabel(appSettings.t('residence')),
                 TextFormField(
                   controller: residenceController,
                   decoration: const InputDecoration(),
                   validator: (value){
                     if (value == null || value.isEmpty){
-                      return "Residence is required.";
+                      return appSettings.t('residenceRequired');
                     }
                     return null;
                   },
@@ -140,15 +143,15 @@ class _RegisterPageState extends State<RegisterPage>{
   
                 const SizedBox(height: 10),
 
-                const FieldLabel("Username"),
+                FieldLabel(appSettings.t('username')),
                 TextFormField(
                   controller: usernameController,
                   decoration: const InputDecoration(),
                   validator: (value){
                     if (value == null || value.trim().isEmpty){
-                      return "Username is required";
+                      return appSettings.t('usernameRequired');
                     }else if (!RegExp(r'^[A-Za-z0-9_.]{3,30}$').hasMatch(value.trim())){
-                      return "Username must be 3-30 characters: letters, numbers, _ or . only.";
+                      return appSettings.t('usernameRules');
                     }
                     return null;
                   },
@@ -156,16 +159,16 @@ class _RegisterPageState extends State<RegisterPage>{
 
                 const SizedBox(height: 10),
 
-                const FieldLabel("Password"),
+                FieldLabel(appSettings.t('password')),
                 TextFormField(
                   controller: passwordController,
                   obscureText: true,
                   decoration: const InputDecoration(),
                   validator: (value){
                     if (value == null || value.isEmpty){
-                      return "Password is required.";
+                      return appSettings.t('passwordRequired');
                     }else if (!RegExp(r'^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*_\-+=]).{8,}$').hasMatch(value)){
-                      return "Password requires one capital letter, one digit, and one special character and must at least be 8 characters long.";
+                      return appSettings.t('passwordRules');
                     }
                     return null;
                   },
@@ -194,7 +197,7 @@ class _RegisterPageState extends State<RegisterPage>{
                           context: context,
                           builder: (BuildContext context){
                             return AlertDialog(
-                              title: const Text("TERMS AND CONDITIONS", style: AppText.sectionTitle),
+                              title: Text(appSettings.t('termsTitle'), style: AppText.sectionTitle),
                               content: SizedBox(
                                 width: double.maxFinite,
                                 height:MediaQuery.of(context).size.height * 0.6,
@@ -208,7 +211,7 @@ class _RegisterPageState extends State<RegisterPage>{
                                     Navigator.of(context).pop();
                                   },
                                   child: Text(
-                                    "Close T&Cs",
+                                    appSettings.t('closeTerms'),
                                     style: TextStyle(
                                       fontFamily: AppFonts.body,
                                       fontWeight: FontWeight.bold,
@@ -221,7 +224,7 @@ class _RegisterPageState extends State<RegisterPage>{
                       );
                     },
                     child: Text(
-                      "View T&Cs",
+                      appSettings.t('viewTerms'),
                       style: TextStyle(
                         fontFamily: AppFonts.body,
                         fontWeight: FontWeight.bold,
@@ -231,18 +234,18 @@ class _RegisterPageState extends State<RegisterPage>{
                 ),
   
                 PrimaryButton(
-                  label: "Register Account",
+                  label: appSettings.t('registerAccount'),
                   onPressed: () async {
                       final ctx = context;
                       if (!_formKey.currentState!.validate()) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('Please correct errors')),
+                          SnackBar(content: Text(appSettings.t('correctErrors'))),
                         );
                         return;
                       }
                       if (!isChecked) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('Please accept the Terms and Conditions')),
+                          SnackBar(content: Text(appSettings.t('acceptTerms'))),
                         );
                         return;
                       }
@@ -270,6 +273,7 @@ class _RegisterPageState extends State<RegisterPage>{
           ),
         ),
       ),
+    ),
     );
   }
 

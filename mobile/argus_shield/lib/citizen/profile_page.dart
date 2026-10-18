@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'citizen_store.dart';
 import '../theme/app_theme.dart';
 import '../theme/argus_widgets.dart';
+import '../app_settings.dart';
 
 /// Displays the citizen's profile and saves changes to Supabase.
 class ProfilePage extends StatefulWidget {
@@ -129,12 +130,11 @@ class _ProfilePageState extends State<ProfilePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('My profile', style: AppText.sectionTitle),
+              Text(appSettings.t('myProfile'), style: titleOnPage(context)),
               const SizedBox(height: AppSpacing.small),
-              const Text(
-                'Keep your contact information up to date so an authorised '
-                'investigator can reach you if they need more information.',
-                style: AppText.bodyMuted,
+              Text(
+                appSettings.t('profileIntro'),
+                style: mutedOnPage(context),
               ),
               const SizedBox(height: AppSpacing.large),
               if (store.profile != null)
@@ -162,7 +162,7 @@ class _ProfilePageState extends State<ProfilePage>
         TextButton.icon(
           onPressed: widget.store.loadProfile,
           icon: const Icon(Icons.refresh),
-          label: const Text('Try again'),
+          label: Text(appSettings.t('tryAgain')),
         ),
       ],
     );
@@ -174,43 +174,43 @@ class _ProfilePageState extends State<ProfilePage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const FieldLabel('Full name'),
+          FieldLabel(appSettings.t('fullName')),
           // Read-only: names are fixed after registration.
           TextFormField(
             controller: _nameController,
             readOnly: true,
             enableInteractiveSelection: false,
-            style: AppText.body.copyWith(color: AppColors.textMuted),
-            decoration: const InputDecoration(
-              suffixIcon: Icon(Icons.lock_outline, color: AppColors.textHint),
-              helperText: 'Your name can\'t be changed.',
-              helperStyle: TextStyle(color: AppColors.textHint),
+            style: AppText.body.copyWith(color: pageInkMuted(context)),
+            decoration: InputDecoration(
+              suffixIcon: Icon(Icons.lock_outline, color: pageInkMuted(context)),
+              helperText: appSettings.t('nameLocked'),
+              helperStyle: TextStyle(color: pageInkMuted(context)),
             ),
           ),
           const SizedBox(height: 4),
-          Text('Username: ${profile.username}', style: AppText.bodyMuted),
+          Text('${appSettings.t('username')}: ${profile.username}', style: mutedOnPage(context)),
           const SizedBox(height: AppSpacing.medium),
 
-          const FieldLabel('Email address'),
+          FieldLabel(appSettings.t('emailAddress')),
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
             autocorrect: false,
             decoration:
-                const InputDecoration(hintText: 'Enter your email address'),
+                InputDecoration(hintText: appSettings.t('enterEmail')),
             // Same check as the register form.
             validator: (value) {
               final text = value?.trim() ?? '';
-              if (text.isEmpty) return 'Email is required';
+              if (text.isEmpty) return appSettings.t('emailRequired');
               if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(text)) {
-                return 'Enter a valid email address.';
+                return appSettings.t('validEmail');
               }
               return null;
             },
           ),
           const SizedBox(height: AppSpacing.medium),
 
-          const FieldLabel('Phone number'),
+          FieldLabel(appSettings.t('phoneNumber')),
           TextFormField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
@@ -221,29 +221,29 @@ class _ProfilePageState extends State<ProfilePage>
             ],
             decoration: const InputDecoration(prefixText: '+27 '),
             validator: (value) {
-              if (value == null || value.isEmpty) return 'Phone is required';
+              if (value == null || value.isEmpty) return appSettings.t('phoneRequired');
               if (value.length != 9) {
-                return 'Phone number must be 9 digits long, no initial 0 needed';
+                return appSettings.t('phoneLength');
               }
               return null;
             },
           ),
           const SizedBox(height: AppSpacing.medium),
 
-          const FieldLabel('Residence'),
+          FieldLabel(appSettings.t('residence')),
           TextFormField(
             controller: _residenceController,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(hintText: 'Enter your residence'),
+            decoration: InputDecoration(hintText: appSettings.t('residenceHint')),
             validator: (value) => value == null || value.trim().isEmpty
-                ? 'Residence is required.'
+                ? appSettings.t('residenceRequired')
                 : null,
           ),
           const SizedBox(height: AppSpacing.large),
 
           Center(
             child: PrimaryButton(
-              label: _saving ? 'Saving...' : 'Save Changes',
+              label: _saving ? appSettings.t('saving') : appSettings.t('saveChanges'),
               onPressed: _saving ? null : _saveProfile,
             ),
           ),

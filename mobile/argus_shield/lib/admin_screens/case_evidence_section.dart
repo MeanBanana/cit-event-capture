@@ -234,7 +234,8 @@ class EntityLine extends StatelessWidget {
               color: questions > 0 ? AppColors.accent : AppColors.fieldBorder),
           borderRadius: BorderRadius.circular(4),
         ),
-        child: Row(
+        child: NavyText(
+          child: Row(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
@@ -280,6 +281,7 @@ class EntityLine extends StatelessWidget {
             SmallActionButton(
                 label: 'View crops', color: AppColors.accent, onPressed: onView),
           ],
+        ),
         ),
       ),
     );

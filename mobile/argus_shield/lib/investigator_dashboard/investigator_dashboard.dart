@@ -5,6 +5,8 @@ import 'package:argus_shield/models/case_summary.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/theme/argus_widgets.dart';
+import 'package:argus_shield/settings_screen.dart';
+import 'package:argus_shield/app_settings.dart';
 import 'investigator_case_detail.dart';
 
 /// Investigator landing page. Case visibility is enforced by database RLS:
@@ -47,7 +49,7 @@ class _InvestigatorDashboardState extends State<InvestigatorDashboard> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load assigned cases. Pull down to try again.';
+        _error = 'loadAssignedError';
         _loading = false;
       });
     }
@@ -79,12 +81,25 @@ class _InvestigatorDashboardState extends State<InvestigatorDashboard> {
     final possiblePeople =
         _cases.fold<int>(0, (sum, c) => sum + c.possibleSuspects);
 
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) {
+        return Scaffold(
       appBar: RoleAppBar(
-        roleLabel: 'Investigator',
+        roleLabel: appSettings.t('investigatorRole'),
         actions: [
           IconButton(
-            tooltip: 'Sign out',
+            tooltip: appSettings.t('settings'),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+            icon: const Icon(Icons.settings),
+          ),
+          IconButton(
+            tooltip: appSettings.t('signOut'),
             onPressed: _signOut,
             icon: const Icon(Icons.logout),
           ),
@@ -96,23 +111,26 @@ class _InvestigatorDashboardState extends State<InvestigatorDashboard> {
           padding: AppSpacing.page,
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            Text('Investigation dashboard', style: AppText.sectionTitle),
+            Text(appSettings.t('investigationDashboard'), style: titleOnPage(context)),
             const SizedBox(height: 4),
-            const Text(
-              'Assigned cash-in-transit investigations',
-              style: AppText.bodyMuted,
+            Text(
+              appSettings.t('assignedIntro'),
+              style: mutedOnPage(context),
             ),
             const SizedBox(height: AppSpacing.medium),
             _OperationalSummary(
               caseCount: _cases.where((c) => !c.isClosed).length,
               reportCount: reports,
               possiblePeople: possiblePeople,
+              casesLabel: appSettings.t('activeCasesLabel'),
+              reportsLabel: appSettings.t('reportsLabel'),
+              flagsLabel: appSettings.t('reviewFlags'),
             ),
             const SizedBox(height: AppSpacing.large),
             Row(
               children: [
-                const Expanded(
-                  child: Text('MY CASES', style: AppText.cardTitle),
+                Expanded(
+                  child: Text(appSettings.t('myCases'), style: titleOnPage(context)),
                 ),
                 TextButton.icon(
                   onPressed: () {
@@ -123,16 +141,18 @@ class _InvestigatorDashboardState extends State<InvestigatorDashboard> {
                     _showClosed ? Icons.visibility_off : Icons.history,
                     size: 18,
                   ),
-                  label: Text(_showClosed ? 'Active only' : 'Include closed'),
+                  label: Text(_showClosed
+                      ? appSettings.t('activeOnly')
+                      : appSettings.t('includeClosed')),
                 ),
               ],
             ),
             const SizedBox(height: AppSpacing.small),
             TextField(
               onChanged: (value) => setState(() => _query = value),
-              decoration: const InputDecoration(
-                hintText: 'Search case, reference or number plate',
-                prefixIcon: Icon(Icons.search),
+              decoration: InputDecoration(
+                hintText: appSettings.t('searchAssigned'),
+                prefixIcon: const Icon(Icons.search),
               ),
             ),
             const SizedBox(height: AppSpacing.medium),
@@ -140,7 +160,7 @@ class _InvestigatorDashboardState extends State<InvestigatorDashboard> {
               Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.medium),
                 child: Text(
-                  _error!,
+                  appSettings.t(_error!),
                   style: AppText.bodyMuted.copyWith(color: AppColors.danger),
                   textAlign: TextAlign.center,
                 ),
@@ -170,14 +190,16 @@ class _InvestigatorDashboardState extends State<InvestigatorDashboard> {
                   },
                 ),
             const SizedBox(height: AppSpacing.medium),
-            const Text(
-              'Case access is limited to assigned investigations. Unreviewed people are shown as counts only.',
+            Text(
+              appSettings.t('caseAccessNote'),
               textAlign: TextAlign.center,
-              style: AppText.bodyMuted,
+              style: mutedOnPage(context),
             ),
           ],
         ),
       ),
+    );
+      },
     );
   }
 }
@@ -186,11 +208,17 @@ class _OperationalSummary extends StatelessWidget {
   final int caseCount;
   final int reportCount;
   final int possiblePeople;
+  final String casesLabel;
+  final String reportsLabel;
+  final String flagsLabel;
 
   const _OperationalSummary({
     required this.caseCount,
     required this.reportCount,
     required this.possiblePeople,
+    required this.casesLabel,
+    required this.reportsLabel,
+    required this.flagsLabel,
   });
 
   @override
@@ -202,12 +230,14 @@ class _OperationalSummary extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.accent.withAlpha(128)),
       ),
-      child: Row(
+      child: NavyText(
+        child: Row(
         children: [
-          _SummaryMetric(value: '$caseCount', label: 'ACTIVE CASES'),
-          _SummaryMetric(value: '$reportCount', label: 'REPORTS'),
-          _SummaryMetric(value: '$possiblePeople', label: 'REVIEW FLAGS'),
+          _SummaryMetric(value: '$caseCount', label: casesLabel),
+          _SummaryMetric(value: '$reportCount', label: reportsLabel),
+          _SummaryMetric(value: '$possiblePeople', label: flagsLabel),
         ],
+      ),
       ),
     );
   }
@@ -235,7 +265,13 @@ class _SummaryMetric extends StatelessWidget {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: AppText.caption.copyWith(fontSize: 9),
+            style: const TextStyle(
+              fontFamily: AppFonts.body,
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.8,
+              color: Colors.white70,
+            ),
           ),
         ],
       ),
@@ -275,7 +311,12 @@ class _InvestigatorCaseCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(child: Text(c.reference, style: AppText.cardTitle)),
+                Expanded(
+                  child: Text(
+                    c.reference,
+                    style: AppText.cardTitle.copyWith(color: Colors.white),
+                  ),
+                ),
                 const SizedBox(width: AppSpacing.small),
                 StatusTag(label: status, color: color),
               ],
@@ -284,13 +325,16 @@ class _InvestigatorCaseCard extends StatelessWidget {
             Text(c.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
+                style: AppText.body.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                )),
             if (description.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.bodyMuted),
+                  style: AppText.bodyMuted.copyWith(color: Colors.white70)),
             ],
             const SizedBox(height: 10),
             const Divider(color: AppColors.fieldBorder, height: 1),
@@ -341,24 +385,24 @@ class _EmptyCases extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final message = hasQuery
-        ? 'No assigned cases match that search.'
+        ? appSettings.t('noCasesMatch')
         : showClosed
-            ? 'No cases are assigned to your account yet.'
-            : 'No active cases are assigned to you.';
+            ? appSettings.t('noCasesAssigned')
+            : appSettings.t('noActiveAssigned');
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         children: [
-          const Icon(Icons.folder_open, size: 40, color: AppColors.textMuted),
+          Icon(Icons.folder_open, size: 40, color: pageInkMuted(context)),
           const SizedBox(height: AppSpacing.medium),
-          Text(message, textAlign: TextAlign.center, style: AppText.bodyMuted),
+          Text(message, textAlign: TextAlign.center, style: mutedOnPage(context)),
           if (!hasQuery)
-            const Padding(
-              padding: EdgeInsets.only(top: AppSpacing.small),
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.small),
               child: Text(
-                'Contact your system administrator if you need case access.',
+                appSettings.t('contactAdmin'),
                 textAlign: TextAlign.center,
-                style: AppText.bodyMuted,
+                style: mutedOnPage(context),
               ),
             ),
         ],

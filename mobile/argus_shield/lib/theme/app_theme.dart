@@ -74,11 +74,11 @@ class AppText {
   );
 
   /// Big page heading on full-screen pages ("Login", "Register as citizen").
+  /// No colour here: it follows light or dark mode.
   static const TextStyle pageTitle = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 50,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
   );
 
   /// Heading of a section or tab ("Submit footage", "My profile").
@@ -86,7 +86,6 @@ class AppText {
     fontFamily: AppFonts.heading,
     fontSize: 28,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
   );
 
   /// Label above a text field ("Username", "Password").
@@ -94,14 +93,12 @@ class AppText {
     fontFamily: AppFonts.heading,
     fontSize: 20,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
   );
 
   /// Label next to a checkbox ("Terms and conditions").
   static const TextStyle checkboxLabel = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 20,
-    color: AppColors.textPrimary,
   );
 
   /// Heading inside a card (a submission's reference number).
@@ -109,21 +106,18 @@ class AppText {
     fontFamily: AppFonts.heading,
     fontSize: 18,
     fontWeight: FontWeight.bold,
-    color: AppColors.textPrimary,
   );
 
   static const TextStyle body = TextStyle(
     fontFamily: AppFonts.body,
     fontSize: 16,
     height: 1.3,
-    color: AppColors.textPrimary,
   );
 
   static const TextStyle bodyMuted = TextStyle(
     fontFamily: AppFonts.body,
     fontSize: 15,
     height: 1.3,
-    color: AppColors.textMuted,
   );
 
   /// Small bold tag: role badge, submission status.
@@ -268,7 +262,12 @@ ThemeData buildArgusTheme() {
 
     snackBarTheme: const SnackBarThemeData(
       backgroundColor: AppColors.header,
-      contentTextStyle: AppText.body,
+      contentTextStyle: TextStyle(
+        fontFamily: AppFonts.body,
+        fontSize: 16,
+        height: 1.3,
+        color: Colors.white,
+      ),
       actionTextColor: AppColors.accent,
     ),
 
@@ -281,3 +280,99 @@ ThemeData buildArgusTheme() {
     ),
   );
 }
+
+/// Light theme version of the Argus look.
+ThemeData buildArgusLightTheme() {
+  const colorScheme = ColorScheme.light(
+    primary: AppColors.accent,
+    onPrimary: Colors.black,
+    secondary: AppColors.accent,
+    onSecondary: Colors.black,
+    surface: Colors.white,
+    onSurface: Colors.black87,
+    error: AppColors.danger,
+    onError: Colors.white,
+  );
+
+  return ThemeData(
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: Colors.white,
+    fontFamily: AppFonts.body,
+    textTheme: const TextTheme(
+      bodyLarge: TextStyle(color: Colors.black87, fontSize: 16),
+      bodyMedium: TextStyle(color: Colors.black87, fontSize: 15),
+      bodySmall: TextStyle(color: Colors.black54, fontSize: 13),
+      titleLarge: TextStyle(color: Colors.black87, fontSize: 28, fontWeight: FontWeight.bold),
+      titleMedium: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
+      labelLarge: TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.bold),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppColors.header,
+      foregroundColor: Colors.white,
+    ),
+    cardTheme: CardThemeData(
+      color: Colors.white,
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+        side: const BorderSide(color: Colors.black12),
+      ),
+    ),
+    dividerColor: Colors.black12,
+    listTileTheme: const ListTileThemeData(
+      textColor: Colors.black87,
+      iconColor: Colors.black54,
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.accent,
+        foregroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(),
+      ),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      labelColor: AppColors.accent,
+      unselectedLabelColor: Colors.white70,
+      indicatorColor: AppColors.accent,
+      indicatorSize: TabBarIndicatorSize.tab,
+      dividerColor: Colors.transparent,
+    ),
+  );
+}
+
+/// Puts white writing back on a navy box (cards, person rows).
+/// The page itself does not use this, so light mode can turn that writing dark.
+class NavyText extends StatelessWidget {
+  final Widget child;
+
+  const NavyText({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTextStyle.merge(
+      style: const TextStyle(color: Colors.white),
+      child: child,
+    );
+  }
+}
+
+/// Ink for text that sits on the page background (not inside a dark card).
+/// Dark mode stays white. Light mode switches to near-black so it stays readable.
+Color pageInk(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? AppColors.textPrimary
+        : const Color(0xFF1A1A1A);
+
+Color pageInkMuted(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? AppColors.textMuted
+        : const Color(0xFF4A4A4A);
+
+TextStyle titleOnPage(BuildContext context) =>
+    AppText.sectionTitle.copyWith(color: pageInk(context));
+
+TextStyle bodyOnPage(BuildContext context) =>
+    AppText.body.copyWith(color: pageInk(context));
+
+TextStyle mutedOnPage(BuildContext context) =>
+    AppText.bodyMuted.copyWith(color: pageInkMuted(context));

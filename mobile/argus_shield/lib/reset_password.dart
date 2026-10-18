@@ -4,6 +4,7 @@ import 'login.dart';
 import 'loadingscreen.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
+import 'app_settings.dart';
 
 /// Opened by main.dart when the user taps the reset link in their email
 /// (AuthChangeEvent.passwordRecovery). The link has already signed them in
@@ -126,7 +127,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             child: Column(
               children: [
                 Text(
-                  "New Password",
+                  appSettings.t('newPassword'),
                   textAlign: TextAlign.center,
                   style: AppText.pageTitle.copyWith(height: 1.0),
                   textHeightBehavior: const TextHeightBehavior(
@@ -135,15 +136,15 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.small),
-                const Text(
-                  "Choose a new password for your Argus Shield account.",
+                Text(
+                  appSettings.t('newPasswordBody'),
                   textAlign: TextAlign.center,
-                  style: AppText.bodyMuted,
+                  style: mutedOnPage(context),
                 ),
 
                 const SizedBox(height: AppSpacing.large),
 
-                const FieldLabel("New password"),
+                FieldLabel(appSettings.t('newPassword')),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: !_showPassword,
@@ -157,7 +158,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
                 const SizedBox(height: AppSpacing.large),
 
-                const FieldLabel("Confirm new password"),
+                FieldLabel(appSettings.t('confirmNewPassword')),
                 TextFormField(
                   controller: _confirmController,
                   obscureText: !_showPassword,
@@ -181,7 +182,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 const SizedBox(height: AppSpacing.large),
 
                 PrimaryButton(
-                  label: _saving ? "Saving..." : "Save Password",
+                  label: _saving ? appSettings.t('saving') : appSettings.t('savePassword'),
                   onPressed: _saving ? null : _save,
                 ),
 
@@ -189,7 +190,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
                 TextButton(
                   onPressed: _saving ? null : _cancel,
-                  child: const Text("Cancel"),
+                  child: Text(appSettings.t('cancel')),
                 ),
               ],
             ),

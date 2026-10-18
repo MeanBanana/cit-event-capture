@@ -462,7 +462,9 @@ class AdminCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(padding: const EdgeInsets.all(16), child: child),
+        child: NavyText(
+          child: Padding(padding: const EdgeInsets.all(16), child: child),
+        ),
       ),
     );
   }

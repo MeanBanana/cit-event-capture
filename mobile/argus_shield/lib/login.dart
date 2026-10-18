@@ -7,6 +7,7 @@ import 'admin_screens/admin_dashboard.dart';
 import 'investigator_dashboard/investigator_dashboard.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
+import 'app_settings.dart';
 import 'loadingscreen.dart';
 
 class LoginPage extends StatefulWidget{
@@ -190,7 +191,9 @@ class _LoginPageState extends State<LoginPage>{
     // Left/right stay at the usual 30.
     const padding = EdgeInsets.symmetric(horizontal: 30, vertical: 4);
 
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => Scaffold(
       appBar: const ArgusAppBar(),
       body: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
@@ -221,7 +224,7 @@ class _LoginPageState extends State<LoginPage>{
                     // the 50px Courier font otherwise adds a tall blank band
                     // above the letters.
                     Text(
-                      "Login",
+                      appSettings.t('login'),
                       style: AppText.pageTitle.copyWith(height: 1.0),
                       textHeightBehavior: const TextHeightBehavior(
                         applyHeightToFirstAscent: false,
@@ -231,7 +234,7 @@ class _LoginPageState extends State<LoginPage>{
 
                     const SizedBox(height: AppSpacing.large),
 
-                    const FieldLabel("Username"),
+                    FieldLabel(appSettings.t('username')),
                     TextField(
                       controller: userNameController,
                       decoration: const InputDecoration(),
@@ -239,7 +242,7 @@ class _LoginPageState extends State<LoginPage>{
 
                     const SizedBox(height: AppSpacing.large),
 
-                    const FieldLabel("Password"),
+                    FieldLabel(appSettings.t('password')),
                     TextField(
                       controller: passwordController,
                       obscureText: true,
@@ -252,7 +255,7 @@ class _LoginPageState extends State<LoginPage>{
                       alignment: Alignment.centerLeft,
                       child: TextButton(
                         onPressed: _showForgotPassword,
-                        child: const Text("Forgot password?"),
+                        child: Text(appSettings.t('forgotPassword')),
                       ),
                     ),
                   ],
@@ -271,8 +274,8 @@ class _LoginPageState extends State<LoginPage>{
                           MaterialPageRoute(builder: (context) => const RegisterPage()),
                         );
                       },
-                      child: const Text(
-                        "Register as citizen",
+                      child: Text(
+                        appSettings.t('registerCitizen'),
                         style: TextStyle(
                           decoration: TextDecoration.underline,
                           decorationColor: AppColors.accent,
@@ -284,7 +287,7 @@ class _LoginPageState extends State<LoginPage>{
                     const SizedBox(height: AppSpacing.medium),
 
                     PrimaryButton(
-                      label: "Access System",
+                      label: appSettings.t('accessSystem'),
                       onPressed: isLoading ? null : _login,
                     ),
 
@@ -302,6 +305,7 @@ class _LoginPageState extends State<LoginPage>{
           ),
         ),
       ),
+    ),
     );
   }
 

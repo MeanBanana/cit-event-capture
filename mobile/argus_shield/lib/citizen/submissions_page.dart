@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../app_settings.dart';
 import 'citizen_store.dart';
 
 /// Lists the citizen's reports from the shared store.
@@ -26,12 +27,11 @@ class SubmissionsPage extends StatelessWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: AppSpacing.page,
             children: [
-              const Text('My submissions', style: AppText.sectionTitle),
+              Text(appSettings.t('mySubmissions'), style: titleOnPage(context)),
               const SizedBox(height: AppSpacing.small),
-              const Text(
-                'Track the reports you have submitted to Argus Shield. '
-                'Pull down to refresh.',
-                style: AppText.bodyMuted,
+              Text(
+                appSettings.t('submissionsTrack'),
+                style: mutedOnPage(context),
               ),
               const SizedBox(height: AppSpacing.large),
               if (store.submissionsLoading && submissions.isEmpty)
@@ -41,7 +41,7 @@ class SubmissionsPage extends StatelessWidget {
                     style: AppText.body.copyWith(color: AppColors.danger)),
                 TextButton(
                   onPressed: store.loadSubmissions,
-                  child: const Text('Try again'),
+                  child: Text(appSettings.t('tryAgain')),
                 ),
                 const SizedBox(height: AppSpacing.medium),
               ],
@@ -49,7 +49,7 @@ class SubmissionsPage extends StatelessWidget {
               if (!store.submissionsLoading &&
                   store.submissionsError == null &&
                   submissions.isEmpty)
-                const Text('No reports sent yet.', style: AppText.bodyMuted),
+                Text(appSettings.t('noReportsYet'), style: mutedOnPage(context)),
               for (final s in submissions) ...[
                 SubmissionCard(
                   reference: s.reference,
@@ -63,7 +63,7 @@ class SubmissionsPage extends StatelessWidget {
                   },
                   description: [
                     if ((s.description ?? '').isNotEmpty) s.description!,
-                    '${s.fileCount} file${s.fileCount == 1 ? '' : 's'} · ${s.aiLabel}',
+                    '${s.fileCount} ${s.fileCount == 1 ? appSettings.t('fileOne') : appSettings.t('fileMany')} · ${s.aiLabel}',
                   ].join('\n\n'),
                 ),
                 const SizedBox(height: AppSpacing.medium),
@@ -114,7 +114,9 @@ class SubmissionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text(reference, style: AppText.cardTitle)),
+              Expanded(
+                child: Text(reference, style: titleOnPage(context).copyWith(fontSize: 18)),
+              ),
               Flexible(
                 child: Text(
                   status.toUpperCase(),
@@ -127,15 +129,15 @@ class SubmissionCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             location,
-            style: AppText.body.copyWith(
+            style: bodyOnPage(context).copyWith(
               fontSize: 17,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 5),
-          Text(date, style: AppText.bodyMuted),
+          Text(date, style: mutedOnPage(context)),
           const SizedBox(height: 12),
-          Text(description, style: AppText.bodyMuted),
+          Text(description, style: mutedOnPage(context)),
         ],
       ),
     );

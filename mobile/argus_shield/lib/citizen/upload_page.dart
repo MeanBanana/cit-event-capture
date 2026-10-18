@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
 import '../theme/argus_widgets.dart';
+import '../app_settings.dart';
 import 'citizen_store.dart';
 import 'phone_location.dart';
 
@@ -213,12 +214,11 @@ class _UploadPageState extends State<UploadPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Submit footage', style: AppText.sectionTitle),
+            Text(appSettings.t('submitFootage'), style: titleOnPage(context)),
             const SizedBox(height: AppSpacing.small),
-            const Text(
-              'If you have witnessed or recorded a cash-in-transit '
-              'robbery, select your footage here (up to 5 videos or photos).',
-              style: AppText.body,
+            Text(
+              appSettings.t('submitFootageBody'),
+              style: bodyOnPage(context),
             ),
             const SizedBox(height: AppSpacing.medium),
 
@@ -238,13 +238,13 @@ class _UploadPageState extends State<UploadPage>
                   children: [
                     Text(
                       _files.isEmpty
-                          ? 'Tap to select videos or images'
+                          ? appSettings.t('tapToSelect')
                           : _room > 0
-                              ? 'Tap to add more (${_files.length} of ${CitizenStore.maxFiles})'
-                              : '${CitizenStore.maxFiles} of ${CitizenStore.maxFiles} files selected',
+                              ? '${appSettings.t('tapToAddMore')} (${_files.length} ${appSettings.t('ofLower')} ${CitizenStore.maxFiles})'
+                              : '${CitizenStore.maxFiles} ${appSettings.t('ofLower')} ${CitizenStore.maxFiles} ${appSettings.t('filesSelected')}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppText.body,
+                      style: bodyOnPage(context),
                     ),
                     const SizedBox(height: 7),
                     const Icon(
@@ -279,18 +279,18 @@ class _UploadPageState extends State<UploadPage>
                     vertical: 15,
                   ),
                 ),
-                child: const Text('Record Live Footage'),
+                child: Text(appSettings.t('recordLive')),
               ),
             ),
             const SizedBox(height: AppSpacing.large),
 
-            const FieldLabel('Incident location'),
+            FieldLabel(appSettings.t('incidentLocation')),
             TextFormField(
               controller: _locationController,
               enabled: !_sending && !resuming,
-              decoration: const InputDecoration(hintText: 'e.g. N1 Southbound'),
+              decoration: InputDecoration(hintText: appSettings.t('locationHint')),
               validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter the incident location'
+                  ? appSettings.t('enterLocation')
                   : null,
             ),
             const SizedBox(height: AppSpacing.small),
@@ -301,32 +301,30 @@ class _UploadPageState extends State<UploadPage>
                   ? null
                   : (v) => setState(() => _shareLocation = v),
               activeThumbColor: AppColors.accent,
-              title: const Text("Share my phone's location", style: AppText.body),
-              subtitle: const Text(
-                'Helps link your report to other reports of the same incident. '
-                'Only used for this report.',
-                style: AppText.bodyMuted,
+              title: Text(appSettings.t('shareLocation'), style: bodyOnPage(context)),
+              subtitle: Text(
+                appSettings.t('shareLocationBody'),
+                style: mutedOnPage(context),
               ),
             ),
             const SizedBox(height: AppSpacing.small),
 
-            const FieldLabel('Description*'),
+            FieldLabel(appSettings.t('descriptionStar')),
             TextFormField(
               controller: _descriptionController,
               enabled: !_sending && !resuming,
               maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Briefly describe what you witnessed - number of '
-                    'vehicles, suspects, direction of travel...',
+              decoration: InputDecoration(
+                hintText: appSettings.t('descriptionHint'),
               ),
               validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter a description'
+                  ? appSettings.t('enterDescription')
                   : null,
             ),
             const SizedBox(height: AppSpacing.large),
 
             Text(
-              'Privacy notice',
+              appSettings.t('privacyNotice'),
               style: AppText.fieldLabel.copyWith(color: AppColors.accent),
             ),
             const SizedBox(height: 4),
@@ -337,13 +335,10 @@ class _UploadPageState extends State<UploadPage>
                 border: Border.all(color: AppColors.accent, width: 2),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Text(
-                'Your footage and report are sent securely to Argus Shield. '
-                'Only authorised administrators and investigators can see them. '
-                'The footage is analysed by AI (vehicles, number plates, people, '
-                'weapons) to help investigators; a person always checks the results.',
+              child: Text(
+                appSettings.t('privacyBody'),
                 textAlign: TextAlign.center,
-                style: AppText.bodyMuted,
+                style: mutedOnPage(context),
               ),
             ),
             const SizedBox(height: AppSpacing.large),
@@ -355,7 +350,7 @@ class _UploadPageState extends State<UploadPage>
                 backgroundColor: AppColors.header,
               ),
               const SizedBox(height: 8),
-              Text(_progress!.message, style: AppText.bodyMuted),
+              Text(_progress!.message, style: mutedOnPage(context)),
               const SizedBox(height: AppSpacing.medium),
             ],
             if (_sendError != null) ...[
@@ -375,10 +370,10 @@ class _UploadPageState extends State<UploadPage>
             Center(
               child: PrimaryButton(
                 label: _sending
-                    ? 'Sending…'
+                    ? appSettings.t('sending')
                     : resuming
-                        ? 'Try again'
-                        : 'Submit Report',
+                        ? appSettings.t('tryAgain')
+                        : appSettings.t('submitReport'),
                 onPressed: _sending ? null : _submitReport,
               ),
             ),
@@ -412,13 +407,15 @@ class _FileRow extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(file.name,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.body),
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: bodyOnPage(context)),
           ),
           const SizedBox(width: 8),
           Text(
             file.size > 50 * 1024 * 1024 ? '${file.sizeLabel} - too big' : file.sizeLabel,
             style: AppText.bodyMuted.copyWith(
-                color: file.size > 50 * 1024 * 1024 ? AppColors.danger : null),
+                color: file.size > 50 * 1024 * 1024
+                    ? AppColors.danger
+                    : pageInkMuted(context)),
           ),
           if (sent)
             const Padding(
@@ -427,7 +424,7 @@ class _FileRow extends StatelessWidget {
             )
           else
             IconButton(
-              icon: const Icon(Icons.close, size: 20, color: AppColors.textMuted),
+              icon: Icon(Icons.close, size: 20, color: pageInkMuted(context)),
               tooltip: 'Remove',
               onPressed: onRemove,
             ),

@@ -6,6 +6,7 @@ import 'login.dart';
 import 'reset_password.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
+import 'app_settings.dart';
 
 // The app starts on the login page. After logging in, login.dart sends each
 // user to their own dashboard: citizens to CitizenHome, admins to
@@ -40,6 +41,8 @@ class _RootAppState extends State<RootApp> {
   @override
   void initState() {
     super.initState();
+    // Rebuild the app when language or theme changes.
+    appSettings.addListener(() => setState(() {}));
     // Password reset: when the user taps the link in the reset email, the
     // phone opens this app (argusshield://reset-password). supabase_flutter
     // checks the link with Supabase and fires passwordRecovery; we then show
@@ -82,7 +85,9 @@ class _RootAppState extends State<RootApp> {
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,
       // All colours, fonts and widget styles come from theme/app_theme.dart
-      theme: buildArgusTheme(),
+      theme: buildArgusLightTheme(),
+      darkTheme: buildArgusTheme(),
+      themeMode: appSettings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       // keeps every page above the phone's navigation buttons
       builder: keepAboveSystemBars,
       home: const LoginPage(),

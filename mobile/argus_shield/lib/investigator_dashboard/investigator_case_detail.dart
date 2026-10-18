@@ -12,6 +12,7 @@ import 'package:argus_shield/models/crime_scene.dart';
 import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/theme/app_theme.dart';
+import 'package:argus_shield/app_settings.dart';
 
 /// Assigned-case brief for investigators. Administrative review and
 /// assignment controls are intentionally omitted from this surface.
@@ -134,7 +135,7 @@ class _InvestigatorCaseDetailPageState
     final current = _case;
     return Scaffold(
       appBar: AppBar(
-        title: Text(current?.reference ?? 'Case brief'),
+        title: Text(current?.reference ?? appSettings.t('caseBrief')),
         backgroundColor: AppColors.header,
         foregroundColor: AppColors.textPrimary,
       ),
@@ -148,7 +149,7 @@ class _InvestigatorCaseDetailPageState
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: [
                       Text(
-                        _error ?? 'This case is no longer available.',
+                        _error ?? appSettings.t('caseGone'),
                         textAlign: TextAlign.center,
                         style: AppText.bodyMuted
                             .copyWith(color: AppColors.danger),
@@ -169,16 +170,19 @@ class _InvestigatorCaseDetailPageState
                       Material(
                         color: AppColors.header,
                         child: TabBar(
+                          labelColor: Colors.white,
+                          unselectedLabelColor: Colors.white70,
+                          indicatorColor: AppColors.accent,
                           // fixed tabs sharing the width: all four always on
                           // screen, so labels are short and the side padding
                           // small enough to fit a quarter of a phone
                           labelPadding:
                               const EdgeInsets.symmetric(horizontal: 4),
                           tabs: [
-                            Tab(text: 'Scenes (${_scenes.length})'),
-                            const Tab(text: 'AI summary'),
-                            const Tab(text: 'Activity'),
-                            const Tab(text: 'Chat'),
+                            Tab(text: '${appSettings.t('scenes')} (${_scenes.length})'),
+                            Tab(text: appSettings.t('aiSummaryTab')),
+                            Tab(text: appSettings.t('activity')),
+                            Tab(text: appSettings.t('chat')),
                           ],
                         ),
                       ),
@@ -236,11 +240,11 @@ class _InvestigatorCaseDetailPageState
           ),
         ),
       if (_scenes.isEmpty)
-        const Padding(
-          padding: EdgeInsets.only(top: AppSpacing.medium),
+        Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.medium),
           child: Text(
-            'No crime scenes are linked to this case yet.',
-            style: AppText.bodyMuted,
+            appSettings.t('noScenesLinked'),
+            style: mutedOnPage(context),
             textAlign: TextAlign.center,
           ),
         )
@@ -260,18 +264,18 @@ class _InvestigatorCaseDetailPageState
             key: ValueKey('case-evidence-${current.caseId}-$_version'),
             caseId: current.caseId,
             source: CaseEvidenceSource.standard,
-            title: 'AI summary (whole case)',
+            title: appSettings.t('aiSummaryTab'),
           )
         else
-          const Text(
-            'The case\'s AI summary is loaded from the server.',
-            style: AppText.bodyMuted,
+          Text(
+            appSettings.t('aiFromServer'),
+            style: mutedOnPage(context),
           ),
       ];
 
   List<Widget> _activityTab() => [
         if (_events.isEmpty)
-          const Text('No activity recorded yet.', style: AppText.bodyMuted)
+          Text(appSettings.t('noActivityRecorded'), style: mutedOnPage(context))
         else
           for (final event in _events) _CaseEventRow(event: event),
       ];
@@ -305,13 +309,13 @@ class _CaseHeader extends StatelessWidget {
           Text(c.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: AppText.sectionTitle),
+              style: titleOnPage(context)),
           if (description.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(description,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: AppText.bodyMuted),
+                style: mutedOnPage(context)),
           ],
           const SizedBox(height: 8),
           // Wrap, not Row: if the action doesn't fit beside the tag on a
@@ -323,8 +327,8 @@ class _CaseHeader extends StatelessWidget {
             children: [
               StatusTag(label: status, color: color),
               if (c.isClosed)
-                Text('Read-only',
-                    style: AppText.bodyMuted.copyWith(fontSize: 13))
+                Text(appSettings.t('readOnly'),
+                    style: mutedOnPage(context).copyWith(fontSize: 13))
               else if (updating)
                 const SizedBox(
                   width: 20,
@@ -338,8 +342,8 @@ class _CaseHeader extends StatelessWidget {
                   icon: const Icon(Icons.sync, size: 18),
                   label: Text(
                     nextStatus == 'under_review'
-                        ? 'Mark under review'
-                        : 'Reopen as open',
+                        ? appSettings.t('markUnderReview')
+                        : appSettings.t('reopenOpen'),
                     overflow: TextOverflow.ellipsis,
                     style: AppText.body
                         .copyWith(fontSize: 14, color: AppColors.accent),
@@ -371,11 +375,11 @@ class _CaseEventRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(event.text, style: AppText.body),
+                Text(event.text, style: bodyOnPage(context)),
                 const SizedBox(height: 3),
                 Text(
                   '${formatDateTime(event.occurredAt)}${event.actorName == null ? '' : ' · ${event.actorName}'}',
-                  style: AppText.bodyMuted.copyWith(fontSize: 12),
+                  style: mutedOnPage(context).copyWith(fontSize: 12),
                 ),
               ],
             ),

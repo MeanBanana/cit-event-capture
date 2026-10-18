@@ -644,7 +644,8 @@ class _AssignmentRow extends StatelessWidget {
         border: Border.all(color: AppColors.accent),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Row(
+      child: NavyText(
+        child: Row(
         children: [
           IconButton(
             icon: Icon(a.isLead ? Icons.star : Icons.star_border,
@@ -669,6 +670,7 @@ class _AssignmentRow extends StatelessWidget {
             onPressed: onRemove,
           ),
         ],
+      ),
       ),
     );
   }

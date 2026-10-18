@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/theme/argus_widgets.dart';
+import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/investigators.dart';
 import 'package:argus_shield/admin_screens/submissions.dart';
 import 'package:argus_shield/supabase_service.dart';
@@ -24,6 +25,7 @@ import 'package:argus_shield/models/system_stats.dart';
 import 'package:argus_shield/models/activity_item.dart';
 import 'package:argus_shield/admin_screens/review_actions.dart';
 import 'package:argus_shield/admin_screens/submission_detail.dart';
+import 'package:argus_shield/app_settings.dart';
 
 /// Tab positions in AdminDashboard, used by the "see more" links.
 /// Keep these in step with the order of tabs in admin_dashboard.dart.
@@ -92,7 +94,7 @@ class _AdminOverviewState extends State<AdminOverview> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load live data. Pull down to try again.';
+        _error = appSettings.t('loadError');
         _loading = false;
       });
     }
@@ -126,7 +128,7 @@ class _AdminOverviewState extends State<AdminOverview> {
   /// Placeholder for buttons that will do something once Supabase is wired.
   void _notReady(BuildContext context, String action) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$action is not connected yet.')),
+      SnackBar(content: Text('$action ${appSettings.t('notConnected')}')),
     );
   }
 
@@ -135,7 +137,9 @@ class _AdminOverviewState extends State<AdminOverview> {
     final stats = _stats; // null shows "—" in the tiles
 
     // Pull down to refresh the live numbers.
-    return RefreshIndicator(
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => RefreshIndicator(
       onRefresh: _fetch,
       child: ListView(
         // Same side margins as the other admin tabs, plus a little space
@@ -144,7 +148,7 @@ class _AdminOverviewState extends State<AdminOverview> {
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           // 1. System status ----------------------------------------------
-          const _SectionHeading('System status — live'),
+          _SectionHeading(appSettings.t('systemStatus')),
           if (_error != null) ...[
             Text(
               _error!,
@@ -157,17 +161,17 @@ class _AdminOverviewState extends State<AdminOverview> {
             children: [
               Expanded(
                 child: _StatTile(
-                  title: 'Total cases',
+                  title: appSettings.t('totalCases'),
                   value: stats?.totalCases,
-                  subtitle: 'all time',
+                  subtitle: appSettings.t('allTime'),
                 ),
               ),
               const SizedBox(width: AppSpacing.medium),
               Expanded(
                 child: _StatTile(
-                  title: 'Active',
+                  title: appSettings.t('active'),
                   value: stats?.activeCases,
-                  subtitle: 'ongoing',
+                  subtitle: appSettings.t('ongoing'),
                   color: AppColors.danger,
                   animatedBorder: true, // red stripes run round the box
                 ),
@@ -179,18 +183,18 @@ class _AdminOverviewState extends State<AdminOverview> {
             children: [
               Expanded(
                 child: _StatTile(
-                  title: 'Pending',
+                  title: appSettings.t('pending'),
                   value: stats?.pendingCases,
-                  subtitle: 'unassigned',
+                  subtitle: appSettings.t('unassigned'),
                   color: AppColors.accent,
                 ),
               ),
               const SizedBox(width: AppSpacing.medium),
               Expanded(
                 child: _StatTile(
-                  title: 'Investigators',
+                  title: appSettings.t('investigators'),
                   value: stats?.investigators,
-                  subtitle: 'registered',
+                  subtitle: appSettings.t('registered'),
                 ),
               ),
             ],
@@ -198,45 +202,46 @@ class _AdminOverviewState extends State<AdminOverview> {
           const SizedBox(height: AppSpacing.large),
 
           // 2. Recent activity (live) -------------------------------------
-          const _SectionHeading('Recent activity'),
+          _SectionHeading(appSettings.t('recentActivity')),
           if (_loading)
             const Padding(
               padding: EdgeInsets.all(AppSpacing.medium),
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_activity.isEmpty && _error == null)
-            const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.small),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.small),
               child: Text(
-                'No activity yet.',
+                appSettings.t('noActivity'),
                 textAlign: TextAlign.center,
-                style: AppText.bodyMuted,
+                style: AppText.bodyMuted.copyWith(color: _muted(context)),
               ),
             ),
           for (final item in _activity) _ActivityRow(item: item),
-          _SeeMore(onTap: () => _notReady(context, 'Full activity log')),
+          _SeeMore(onTap: () => _notReady(context, appSettings.t('fullActivityLog'))),
           const SizedBox(height: AppSpacing.medium),
 
           // 3. Recent active investigators (live) -------------------------
-          const _SectionHeading('Recent active investigators'),
+          _SectionHeading(appSettings.t('recentInvestigators')),
           if (_loading)
             const Padding(
               padding: EdgeInsets.all(AppSpacing.medium),
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_investigators.isEmpty && _error == null)
-            const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.small),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.small),
               child: Text(
-                'No investigators have been added yet.',
+                appSettings.t('noInvestigators'),
                 textAlign: TextAlign.center,
-                style: AppText.bodyMuted,
+                style: AppText.bodyMuted.copyWith(color: _muted(context)),
               ),
             ),
           for (final inv in _investigators) ...[
             _InvestigatorMiniCard(
               investigator: inv,
-              onProfile: () => _notReady(context, 'Investigator profile'),
+              onProfile: () =>
+                  _notReady(context, appSettings.t('investigatorProfile')),
             ),
             const SizedBox(height: AppSpacing.small),
           ],
@@ -244,19 +249,19 @@ class _AdminOverviewState extends State<AdminOverview> {
           const SizedBox(height: AppSpacing.medium),
 
           // 4. Recent submissions (live) ----------------------------------
-          const _SectionHeading('Recent submissions'),
+          _SectionHeading(appSettings.t('recentSubmissions')),
           if (_loading)
             const Padding(
               padding: EdgeInsets.all(AppSpacing.medium),
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_submissions.isEmpty && _error == null)
-            const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.small),
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.small),
               child: Text(
-                'No incidents have been reported yet.',
+                appSettings.t('noSubmissions'),
                 textAlign: TextAlign.center,
-                style: AppText.bodyMuted,
+                style: AppText.bodyMuted.copyWith(color: _muted(context)),
               ),
             ),
           for (final s in _submissions) ...[
@@ -271,6 +276,7 @@ class _AdminOverviewState extends State<AdminOverview> {
           _SeeMore(onTap: () => _goToTab(context, _submissionsTabIndex)),
         ],
       ),
+      ),
     );
   }
 }
@@ -278,6 +284,13 @@ class _AdminOverviewState extends State<AdminOverview> {
 // =========================================================================
 // Building blocks
 // =========================================================================
+
+/// Text on the page background. White in dark mode, dark in light mode.
+Color _muted(BuildContext context) => Theme.of(context).brightness == Brightness.dark
+    ? AppColors.textMuted
+    : Colors.black54;
+
+Color _onSurface(BuildContext context) => Theme.of(context).colorScheme.onSurface;
 
 /// Centred Courier heading above each section, e.g. "RECENT ACTIVITY".
 class _SectionHeading extends StatelessWidget {
@@ -292,7 +305,11 @@ class _SectionHeading extends StatelessWidget {
       child: Center(
         child: Text(
           text.toUpperCase(),
-          style: AppText.cardTitle.copyWith(fontSize: 15, letterSpacing: 1),
+          style: AppText.cardTitle.copyWith(
+            fontSize: 15,
+            letterSpacing: 1,
+            color: _onSurface(context),
+          ),
         ),
       ),
     );
@@ -312,12 +329,12 @@ class _SeeMore extends StatelessWidget {
       child: TextButton(
         onPressed: onTap,
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.textHint,
+          foregroundColor: _muted(context),
           textStyle: AppText.bodyMuted.copyWith(fontSize: 13),
           padding: const EdgeInsets.symmetric(horizontal: 4),
           minimumSize: const Size(0, 32),
         ),
-        child: const Text('see more'),
+        child: Text(appSettings.t('seeMore')),
       ),
     );
   }
@@ -345,6 +362,7 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final highlight = color;
+    final onSurface = _onSurface(context);
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -355,7 +373,7 @@ class _StatTile extends StatelessWidget {
           style: AppText.cardTitle.copyWith(
             fontSize: 15,
             fontWeight: FontWeight.normal,
-            color: highlight ?? AppColors.textPrimary,
+            color: highlight ?? onSurface,
           ),
         ),
         Text(
@@ -364,10 +382,13 @@ class _StatTile extends StatelessWidget {
             fontSize: 30,
             fontWeight: FontWeight.bold,
             height: 1.1,
-            color: highlight ?? AppColors.textPrimary,
+            color: highlight ?? onSurface,
           ),
         ),
-        Text(subtitle, style: AppText.bodyMuted.copyWith(fontSize: 13)),
+        Text(
+          subtitle,
+          style: AppText.bodyMuted.copyWith(fontSize: 13, color: _muted(context)),
+        ),
       ],
     );
 
@@ -401,7 +422,7 @@ class _ActivityRow extends StatelessWidget {
   /// "just now", "45m ago", "2h ago", "3d ago".
   static String _timeAgo(DateTime at) {
     final diff = DateTime.now().difference(at);
-    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 1) return appSettings.t('justNow');
     if (diff.inHours < 1) return '${diff.inMinutes}m ago';
     if (diff.inDays < 1) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
@@ -435,10 +456,19 @@ class _ActivityRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.text, style: AppText.body.copyWith(fontSize: 14)),
+                Text(
+                  item.text,
+                  style: AppText.body.copyWith(
+                    fontSize: 14,
+                    color: _onSurface(context),
+                  ),
+                ),
                 Text(
                   _timeAgo(item.at),
-                  style: AppText.bodyMuted.copyWith(fontSize: 12),
+                  style: AppText.bodyMuted.copyWith(
+                    fontSize: 12,
+                    color: _muted(context),
+                  ),
                 ),
               ],
             ),
@@ -463,11 +493,11 @@ class _InvestigatorMiniCard extends StatelessWidget {
   static (String, Color) _duty(String dutyStatus) {
     switch (dutyStatus) {
       case 'on_duty':
-        return ('On duty', AppColors.success);
+        return (appSettings.t('onDuty'), AppColors.success);
       case 'available':
-        return ('Available', AppColors.accent);
+        return (appSettings.t('available'), AppColors.accent);
       case 'off_duty':
-        return ('Off duty', AppColors.textHint);
+        return (appSettings.t('offDuty'), AppColors.textHint);
       default:
         return (dutyStatus, AppColors.textMuted);
     }
@@ -486,7 +516,8 @@ class _InvestigatorMiniCard extends StatelessWidget {
         border: Border.all(color: AppColors.accent),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Row(
+      child: NavyText(
+        child: Row(
         children: [
           CircleAvatar(
             radius: 18,
@@ -548,9 +579,10 @@ class _InvestigatorMiniCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
-            child: const Text('PROFILE'),
+            child: Text(appSettings.t('profile')),
           ),
         ],
+      ),
       ),
     );
   }
@@ -588,7 +620,8 @@ class _SubmissionReviewCard extends StatelessWidget {
         border: Border.all(color: AppColors.accent, width: 2),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Column(
+      child: NavyText(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // The admin's review decision on this submission.
@@ -600,10 +633,10 @@ class _SubmissionReviewCard extends StatelessWidget {
             ),
             child: Text(
               switch (s.reviewStatus) {
-                'pending' => 'PENDING REVIEW',
+                'pending' => appSettings.t('pendingReview'),
                 'accepted' => 'ADDED TO ${s.caseReference ?? 'CASE'}',
-                'rejected' => 'REJECTED',
-                'duplicate' => 'DUPLICATE',
+                'rejected' => appSettings.t('rejected'),
+                'duplicate' => appSettings.t('duplicate'),
                 _ => s.reviewStatus.toUpperCase(),
               },
               style: AppText.caption.copyWith(fontSize: 10),
@@ -646,7 +679,7 @@ class _SubmissionReviewCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _OutlineAction(
-                    label: 'Reject',
+                    label: appSettings.t('reject'),
                     color: AppColors.danger,
                     onPressed: onReject,
                   ),
@@ -654,7 +687,7 @@ class _SubmissionReviewCard extends StatelessWidget {
                 const SizedBox(width: AppSpacing.small),
                 Expanded(
                   child: _OutlineAction(
-                    label: 'View',
+                    label: appSettings.t('view'),
                     color: AppColors.fieldBorder,
                     textColor: AppColors.textPrimary,
                     onPressed: onView,
@@ -663,7 +696,7 @@ class _SubmissionReviewCard extends StatelessWidget {
                 const SizedBox(width: AppSpacing.small),
                 Expanded(
                   child: _OutlineAction(
-                    label: 'Accept',
+                    label: appSettings.t('accept'),
                     color: AppColors.success,
                     onPressed: onAccept,
                   ),
@@ -676,7 +709,7 @@ class _SubmissionReviewCard extends StatelessWidget {
               child: SizedBox(
                 width: 110,
                 child: _OutlineAction(
-                  label: 'View',
+                  label: appSettings.t('view'),
                   color: AppColors.fieldBorder,
                   textColor: AppColors.textPrimary,
                   onPressed: onView,
@@ -684,6 +717,7 @@ class _SubmissionReviewCard extends StatelessWidget {
               ),
             ),
         ],
+      ),
       ),
     );
   }

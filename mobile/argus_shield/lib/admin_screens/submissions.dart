@@ -44,6 +44,7 @@ import 'package:argus_shield/admin_screens/submission_detail.dart';
 import 'package:argus_shield/admin_screens/case_detail.dart';
 import 'package:argus_shield/admin_screens/cases.dart';
 import 'package:argus_shield/admin_screens/suggested_matches.dart';
+import 'package:argus_shield/app_settings.dart';
 
 // Other screens (e.g. overview.dart) import CrimeSceneSummary from here.
 export 'package:argus_shield/models/crime_scene_summary.dart';
@@ -181,43 +182,60 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
   // ---- page -------------------------------------------------------------------
 
   String get _searchHint => switch (_view) {
-        SubmissionView.location => 'Search locations',
-        SubmissionView.cases => 'Search by case number/title',
-        _ => 'Search by incident number/location',
+        SubmissionView.location => appSettings.t('searchLocations'),
+        SubmissionView.cases => appSettings.t('searchCases'),
+        _ => appSettings.t('searchIncidents'),
       };
 
   @override
   Widget build(BuildContext context) {
     final searchable = _view != SubmissionView.linked;
+    final views = <(String, SubmissionView)>[
+      (appSettings.t('newest'), SubmissionView.newest),
+      (appSettings.t('oldest'), SubmissionView.oldest),
+      (appSettings.t('location'), SubmissionView.location),
+      (appSettings.t('status'), SubmissionView.status),
+      (appSettings.t('case'), SubmissionView.cases),
+      (appSettings.t('linked'), SubmissionView.linked),
+    ];
+    final statuses = <(String, String)>[
+      (appSettings.t('pending'), 'pending'),
+      (appSettings.t('inACase'), 'accepted'),
+      (appSettings.t('rejected'), 'rejected'),
+      (appSettings.t('duplicates'), 'duplicate'),
+    ];
 
-    return Padding(
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => Padding(
       padding: AppSpacing.tab,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Submissions', style: AppText.sectionTitle),
+          Text(appSettings.t('submissions'), style: titleOnPage(context)),
           const SizedBox(height: AppSpacing.small),
-          const Text(
-            'Review every incident reported to Argus Shield.',
-            style: AppText.bodyMuted,
+          Text(
+            appSettings.t('submissionsIntro'),
+            style: mutedOnPage(context),
           ),
           const SizedBox(height: AppSpacing.medium),
 
           if (searchable) ...[
             TextField(
               controller: _searchController,
-              style: AppText.body,
+              style: bodyOnPage(context),
               textInputAction: TextInputAction.search,
               onChanged: _onSearchChanged,
               onSubmitted: (_) => _reload(), // search now, don't wait
               decoration: InputDecoration(
                 hintText: _searchHint,
+                hintStyle: mutedOnPage(context),
                 prefixIcon: const Icon(Icons.search, color: AppColors.accent),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.close, color: AppColors.textMuted),
-                        tooltip: 'Clear search',
+                        icon: Icon(Icons.close, color: pageInkMuted(context)),
+                        tooltip: appSettings.t('clearSearch'),
                         onPressed: _clearSearch,
                       ),
               ),
@@ -226,14 +244,14 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
           ],
 
           ChipRow<SubmissionView>(
-            options: AdminSubmissions.views,
+            options: views,
             selected: _view,
             onSelected: _setView,
           ),
           if (_view == SubmissionView.status) ...[
             const SizedBox(height: 4),
             ChipRow<String>(
-              options: AdminSubmissions.statuses,
+              options: statuses,
               selected: _review,
               onSelected: _setReview,
             ),
@@ -242,6 +260,7 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
 
           Expanded(child: _buildList()),
         ],
+      ),
       ),
     );
   }

@@ -12,7 +12,15 @@ class ArgusAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? roleLabel;
   final PreferredSizeWidget? bottom;
 
-  const ArgusAppBar({super.key, this.roleLabel, this.bottom});
+  /// Extra buttons on the right, before the role name. Used for Settings.
+  final List<Widget>? actions;
+
+  const ArgusAppBar({
+    super.key,
+    this.roleLabel,
+    this.bottom,
+    this.actions,
+  });
 
   @override
   Size get preferredSize =>
@@ -34,6 +42,7 @@ class ArgusAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
+        ...?actions,
         if (role != null)
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -159,7 +168,10 @@ class FieldLabel extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 4),
-        child: Text(text, style: AppText.fieldLabel),
+        child: Text(
+          text,
+          style: AppText.fieldLabel.copyWith(color: pageInk(context)),
+        ),
       ),
     );
   }

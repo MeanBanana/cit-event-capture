@@ -31,6 +31,7 @@ import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/paged_list.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/case_detail.dart';
+import 'package:argus_shield/app_settings.dart';
 
 /// Body of the Cases tab. Like the other admin tabs, it has no Scaffold or
 /// header of its own — AdminDashboard draws those.
@@ -162,44 +163,53 @@ class _AdminCasesState extends State<AdminCases> {
   @override
   Widget build(BuildContext context) {
     final q = _activeQuery;
-    return Padding(
+    final filters = <(String, String?)>[
+      (appSettings.t('all'), null),
+      (appSettings.t('open'), 'open'),
+      (appSettings.t('underReview'), 'under_review'),
+      (appSettings.t('closed'), 'closed'),
+    ];
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => Padding(
       padding: AppSpacing.tab,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text('Cases', style: AppText.sectionTitle),
+              Expanded(
+                child: Text(appSettings.t('cases'), style: titleOnPage(context)),
               ),
               SmallActionButton(
-                label: '+ New case',
+                label: appSettings.t('newCase'),
                 color: AppColors.accent,
                 onPressed: _newCase,
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.small),
-          const Text(
-            'Monitor every investigation and assign investigators.',
-            style: AppText.bodyMuted,
+          Text(
+            appSettings.t('casesIntro'),
+            style: mutedOnPage(context),
           ),
           const SizedBox(height: AppSpacing.medium),
 
           TextField(
             controller: _searchController,
-            style: AppText.body,
+            style: bodyOnPage(context),
             textInputAction: TextInputAction.search,
             onChanged: _onSearchChanged,
             onSubmitted: (_) => _reload(),
             decoration: InputDecoration(
-              hintText: 'Search by case number/title',
+              hintText: appSettings.t('searchCases'),
+              hintStyle: mutedOnPage(context),
               prefixIcon: const Icon(Icons.search, color: AppColors.accent),
               suffixIcon: _query.isEmpty
                   ? null
                   : IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.textMuted),
-                      tooltip: 'Clear search',
+                      icon: Icon(Icons.close, color: pageInkMuted(context)),
+                      tooltip: appSettings.t('clearSearch'),
                       onPressed: _clearSearch,
                     ),
             ),
@@ -207,7 +217,7 @@ class _AdminCasesState extends State<AdminCases> {
           const SizedBox(height: AppSpacing.small),
 
           ChipRow<String?>(
-            options: AdminCases.filters,
+            options: filters,
             selected: _status,
             onSelected: _onFilter,
           ),
@@ -219,12 +229,12 @@ class _AdminCasesState extends State<AdminCases> {
               pageSize: 20,
               idOf: (c) => c.caseId,
               loadPage: (loaded) => _loadPage(q, loaded),
-              errorText: 'Could not load cases. Check your connection.',
+              errorText: appSettings.t('loadCasesError'),
               emptyText: q.isNotEmpty
-                  ? 'No cases match your search.'
+                  ? appSettings.t('noCasesSearch')
                   : _status == null
-                      ? 'No cases yet. Accept a submission or tap "+ New case".'
-                      : 'No cases with this status.',
+                      ? appSettings.t('noCasesYet')
+                      : appSettings.t('noCasesStatus'),
               itemBuilder: (context, c) => CaseCard(
                 caseSummary: c,
                 suggestion: _suggestions[c.caseId],
@@ -236,6 +246,7 @@ class _AdminCasesState extends State<AdminCases> {
           ),
         ],
       ),
+    ),
     );
   }
 }
@@ -309,28 +320,29 @@ class CaseCard extends StatelessWidget {
           DetailLine(
             icon: Icons.description_outlined,
             text: [
-              plural(c.incidentCount, 'submission'),
-              if (c.mediaCount > 0) '${c.mediaCount} media '
-                  '${c.mediaCount == 1 ? 'file' : 'files'}',
+              plural(c.incidentCount, appSettings.t('submissionOne'),
+                  appSettings.t('submissionMany')),
+              if (c.mediaCount > 0)
+                '${c.mediaCount} ${c.mediaCount == 1 ? appSettings.t('mediaFileOne') : appSettings.t('mediaFileMany')}',
             ].join(' · '),
           ),
           DetailLine(
             icon: Icons.badge_outlined,
             text: unassigned
-                ? 'No investigator assigned'
+                ? appSettings.t('noInvestigatorAssigned')
                 : c.investigators.isEmpty
-                    ? 'No investigators'
+                    ? appSettings.t('noInvestigatorsShort')
                     : [
-                        if (lead != null) '${lead.name} (lead)',
+                        if (lead != null) '${lead.name} (${appSettings.t('lead')})',
                         ...others.map((i) => i.name),
                       ].join(', '),
             color: unassigned ? AppColors.accent : null,
           ),
           DetailLine(
             icon: Icons.event,
-            text: 'Created ${formatDate(c.dateCreated)}'
-                '${c.dateClosed == null ? '' : ' · closed ${formatDate(c.dateClosed!)}'}'
-                '${c.lastActivity == null || c.dateClosed != null ? '' : ' · active ${formatDate(c.lastActivity!)}'}',
+            text: '${appSettings.t('created')} ${formatDate(c.dateCreated)}'
+                '${c.dateClosed == null ? '' : ' · ${appSettings.t('closedWord')} ${formatDate(c.dateClosed!)}'}'
+                '${c.lastActivity == null || c.dateClosed != null ? '' : ' · ${appSettings.t('activeWord')} ${formatDate(c.lastActivity!)}'}',
           ),
           if (suspects != null)
             DetailLine(
@@ -360,15 +372,15 @@ class CaseCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               c.incidentCount > c.preview.length
-                  ? 'NEWEST ${c.preview.length} OF ${c.incidentCount} SUBMISSIONS'
-                  : 'SUBMISSIONS',
+                  ? '${appSettings.t('newestWord')} ${c.preview.length} ${appSettings.t('ofWord')} ${c.incidentCount} ${appSettings.t('submissionsLabel')}'
+                  : appSettings.t('submissionsLabel'),
               style: AppText.caption.copyWith(color: AppColors.textHint),
             ),
             for (final p in c.preview) _PreviewRow(item: p),
           ],
           if (showPreview && c.preview.isEmpty) ...[
             const SizedBox(height: 4),
-            const Text('No submissions in this case yet.',
+            Text(appSettings.t('noSubmissionsInCase'),
                 style: AppText.bodyMuted),
           ],
 
@@ -378,8 +390,8 @@ class CaseCard extends StatelessWidget {
               width: double.infinity,
               child: SmallActionButton(
                 label: c.incidentCount > c.preview.length
-                    ? 'View case (all ${c.incidentCount} submissions)'
-                    : 'View case',
+                    ? '${appSettings.t('viewCase')} (${appSettings.t('all')} ${c.incidentCount} ${appSettings.t('submissionMany')})'
+                    : appSettings.t('viewCase'),
                 color: AppColors.accent,
                 onPressed: onViewCase,
               ),
@@ -478,12 +490,14 @@ class _PreviewRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           if (p.description != null)
-            Text('Citizen: ${p.description}',
+            Text('${appSettings.t('citizenPrefix')}: ${p.description}',
                 style: AppText.bodyMuted.copyWith(fontSize: 13),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis),
           Text(
-            p.aiSummary == null ? 'AI: no analysis yet' : 'AI: ${p.aiSummary}',
+            p.aiSummary == null
+                ? '${appSettings.t('aiPrefix')}: ${appSettings.t('noAiYet')}'
+                : '${appSettings.t('aiPrefix')}: ${p.aiSummary}',
             style: AppText.bodyMuted.copyWith(
                 fontSize: 13,
                 color: p.aiSummary == null ? AppColors.textHint : null),

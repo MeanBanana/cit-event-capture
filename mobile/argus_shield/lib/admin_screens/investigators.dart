@@ -21,6 +21,7 @@ import 'package:argus_shield/models/investigator_summary.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/new_investigator_form.dart';
+import 'package:argus_shield/app_settings.dart';
 
 // Other screens (e.g. overview.dart) import InvestigatorSummary from here.
 export 'package:argus_shield/models/investigator_summary.dart';
@@ -86,7 +87,7 @@ class _InvestigatorsState extends State<Investigators> {
     } catch (e) {
       if (!mounted || id != _requestId) return;
       setState(() {
-        _error = 'Could not load investigators. Check your connection.';
+        _error = appSettings.t('loadInvestigatorsError');
         _loading = false;
       });
     }
@@ -171,15 +172,17 @@ class _InvestigatorsState extends State<Investigators> {
     final n = _investigators.length;
     if (_query.trim().isEmpty) {
       return n == 1
-          ? 'Showing the most recently added investigator'
-          : 'Showing the $n most recently added investigators';
+          ? appSettings.t('showingRecentOne')
+          : '${appSettings.t('showingThe')} $n ${appSettings.t('mostRecentInvestigators')}';
     }
-    return '$n ${n == 1 ? 'match' : 'matches'} for "${_query.trim()}"';
+    return '$n ${n == 1 ? appSettings.t('matchOne') : appSettings.t('matchMany')} ${appSettings.t('forWord')} "${_query.trim()}"';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => Padding(
       padding: AppSpacing.tab,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,38 +190,39 @@ class _InvestigatorsState extends State<Investigators> {
           // Title on its own line ("Investigators" is too long to share a
           // line with the button on a phone), then the add button below it
           // on the right, styled like "+ New case" on Cases.
-          const Text('Investigators', style: AppText.sectionTitle),
+          Text(appSettings.t('investigators'), style: titleOnPage(context)),
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerRight,
             child: SmallActionButton(
-              label: '+ New investigator',
+              label: appSettings.t('newInvestigator'),
               color: AppColors.accent,
               onPressed: _newInvestigator,
             ),
           ),
           const SizedBox(height: AppSpacing.small),
-          const Text(
-            'Search and review every investigator registered on Argus Shield.',
-            style: AppText.bodyMuted,
+          Text(
+            appSettings.t('investigatorsIntro'),
+            style: mutedOnPage(context),
           ),
           const SizedBox(height: AppSpacing.medium),
 
           // Search bar — borders and focus colour come from the app theme.
           TextField(
             controller: _searchController,
-            style: AppText.body,
+            style: bodyOnPage(context),
             textInputAction: TextInputAction.search,
             onChanged: _onSearchChanged,
             onSubmitted: (_) => _reload(), // search now, don't wait
             decoration: InputDecoration(
-              hintText: 'Search by name/badge number',
+              hintText: appSettings.t('searchInvestigators'),
+              hintStyle: mutedOnPage(context),
               prefixIcon: const Icon(Icons.search, color: AppColors.accent),
               suffixIcon: _query.isEmpty
                   ? null
                   : IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.textMuted),
-                      tooltip: 'Clear search',
+                      icon: Icon(Icons.close, color: pageInkMuted(context)),
+                      tooltip: appSettings.t('clearSearch'),
                       onPressed: _clearSearch,
                     ),
             ),
@@ -227,13 +231,14 @@ class _InvestigatorsState extends State<Investigators> {
           if (!_loading && _error == null)
             Text(
               _countText,
-              style: AppText.caption.copyWith(color: AppColors.textMuted),
+              style: mutedOnPage(context),
             ),
           const SizedBox(height: AppSpacing.medium),
 
           // Only the list scrolls; the title and search bar stay in place.
           Expanded(child: _buildList()),
         ],
+      ),
       ),
     );
   }
@@ -248,9 +253,9 @@ class _InvestigatorsState extends State<Investigators> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: AppText.bodyMuted, textAlign: TextAlign.center),
+            Text(_error!, style: mutedOnPage(context), textAlign: TextAlign.center),
             const SizedBox(height: AppSpacing.small),
-            TextButton(onPressed: _reload, child: const Text('Try again')),
+            TextButton(onPressed: _reload, child: Text(appSettings.t('tryAgain'))),
           ],
         ),
       );
@@ -260,9 +265,9 @@ class _InvestigatorsState extends State<Investigators> {
       return Center(
         child: Text(
           _query.trim().isEmpty
-              ? 'No investigators have been added yet.'
-              : 'No investigators match your search.',
-          style: AppText.bodyMuted,
+              ? appSettings.t('noInvestigators')
+              : appSettings.t('noInvestigatorsMatch'),
+          style: mutedOnPage(context),
         ),
       );
     }
@@ -293,11 +298,11 @@ class InvestigatorCard extends StatelessWidget {
   static (String, Color) _status(String dutyStatus) {
     switch (dutyStatus) {
       case 'on_duty':
-        return ('On duty', AppColors.success);
+        return (appSettings.t('onDuty'), AppColors.success);
       case 'available':
-        return ('Available', AppColors.accent);
+        return (appSettings.t('available'), AppColors.accent);
       case 'off_duty':
-        return ('Off duty', AppColors.textHint);
+        return (appSettings.t('offDuty'), AppColors.textHint);
       default:
         return (dutyStatus, AppColors.textMuted);
     }
@@ -315,7 +320,8 @@ class InvestigatorCard extends StatelessWidget {
         border: Border.all(color: AppColors.fieldBorder),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Column(
+      child: NavyText(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Name + duty status
@@ -342,7 +348,7 @@ class InvestigatorCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'BADGE ${inv.badgeNumber}',
+            '${appSettings.t('badge')} ${inv.badgeNumber}',
             style: AppText.caption.copyWith(fontSize: 13),
           ),
           const SizedBox(height: 12),
@@ -357,10 +363,10 @@ class InvestigatorCard extends StatelessWidget {
             _DetailRow(icon: Icons.phone_outlined, text: inv.phoneNumber!),
           _DetailRow(
             icon: Icons.folder_open,
-            text: '${inv.activeCases} active '
-                '${inv.activeCases == 1 ? 'case' : 'cases'}',
+            text: '${inv.activeCases} ${inv.activeCases == 1 ? appSettings.t('activeCaseOne') : appSettings.t('activeCaseMany')}',
           ),
         ],
+      ),
       ),
     );
   }

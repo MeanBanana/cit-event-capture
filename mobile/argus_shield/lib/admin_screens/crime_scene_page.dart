@@ -624,7 +624,8 @@ class DetectionTile extends StatelessWidget {
             color: d.dismissed ? AppColors.textHint : AppColors.fieldBorder),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Column(
+      child: NavyText(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           details,
@@ -656,6 +657,7 @@ class DetectionTile extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }

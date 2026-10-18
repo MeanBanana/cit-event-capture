@@ -9,6 +9,8 @@ import 'package:argus_shield/admin_screens/overview.dart';
 import 'package:argus_shield/admin_screens/cases.dart';
 import 'package:argus_shield/admin_screens/investigators.dart';
 import 'package:argus_shield/admin_screens/submissions.dart';
+import 'package:argus_shield/settings_screen.dart';
+import 'package:argus_shield/app_settings.dart';
 
 /// Displays the Argus header and the admin tabs.
 /// Colours and fonts come from the app theme (theme/app_theme.dart).
@@ -21,49 +23,66 @@ class AdminDashboard extends StatelessWidget {
     // children, and both lists must be in the same order.
     // If you reorder tabs, update the tab indexes at the top of overview.dart
     // (used by its "see more" links).
-    return const DefaultTabController(
-      length: 4,
-      child: Scaffold(
-        // Same two-line header as the citizen pages, with a diamond for admin.
-        appBar: RoleAppBar(
-          roleLabel: 'System Administrator',
-          marker: RoleMarker.diamond,
-          // Four tabs share a phone's width, so the labels are a little
-          // smaller than the app default and the padding around them is
-          // narrow. _TabLabel shrinks a word further only if it still
-          // wouldn't fit (very small phones, large system text), so no
-          // label is ever cut off.
-          bottom: TabBar(
-            labelPadding: EdgeInsets.symmetric(horizontal: 4),
-            labelStyle: TextStyle(
-              fontFamily: AppFonts.body,
-              fontSize: 12.5,
-              fontWeight: FontWeight.bold,
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) {
+        return DefaultTabController(
+          length: 4,
+          child: Scaffold(
+            // Same two-line header as the citizen pages, with a diamond for admin.
+            appBar: RoleAppBar(
+              roleLabel: appSettings.t('systemAdministrator'),
+              marker: RoleMarker.diamond,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SettingsScreen()),
+                    );
+                  },
+                ),
+              ],
+              // Four tabs share a phone's width, so the labels are a little
+              // smaller than the app default and the padding around them is
+              // narrow. _TabLabel shrinks a word further only if it still
+              // wouldn't fit (very small phones, large system text), so no
+              // label is ever cut off.
+              bottom: TabBar(
+                labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                labelStyle: const TextStyle(
+                  fontFamily: AppFonts.body,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontFamily: AppFonts.body,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
+                ),
+                tabs: [
+                  Tab(child: _TabLabel(appSettings.t('overview'))),
+                  Tab(child: _TabLabel(appSettings.t('cases'))),
+                  // _TabLabel shrinks "Investigators" slightly if needed.
+                  Tab(child: _TabLabel(appSettings.t('investigators'))),
+                  Tab(child: _TabLabel(appSettings.t('submissions'))),
+                ],
+              ),
             ),
-            unselectedLabelStyle: TextStyle(
-              fontFamily: AppFonts.body,
-              fontSize: 12.5,
-              fontWeight: FontWeight.bold,
+            // Each page lives in its own Dart file and returns only its body.
+            body: TabBarView(
+              children: [
+                AdminOverview(),
+                AdminCases(),
+                Investigators(),
+                AdminSubmissions(),
+              ],
             ),
-            tabs: [
-              Tab(child: _TabLabel('Overview')),
-              Tab(child: _TabLabel('Cases')),
-              // _TabLabel shrinks "Investigators" slightly if needed.
-              Tab(child: _TabLabel('Investigators')),
-              Tab(child: _TabLabel('Submissions')),
-            ],
           ),
-        ),
-        // Each page lives in its own Dart file and returns only its body.
-        body: TabBarView(
-          children: [
-            AdminOverview(),
-            AdminCases(),
-            Investigators(),
-            AdminSubmissions(),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 }

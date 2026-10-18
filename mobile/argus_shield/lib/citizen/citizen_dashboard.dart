@@ -1,7 +1,10 @@
 // citizen_dashboard.dart — holds navigation and creates the three subpage widgets.
 
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../theme/argus_widgets.dart';
+import '../settings_screen.dart';
+import '../app_settings.dart';
 import 'citizen_store.dart';
 import 'upload_page.dart';
 import 'submissions_page.dart';
@@ -21,17 +24,38 @@ class CitizenDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Three tab labels correspond to three children in TabBarView.
-    return DefaultTabController(
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) {
+        return DefaultTabController(
       length: 3,
       child: Scaffold(
         // Same header as the login and register pages, plus the role and tabs.
-        appBar: const ArgusAppBar(
-          roleLabel: 'Citizen',
+        appBar: ArgusAppBar(
+          roleLabel: appSettings.t('citizenRole'),
+          actions: [
+            IconButton(
+              tooltip: appSettings.t('settings'),
+              icon: const Icon(Icons.settings),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
+          // Tabs sit on the navy header, so the words stay white in both modes.
           bottom: TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: AppColors.accent,
             tabs: [
-              Tab(text: 'Upload'),
-              Tab(text: 'Submissions'),
-              Tab(text: 'Profile'),
+              Tab(text: appSettings.t('upload')),
+              Tab(text: appSettings.t('submissions')),
+              Tab(text: appSettings.t('profileTab')),
             ],
           ),
         ),
@@ -44,6 +68,8 @@ class CitizenDashboard extends StatelessWidget {
           ],
         ),
       ),
+    );
+      },
     );
   }
 }
