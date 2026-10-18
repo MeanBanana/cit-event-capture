@@ -212,7 +212,7 @@ class CitizenStore extends ChangeNotifier {
       return {"success": true, "message": "No changes to save."};
     }
 
-    final result = await _service.updateMyCitizenProfile(
+    final result = await _service.updateMyCitizenProfile (
       userId: current.userId,
       email: emailChanged ? newEmail : null,
       phone: phoneChanged ? newPhone : null,

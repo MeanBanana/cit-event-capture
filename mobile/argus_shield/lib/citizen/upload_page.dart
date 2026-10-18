@@ -4,12 +4,14 @@
 // it (CitizenStore.sendReport). Admins then see it in their Submissions tab.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
 import '../theme/argus_widgets.dart';
 import '../app_settings.dart';
 import 'citizen_store.dart';
 import 'phone_location.dart';
+import 'media_preview_page.dart';
 
 /// Lets a citizen pick footage, describe the incident and send the report.
 class UploadPage extends StatefulWidget {
@@ -43,6 +45,7 @@ class _UploadPageState extends State<UploadPage>
 
   /// The picked / recorded files, in the order they will be uploaded.
   final List<FootageFile> _files = [];
+  final Map<FootageFile, XFile> _previewFiles = {};
 
   /// Share the phone's location with the report (the citizen can switch it off).
   bool _shareLocation = true;
@@ -75,10 +78,14 @@ class _UploadPageState extends State<UploadPage>
 
   Future<void> _addFiles(List<XFile> picked) async {
     if (picked.isEmpty) return;
-    final footage = [for (final f in picked.take(_room)) await _toFootage(f)];
+    final selected = picked.take(_room).toList();
+    final footage = [for (final f in selected) await _toFootage(f)];
     if (!mounted) return;
     setState(() {
       _files.addAll(footage);
+      for (var i = 0; i < footage.length; i++) {
+        _previewFiles[footage[i]] = selected[i];
+      }
       _sendError = null;
     });
     if (picked.length > footage.length) {
@@ -121,7 +128,22 @@ class _UploadPageState extends State<UploadPage>
 
   void _removeFile(int index) {
     if (_sending || _resumeIncidentId != null) return; // files already sent stay
-    setState(() => _files.removeAt(index));
+    setState(() {
+      _previewFiles.remove(_files[index]);
+      _files.removeAt(index);
+    });
+  }
+
+  Future<void> _previewFile(FootageFile file) async {
+    final picked = _previewFiles[file];
+    if (picked == null) return;
+    if (file.size > 50 * 1024 * 1024) {
+      _showMessage('This file exceeds 50 MB. Please trim it before previewing.');
+      return;
+    }
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => MediaPreviewPage(file: picked, isImage: file.mediaType == 'image'),
+    ));
   }
 
   /// Displays brief feedback at the bottom of the dashboard.
@@ -148,13 +170,14 @@ class _UploadPageState extends State<UploadPage>
       _progress = const SendProgress('Preparing your report…', 0.01);
     });
 
-    (double, double)? gps;
-    if (_shareLocation && _resumeIncidentId == null) {
-      setState(() => _progress = const SendProgress('Getting your location…', 0.02));
-      gps = await (widget.getLocation ?? currentPhoneLocation)();
-    }
-
     try {
+      (double, double)? gps;
+      if (_shareLocation && _resumeIncidentId == null) {
+        setState(() => _progress = const SendProgress('Getting your location…', 0.02));
+        gps = await (widget.getLocation ?? currentPhoneLocation)();
+        if (!mounted) return;
+      }
+
       final incidentId = await widget.store.sendReport(
         location: _locationController.text,
         description: _descriptionController.text,
@@ -173,15 +196,52 @@ class _UploadPageState extends State<UploadPage>
       _descriptionController.clear();
       setState(() {
         _files.clear();
+        _previewFiles.clear();
         _sending = false;
         _progress = null;
         _resumeIncidentId = null;
         _alreadyUploaded = 0;
       });
       final reference = 'INC-${incidentId.toString().padLeft(4, '0')}';
-      _showMessage('Report $reference sent. Thank you - it will be analysed shortly.');
-      // Tab indexes start at zero: Upload = 0, Submissions = 1, Profile = 2.
-      DefaultTabController.maybeOf(context)?.animateTo(1);
+      final viewSubmissions = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.check_circle_outline,
+              color: AppColors.success, size: 48),
+          title: const Text('Report submitted'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Your report and footage have been sent. '
+                  'Analysis will continue after you leave this screen.'),
+              const SizedBox(height: 16),
+              SelectableText(reference, style: AppText.cardTitle),
+              TextButton.icon(
+                icon: const Icon(Icons.copy, size: 18),
+                label: const Text('Copy reference'),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: reference));
+                  if (mounted) _showMessage('Reference copied');
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Done'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('My submissions'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (viewSubmissions == true) {
+        DefaultTabController.maybeOf(context)?.animateTo(1);
+      }
     } on ArgumentError catch (e) {
       if (!mounted) return;
       setState(() {
@@ -197,6 +257,13 @@ class _UploadPageState extends State<UploadPage>
         _sendError = e.message;
         _resumeIncidentId = e.incidentId;
         _alreadyUploaded = e.uploaded;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _progress = null;
+        _sendError = 'Could not prepare your report. Please try again.';
       });
     }
   }
@@ -262,6 +329,7 @@ class _UploadPageState extends State<UploadPage>
               _FileRow(
                 file: _files[i],
                 sent: i < _alreadyUploaded,
+                onPreview: _sending ? null : () => _previewFile(_files[i]),
                 onRemove: _sending || resuming ? null : () => _removeFile(i),
               ),
             const SizedBox(height: AppSpacing.medium),
@@ -274,6 +342,9 @@ class _UploadPageState extends State<UploadPage>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.danger,
                   textStyle: AppText.buttonSmall,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 20,
                     vertical: 15,
@@ -390,8 +461,9 @@ class _FileRow extends StatelessWidget {
   final FootageFile file;
   final bool sent;
   final VoidCallback? onRemove;
+  final VoidCallback? onPreview;
 
-  const _FileRow({required this.file, required this.sent, this.onRemove});
+  const _FileRow({required this.file, required this.sent, this.onRemove, this.onPreview});
 
   @override
   Widget build(BuildContext context) {
@@ -416,6 +488,12 @@ class _FileRow extends StatelessWidget {
                 color: file.size > 50 * 1024 * 1024
                     ? AppColors.danger
                     : pageInkMuted(context)),
+          ),
+          IconButton(
+            tooltip: 'Preview footage',
+            icon: Icon(file.mediaType == 'image' ? Icons.visibility_outlined : Icons.play_circle_outline,
+                color: AppColors.accent),
+            onPressed: onPreview,
           ),
           if (sent)
             const Padding(

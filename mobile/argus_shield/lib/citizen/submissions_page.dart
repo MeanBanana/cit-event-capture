@@ -4,23 +4,46 @@
 // (other people's faces and number plates) - only that it was analysed.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import '../theme/app_theme.dart';
 import '../app_settings.dart';
 import 'citizen_store.dart';
 
 /// Lists the citizen's reports from the shared store.
-class SubmissionsPage extends StatelessWidget {
+class SubmissionsPage extends StatefulWidget {
   final CitizenStore store;
 
   const SubmissionsPage({super.key, required this.store});
 
   @override
+  State<SubmissionsPage> createState() => _SubmissionsPageState();
+}
+
+class _SubmissionsPageState extends State<SubmissionsPage>
+    with AutomaticKeepAliveClientMixin<SubmissionsPage> {
+  String _query = '';
+  String? _status;
+  CitizenStore get store => widget.store;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     // Rebuild this content when CitizenStore calls notifyListeners().
     return ListenableBuilder(
       listenable: store,
       builder: (context, child) {
-        final submissions = store.submissions;
+        final all = store.submissions;
+        final statuses = all.map((s) => s.statusLabel).toSet().toList()..sort();
+        final submissions = all.where((s) {
+          final text = '${s.reference} ${s.location} ${s.description ?? ''}'
+              .toLowerCase();
+          return (_status == null || s.statusLabel == _status) &&
+              text.contains(_query);
+        }).toList();
         return RefreshIndicator(
           onRefresh: store.loadSubmissions,
           child: ListView(
@@ -33,28 +56,73 @@ class SubmissionsPage extends StatelessWidget {
                 appSettings.t('submissionsTrack'),
                 style: mutedOnPage(context),
               ),
-              const SizedBox(height: AppSpacing.large),
-              if (store.submissionsLoading && submissions.isEmpty)
+              const SizedBox(height: AppSpacing.medium),
+              TextField(
+                onChanged: (value) =>
+                    setState(() => _query = value.trim().toLowerCase()),
+                decoration: const InputDecoration(
+                  hintText: 'Search reference, location or description',
+                  prefixIcon: Icon(Icons.search, color: AppColors.accent),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.small),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  ChoiceChip(
+                    label: Text('All (${all.length})'),
+                    selected: _status == null,
+                    onSelected: (_) => setState(() => _status = null),
+                  ),
+                  for (final status in statuses)
+                    ChoiceChip(
+                      label: Text(status),
+                      selected: _status == status,
+                      onSelected: (selected) =>
+                          setState(() => _status = selected ? status : null),
+                    ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.medium),
+              if (store.submissionsLoading && all.isNotEmpty)
+                const LinearProgressIndicator(),
+              if (all.isNotEmpty && submissions.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    'No reports match your search or filter.',
+                    style: AppText.bodyMuted,
+                  ),
+                ),
+              if (store.submissionsLoading && all.isEmpty)
                 const Center(child: CircularProgressIndicator()),
               if (store.submissionsError != null) ...[
-                Text(store.submissionsError!,
-                    style: AppText.body.copyWith(color: AppColors.danger)),
+                Text(
+                  store.submissionsError!,
+                  style: AppText.body.copyWith(color: AppColors.danger),
+                ),
                 TextButton(
                   onPressed: store.loadSubmissions,
-                  child: Text(appSettings.t('tryAgain')),
+                  child: const Text('Try again'),
                 ),
                 const SizedBox(height: AppSpacing.medium),
               ],
               // An empty state is shown until the citizen sends the first report.
               if (!store.submissionsLoading &&
                   store.submissionsError == null &&
-                  submissions.isEmpty)
-                Text(appSettings.t('noReportsYet'), style: mutedOnPage(context)),
+                  all.isEmpty)
+                Text(
+                  appSettings.t('noReportsYet'),
+                  style: mutedOnPage(context),
+                ),
               for (final s in submissions) ...[
                 SubmissionCard(
                   reference: s.reference,
                   location: s.location,
-                  date: s.reportedAt == null ? '' : _formatDate(s.reportedAt!),
+                  date: s.reportedAt == null
+                      ? ''
+                      : _formatDate(s.reportedAt!.toLocal()),
                   status: s.statusLabel,
                   statusColor: switch (s.reviewStatus) {
                     'accepted' => AppColors.success,
@@ -63,7 +131,7 @@ class SubmissionsPage extends StatelessWidget {
                   },
                   description: [
                     if ((s.description ?? '').isNotEmpty) s.description!,
-                    '${s.fileCount} ${s.fileCount == 1 ? appSettings.t('fileOne') : appSettings.t('fileMany')} · ${s.aiLabel}',
+                    '${s.fileCount} file${s.fileCount == 1 ? '' : 's'} · ${s.aiLabel}',
                   ].join('\n\n'),
                 ),
                 const SizedBox(height: AppSpacing.medium),
@@ -115,7 +183,23 @@ class SubmissionCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(reference, style: titleOnPage(context).copyWith(fontSize: 18)),
+                child: SelectableText(
+                  reference,
+                  style: titleOnPage(context).copyWith(fontSize: 18),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Copy reference',
+                icon: const Icon(Icons.copy, size: 18, color: AppColors.accent),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: reference));
+                  if (!context.mounted) {
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Reference copied')),
+                  );
+                },
               ),
               Flexible(
                 child: Text(
@@ -129,15 +213,15 @@ class SubmissionCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             location,
-            style: bodyOnPage(context).copyWith(
+            style: AppText.body.copyWith(
               fontSize: 17,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 5),
-          Text(date, style: mutedOnPage(context)),
+          Text(date, style: AppText.bodyMuted),
           const SizedBox(height: 12),
-          Text(description, style: mutedOnPage(context)),
+          Text(description, style: AppText.bodyMuted),
         ],
       ),
     );

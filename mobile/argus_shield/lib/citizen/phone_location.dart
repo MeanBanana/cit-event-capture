@@ -10,6 +10,9 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// (latitude, longitude), or null when it can't be had quickly.
+///
+///
+///
 Future<(double, double)?> currentPhoneLocation() async {
   try {
     if (!await Geolocator.isLocationServiceEnabled()) return null;
