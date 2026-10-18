@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Argus Shield · Admin console</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ===================== Sign in ===================== -->
+  <main id="login-view" class="login" hidden>
+    <div class="login-card">
+      <img class="login-logo" src="logo.svg" alt="Argus Shield logo" width="92" height="103">
+      <h1 class="brand">Argus Shield</h1>
+      <p class="brand-sub">Admin console</p>
+
+      <form id="login-form" novalidate>
+        <label class="field">
+          <span>Username or email</span>
+          <input id="login-id" name="username" autocomplete="username" required autofocus>
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <span class="with-button">
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="ghost small" data-toggle-password="login-password">Show</button>
+          </span>
+        </label>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button id="login-button" class="primary wide" type="submit">Sign in</button>
+      </form>
+      <p class="fine-print">Restricted to the root administrator.</p>
+    </div>
+  </main>
+
+  <!-- ===================== Console ===================== -->
+  <div id="console-view" hidden>
+    <header class="topbar">
+      <div class="topbar-brand">
+        <img src="logo.svg" alt="" width="30" height="34">
+        <span class="topbar-name">Argus Shield</span>
+        <span class="pill">Admin console</span>
+      </div>
+      <div class="topbar-user">
+        <span id="me-name" class="me-name"></span>
+        <span class="badge root">Root admin</span>
+        <button id="signout" class="ghost">Sign out</button>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="page-head">
+        <div>
+          <h1>Station admins</h1>
+          <p class="muted">Each police station's administrators. Only you, the root administrator, can add them.</p>
+        </div>
+        <button id="new-admin" class="primary">+ New admin</button>
+      </section>
+
+      <section class="stats" id="stats"></section>
+
+      <section class="card">
+        <div class="card-head">
+          <input id="search" class="search" type="search" placeholder="Search by name, username, email or station" aria-label="Search admins">
+          <button id="refresh" class="ghost small" title="Reload the list">Refresh</button>
+        </div>
+        <div id="list-status" class="list-status" hidden></div>
+        <table class="admins" id="admins-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Station</th>
+              <th>Type</th>
+              <th>Created</th>
+              <th>Last sign-in</th>
+              <th class="actions-col"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="admins-body"></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===================== New admin ===================== -->
+  <dialog id="new-dialog" class="dialog">
+    <form id="new-form" method="dialog" novalidate>
+      <div class="dialog-head">
+        <h2>New station admin</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close">×</button>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>First name</span><input name="firstname" required maxlength="100"></label>
+        <label class="field"><span>Surname</span><input name="surname" required maxlength="100"></label>
+      </div>
+      <label class="field"><span>Police station</span>
+        <input name="station" required maxlength="150" placeholder="e.g. Kempton Park SAPS" list="station-list">
+        <datalist id="station-list"></datalist>
+      </label>
+      <div class="grid2">
+        <label class="field"><span>Username</span><input name="username" required maxlength="30" autocomplete="off" placeholder="letters, numbers, _ or ."></label>
+        <label class="field"><span>Phone <em>(optional)</em></span>
+          <span class="prefixed"><span class="prefix">+27</span><input name="phone" inputmode="numeric" maxlength="12" placeholder="82 123 4567"></span>
+        </label>
+      </div>
+      <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="off"></label>
+      <label class="field"><span>Temporary password</span>
+        <span class="with-button">
+          <input id="new-password" name="password" type="password" required minlength="8" autocomplete="new-password">
+          <button type="button" class="ghost small" data-toggle-password="new-password">Show</button>
+          <button type="button" class="ghost small" id="generate">Generate</button>
+        </span>
+        <small class="hint">At least 8 characters with letters and numbers. Give it to the admin; they change it after their first sign-in.</small>
+      </label>
+      <p id="new-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close>Cancel</button>
+        <button id="new-submit" class="primary" type="submit">Create admin</button>
+      </div>
+    </form>
+
+    <div id="new-done" class="done" hidden>
+      <div class="done-icon">✓</div>
+      <h2>Admin created</h2>
+      <p class="muted" id="done-text"></p>
+      <dl class="credentials">
+        <dt>Username</dt><dd id="done-username"></dd>
+        <dt>Temporary password</dt><dd id="done-password"></dd>
+      </dl>
+      <p class="hint">Share these privately. They sign in on the Argus Shield app and should change the password straight away.</p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" id="copy-credentials">Copy details</button>
+        <button type="button" class="primary" data-close>Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ===================== Edit station ===================== -->
+  <dialog id="station-dialog" class="dialog narrow">
+    <form id="station-form" method="dialog" novalidate>
+      <div class="dialog-head">
+        <h2>Change station</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close">×</button>
+      </div>
+      <p class="muted" id="station-who"></p>
+      <label class="field"><span>Police station</span><input id="station-input" required maxlength="150" list="station-list"></label>
+      <p id="station-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close>Cancel</button>
+        <button id="station-submit" class="primary" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="vendor/supabase-2.118.0.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
