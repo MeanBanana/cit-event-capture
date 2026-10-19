@@ -395,18 +395,19 @@ class SupabaseService {
         .toList();
   }
 
-  /// Creates an investigator account (admin only). Returns the new
-  /// "User".userid, or null if it couldn't be read back.
+  /// Creates an investigator account (admin only). Returns whether the
+  /// email with the link to choose a password was sent.
   ///
   /// Calls the create-investigator Edge Function, which holds the service
   /// key: only it may create a login with the 'investigator' role. The
   /// database trigger then makes the "User" + investigator rows. The account
-  /// has no password yet; the investigator sets one with "Forgot password?".
+  /// has no password yet; the function emails the investigator a link to
+  /// choose one (if that email fails they can use "Forgot password?").
   ///
   /// [phone] is the 9 digits after +27 (optional). Throws FunctionException
   /// on failure; its details['error'] is a message for the admin (see
   /// errorText in admin_ui.dart), e.g. "That badge number is already in use."
-  Future<int?> createInvestigator({
+  Future<bool> createInvestigator({
     required String firstName,
     required String surname,
     required String username,
@@ -432,8 +433,7 @@ class SupabaseService {
       },
     );
     final data = response.data;
-    final id = data is Map ? data['userid'] : null;
-    return id is num ? id.toInt() : null;
+    return !(data is Map && data['email_sent'] == false);
   }
 
   // ------------------------------------------------------------ ADMIN STATS

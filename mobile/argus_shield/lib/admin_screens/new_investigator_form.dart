@@ -137,8 +137,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
         children: [
           const Text(
             'The investigator sets their own password: once the account '
-            'exists, they open Argus Shield on their phone, tap "Forgot '
-            'password?" and enter this email.',
+            'exists, we email them a link to choose one.',
             style: AppText.bodyMuted,
           ),
           const SizedBox(height: AppSpacing.medium),

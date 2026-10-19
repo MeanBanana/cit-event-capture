@@ -13,7 +13,8 @@ Everything below is in the repo. Do the steps in order. About 15 minutes.
 | Piece | File | What it does |
 |---|---|---|
 | Table `admin` + functions | `database/supabase/migrations/20261018100000_admin_accounts.sql` | One row per admin: `userid` (FK → `"User"`), `admin_type` (`root` / `normal`), `admin_station`, `createdby`, `datecreated` |
-| Edge Function `create-admin` | `database/supabase/functions/create-admin/index.ts` | Creates an admin's login with the service key. Only the root admin may call it |
+| Edge Function `create-admin` | `database/supabase/functions/create-admin/index.ts` | Creates an admin's login with the service key, then emails them a link to choose their password. Only the root admin may call it |
+| Set-password page | `web/admin-console/set-password.html` | Where that emailed link goes (new admins **and** new investigators). Works on any device |
 | Function setting | `database/supabase/config.toml` (new `[functions.create-admin]` block) | `verify_jwt = false`, same as `create-investigator` (the function checks the caller itself) |
 | Tests | `tests/test_admin_accounts_db.py` | Checks the rules against a local database |
 
@@ -130,8 +131,39 @@ admin) itself with the service key.
 3. Deploy.
 4. Open the function's settings and switch **Verify JWT (legacy)** **OFF**.
 
-You don't need to add any secrets. `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` are available to Edge Functions automatically.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available to Edge
+Functions automatically. The one secret you add is in step 3b.
+
+Redeploy `create-investigator` too: it now sends the same email.
+
+---
+
+## Step 3b: The "choose your password" email
+
+New admins and investigators get no password. `create-admin` and
+`create-investigator` email them a link (Supabase's **Reset password**
+email) that opens `set-password.html` in the console, where they choose
+one. Then they sign in on the mobile app.
+
+1. Put the console online (step 4 shows how) and note its address, e.g.
+   `https://argus-admin.netlify.app`.
+2. **Authentication → URL Configuration → Redirect URLs**: add
+   `https://argus-admin.netlify.app/set-password.html` (your address). For
+   testing on your computer also add `http://localhost:8080/set-password.html`.
+3. **Edge Functions → Secrets**: add `PASSWORD_SETUP_URL` with that same
+   full address. Or from `database/`:
+   ```
+   supabase secrets set PASSWORD_SETUP_URL=https://argus-admin.netlify.app/set-password.html
+   ```
+4. Optional but nicer: **Authentication → Email Templates → Reset password**.
+   The same template is used for "Forgot password?", so keep it general,
+   e.g. subject "Set your Argus Shield password".
+5. **Supabase's built-in email only sends a few emails per hour** and is
+   meant for testing. Before real use, set up custom SMTP
+   (**Authentication → Emails → SMTP Settings**).
+
+If the email can't be sent the account is still created, and the console /
+app says so: the person then uses **Forgot password?** in the app.
 
 ---
 
@@ -143,9 +175,10 @@ You don't need to add any secrets. `SUPABASE_URL` and
    admin list.
 3. Sign in with a normal admin instead. You should get "Only the root
    administrator can sign in to this console."
-4. Click **+ New admin**, fill it in and click **Generate** for a temporary
-   password, then create it. The new admin can now sign in to the **mobile
-   app** with that username and password (and should change the password).
+4. Click **+ New admin**, fill it in (use an email you can open) and create
+   it. Open the email, click the link, choose a password on the page that
+   opens. The new admin can now sign in to the **mobile app** with that
+   username and password.
 5. Click **Change station** on one of the old admins that shows "Not set".
 
 ---
@@ -159,6 +192,9 @@ You don't need to add any secrets. `SUPABASE_URL` and
 | "Failed to send a request to the Edge Function" / 404 on create | `create-admin` isn't deployed, or it has a different name (step 3) |
 | Creating an admin says "Please sign in again" / 401 | **Verify JWT** is still on for `create-admin`: switch it off (step 3) |
 | "An account with this email already exists" | That email already has a login (maybe as a citizen). Use another email |
+| "The email with the password link could not be sent" | Built-in email limit reached, or SMTP is misconfigured (step 3b, item 5). See **Edge Functions → create-admin → Logs** |
+| The emailed link opens the Site URL instead of the set-password page | The page's address isn't under **Redirect URLs**, or `PASSWORD_SETUP_URL` isn't set / doesn't match it exactly (step 3b) |
+| Set-password page says the link has expired | Links are one-use and expire (1 hour by default). Use **Forgot password?** in the app |
 
 ## Optional: run the database tests locally
 

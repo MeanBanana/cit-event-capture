@@ -16,19 +16,21 @@
 //   4. auth.admin.createUser with role 'investigator' in app_metadata (only
 //      the service key can set that). The on_auth_user_created trigger then
 //      creates the "User" and investigator rows from user_metadata.
-//   5. Makes sure the rows are investigator rows (see step 5 below), then
-//      returns { userid, email }.
+//   5. Makes sure the rows are investigator rows (see step 5 below).
+//   6. Emails the investigator a link to choose their password, then
+//      returns { userid, email, email_sent }.
 //
-// The account has no password. The investigator sets one on their own phone
-// with "Forgot password?" on the login page (reset links only open on the
-// phone that asked for them, so this function does not send one).
+// The account has no password until then. The link opens the web admin
+// console's set-password page (PASSWORD_SETUP_URL secret), which works on
+// any device; the app's own "Forgot password?" links only open on the phone
+// that asked for them, so a link sent from here could not use those.
 //
 // Deploy (from the database/ folder):
 //   supabase functions deploy create-investigator
 // verify_jwt is off in config.toml because this function checks the caller
 // itself (step 1), which also works with Supabase's newer JWT signing keys.
 
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +58,24 @@ const USERNAME = /^[A-Za-z0-9_.]{3,30}$/; // "User"_username_format check
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOCAL_PHONE = /^\d{9}$/; // the 9 digits after +27
 
+/**
+ * Emails [email] a link to choose their password (Supabase's "Reset
+ * password" email). The link opens the set-password page of the web admin
+ * console (PASSWORD_SETUP_URL secret), which works on any device; the
+ * mobile app's own reset links only open on the phone that asked for them.
+ * Returns false if the email could not be sent (e.g. the hourly email
+ * limit); the account is kept and the person can use "Forgot password?".
+ */
+async function sendPasswordSetup(
+  admin: SupabaseClient,
+  email: string,
+): Promise<boolean> {
+  const redirectTo = Deno.env.get("PASSWORD_SETUP_URL") || undefined;
+  const { error } = await admin.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) console.error("Could not send the password setup email", error);
+  return !error;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return fail(405, "Use POST.");
@@ -67,8 +87,10 @@ Deno.serve(async (req) => {
   }
 
   // The service-key client: bypasses RLS. Used only after the admin check.
+  // Implicit flow, so the emailed set-password link carries the session
+  // itself and works in any browser (PKCE links need the asking device).
   const admin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: { persistSession: false, autoRefreshToken: false, flowType: "implicit" },
   });
 
   // ---- 1. Who is calling? Must be a logged-in admin. ----------------------
@@ -227,5 +249,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  return reply(201, { userid: row.userid, email });
+  // ---- 6. Email a link to choose a password. -------------------------------
+  const emailSent = await sendPasswordSetup(admin, email);
+
+  return reply(201, { userid: row.userid, email, email_sent: emailSent });
 });
