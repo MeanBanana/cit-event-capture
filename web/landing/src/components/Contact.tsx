@@ -1,21 +1,18 @@
 import {useState, type FormEvent} from 'react';
-import {sendContactMessage} from '../config';
-import {contact} from '../content';
+import {brand, contact} from '../content';
 import {useReveals} from '../hooks/useReveals';
 
-type Status = 'idle' | 'invalid' | 'sending' | 'sent' | 'error';
+type Status = 'idle' | 'invalid' | 'sent';
 
 /**
  * Contact. The numbers behind the problem on one side, a short form on the
- * other. Messages are saved in Supabase (submit_contact_message) and the
- * root admin reads them under Messages in the admin console.
+ * other; the form hands a drafted message to the visitor's mail app.
  */
 export function Contact() {
   const ref = useReveals<HTMLElement>();
   const [status, setStatus] = useState<Status>('idle');
-  const [error, setError] = useState('');
 
-  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     if (!form.checkValidity()) {
@@ -24,31 +21,12 @@ export function Contact() {
       return;
     }
     const data = new FormData(form);
-    // Bots fill in every field, people never see this one.
-    if (String(data.get('website') || '') !== '') {
-      setStatus('sent');
-      form.reset();
-      return;
-    }
-    setStatus('sending');
-    try {
-      await sendContactMessage({
-        name: String(data.get('name') || '').trim(),
-        email: String(data.get('email') || '').trim(),
-        role: String(data.get('role') || ''),
-        organisation: String(data.get('org') || '').trim(),
-        message: String(data.get('message') || '').trim(),
-      });
-      setStatus('sent');
-      form.reset();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Your message could not be sent.');
-      setStatus('error');
-    }
-  };
-
-  const reset = () => {
-    if (status !== 'sending') setStatus('idle');
+    const subject = encodeURIComponent(`Argus Shield: ${String(data.get('role'))}`);
+    const body = encodeURIComponent(
+      `Name: ${String(data.get('name'))}\nEmail: ${String(data.get('email'))}\nOrganisation: ${String(data.get('org') || '-')}\nI am: ${String(data.get('role'))}`,
+    );
+    window.location.href = `mailto:${brand.email}?subject=${subject}&body=${body}`;
+    setStatus('sent');
   };
 
   const field =
@@ -78,48 +56,35 @@ export function Contact() {
           </div>
         </div>
 
-        <form noValidate onSubmit={onSubmit} onInput={reset} aria-describedby="contact-status" className="space-y-3" data-reveal>
+        <form noValidate onSubmit={onSubmit} aria-describedby="contact-status" className="space-y-3" data-reveal>
           <label className="block">
             <span className="mb-1.5 block font-mono text-label text-steel/60 uppercase">Name</span>
-            <input name="name" required minLength={2} maxLength={120} autoComplete="name" placeholder="Your name" className={field} />
+            <input name="name" required autoComplete="name" placeholder="Your name" className={field} onInput={() => setStatus('idle')} />
           </label>
           <label className="block">
             <span className="mb-1.5 block font-mono text-label text-steel/60 uppercase">Email</span>
-            <input name="email" type="email" required maxLength={254} autoComplete="email" placeholder="you@station.gov.za" className={field} />
+            <input name="email" type="email" required autoComplete="email" placeholder="you@station.gov.za" className={field} onInput={() => setStatus('idle')} />
           </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="mb-1.5 block font-mono text-label text-steel/60 uppercase">Station or company</span>
-              <input name="org" maxLength={150} autoComplete="organization" placeholder="Optional" className={field} />
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block font-mono text-label text-steel/60 uppercase">I am a</span>
-              <select name="role" defaultValue={contact.roles[0]} className={`${field} appearance-none`}>
-                {contact.roles.map((r) => (
-                  <option key={r} value={r} className="bg-void">
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
           <label className="block">
-            <span className="mb-1.5 block font-mono text-label text-steel/60 uppercase">Message</span>
-            <textarea name="message" rows={4} maxLength={2000} placeholder="Optional — what would you like to know?" className={`${field} resize-y`} />
+            <span className="mb-1.5 block font-mono text-label text-steel/60 uppercase">Station or company</span>
+            <input name="org" autoComplete="organization" placeholder="Optional" className={field} />
           </label>
-          {/* Honeypot: hidden from people and screen readers, bots fill it in. */}
-          <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-px w-px opacity-0" />
-          <button
-            type="submit"
-            disabled={status === 'sending'}
-            className="mt-2 w-full rounded-[4px] bg-signal px-5 py-4 font-mono text-label text-void uppercase transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60"
-          >
-            {status === 'sending' ? 'Sending…' : 'Get in touch'}
+          <label className="block">
+            <span className="mb-1.5 block font-mono text-label text-steel/60 uppercase">I am a</span>
+            <select name="role" defaultValue={contact.roles[0]} className={`${field} appearance-none`}>
+              {contact.roles.map((r) => (
+                <option key={r} value={r} className="bg-void">
+                  {r}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="mt-2 w-full rounded-[4px] bg-signal px-5 py-4 font-mono text-label text-void uppercase transition-colors hover:bg-white">
+            Get in touch
           </button>
-          <p id="contact-status" role="status" className={`min-h-[1.25rem] text-[0.8125rem] ${status === 'error' ? 'text-alert' : status === 'sent' ? 'text-signal' : 'text-steel/70'}`}>
+          <p id="contact-status" role="status" className="min-h-[1.25rem] text-[0.8125rem] text-steel/70">
             {status === 'invalid' && 'Your name and a valid email, please.'}
-            {status === 'sent' && 'Thank you — your message has been sent to the Argus team. We’ll be in touch.'}
-            {status === 'error' && error}
+            {status === 'sent' && `Your mail app should be open with your message drafted. If not: ${brand.email}.`}
           </p>
         </form>
       </div>

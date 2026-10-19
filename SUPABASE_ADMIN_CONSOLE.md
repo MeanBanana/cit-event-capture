@@ -207,41 +207,6 @@ python tests/test_admin_accounts_db.py
 
 Expected output: `4/4 passed`.
 
-## Website contact messages (added 19 Oct)
-
-The Contact form on the public website (`web/landing`) now saves messages in
-Supabase, and the root admin reads them in the admin console under
-**Website messages**. Only one thing to do on Supabase:
-
-1. **SQL Editor → New query**, paste the whole of
-   `database/supabase/migrations/20261019100000_contact_messages.sql`, click
-   **Run**. (Or `supabase db push` from `database/`.) It adds:
-   - table `contactmessage` — closed to everyone (RLS on, no grants); the
-     website can only add rows through the function below
-   - `submit_contact_message(name, email, role, organisation, message)` —
-     the website calls this with the publishable key (no login). It checks
-     every field and limits sending: 3 an hour per email address, 5 an hour
-     per visitor, 60 an hour in total
-   - `list_contact_messages(status)` and `set_contact_message_status(id, status)`
-     — **root admin only** (new / read / replied / archived)
-2. Check it worked:
-   ```sql
-   select public.submit_contact_message('Test Person', 'test@example.com', 'Other', null, 'Hello');
-   select * from public.contactmessage order by id desc limit 1;
-   ```
-   The root admin should see it under **Website messages** (Refresh). Then
-   delete the test row: `delete from public.contactmessage where email = 'test@example.com';`
-
-No Edge Function and no new secret: the function runs inside the database.
-
-**When the website goes live on Netlify** the console moves to
-`https://<site>.netlify.app/admin/`, so the set-password page is at
-`https://<site>.netlify.app/admin/set-password.html`. Add that to
-**Authentication → URL Configuration → Redirect URLs** and update the
-`PASSWORD_SETUP_URL` secret to it (step 3b).
-
-Database tests: `python tests/test_contact_messages_db.py` (expected `3/3 passed`).
-
 ---
 
 ## Not in this change (possible next steps)

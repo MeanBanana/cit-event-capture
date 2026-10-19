@@ -54,14 +54,6 @@
     </header>
 
     <main class="page">
-      <nav class="tabs" role="tablist" aria-label="Console sections">
-        <button class="tab" type="button" role="tab" id="tab-btn-admins" data-tab="admins" aria-controls="tab-admins" aria-selected="true">Station admins</button>
-        <button class="tab" type="button" role="tab" id="tab-btn-messages" data-tab="messages" aria-controls="tab-messages" aria-selected="false">
-          Website messages <span id="messages-count" class="count" hidden></span>
-        </button>
-      </nav>
-
-      <div id="tab-admins" role="tabpanel" aria-labelledby="tab-btn-admins">
       <section class="page-head">
         <div>
           <h1>Station admins</h1>
@@ -93,30 +85,6 @@
           <tbody id="admins-body"></tbody>
         </table>
       </section>
-      </div>
-
-      <!-- Messages sent through the Contact form on the public website -->
-      <div id="tab-messages" role="tabpanel" aria-labelledby="tab-btn-messages" hidden>
-        <section class="page-head">
-          <div>
-            <h1>Website messages</h1>
-            <p class="muted">Sent through the Contact form on the Argus Shield website. Only you, the root administrator, can see them.</p>
-          </div>
-        </section>
-        <section class="card">
-          <div class="card-head">
-            <div class="filters" id="message-filters" role="group" aria-label="Show">
-              <button type="button" class="filter" data-status="new" aria-pressed="true">Inbox</button>
-              <button type="button" class="filter" data-status="all" aria-pressed="false">All</button>
-              <button type="button" class="filter" data-status="replied" aria-pressed="false">Replied</button>
-              <button type="button" class="filter" data-status="archived" aria-pressed="false">Archived</button>
-            </div>
-            <button id="messages-refresh" class="ghost small" title="Check for new messages">Refresh</button>
-          </div>
-          <div id="messages-status" class="list-status" hidden></div>
-          <ul id="messages-list" class="messages"></ul>
-        </section>
-      </div>
     </main>
   </div>
 

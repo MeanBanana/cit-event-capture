@@ -33,7 +33,7 @@ talks to Supabase directly from the browser with the publishable key in
 | The attack, frame by frame (reel of stills) | `src/components/AttackLog.tsx` |
 | Phone → cloud → AI → case file, drawn on scroll | `src/components/Pipeline.tsx` |
 | Citizen / Investigator / Admin cards | `src/components/Roles.tsx` |
-| Contact form + statistics | `src/components/Contact.tsx` (sends with `src/config.ts`) |
+| Contact form + statistics | `src/components/Contact.tsx` |
 | Header (Admin login button) + footer | `src/components/Chrome.tsx` |
 | Hero layer images (desktop `d/`, phone `m/`) | `public/layers/` |
 | Reel stills, share image | `public/media/` |
@@ -41,10 +41,9 @@ talks to Supabase directly from the browser with the publishable key in
 
 ## Before going live
 
-- The contact form saves messages in Supabase (`submit_contact_message`,
-  migration `20261019100000_contact_messages.sql`); the root admin reads them
-  under **Website messages** in the admin console. Until that migration is
-  on Supabase the form shows "could not be sent".
+- The contact form drafts an email to the root admin
+  (carel.vonronge@gmail.com). To change who receives it, edit `brand.email`
+  in `src/content.ts`.
 - The attack scenes are illustrations made for this site. To use your own
   photos in the reel, replace `public/media/cards/s1.webp … s4.webp`
   (portrait, 840 × 1120) — only use photos you have the rights to.

@@ -7,8 +7,6 @@
 //   create   Edge Function create-admin            (root only, checked there;
 //            it emails the new admin a link to set-password.html)
 //   station  set_admin_station(userid, station)    (root only, checked in SQL)
-//   messages list_contact_messages() / set_contact_message_status(id, status)
-//            the website's Contact form (root only, checked in SQL)
 //
 // Every rule is enforced by the database / Edge Function; the checks here
 // only give clear messages.
@@ -24,8 +22,6 @@
   const $ = (id) => document.getElementById(id);
   const views = { login: $("login-view"), console: $("console-view") };
   let admins = [];
-  let messages = [];
-  let messageFilter = "new";
   let me = null;
 
   // ------------------------------------------------------------ helpers
@@ -159,7 +155,6 @@
     await sb.auth.signOut();
     me = null;
     admins = [];
-    messages = [];
     show("login");
     $("login-id").focus();
   });
@@ -177,24 +172,8 @@
   async function openConsole() {
     $("me-name").textContent = me.name || me.username;
     show("console");
-    showTab(location.hash === "#messages" ? "messages" : "admins");
-    await Promise.all([loadAdmins(), loadMessages()]);
+    await loadAdmins();
   }
-
-  // ------------------------------------------------------------ tabs
-  function showTab(name) {
-    document.querySelectorAll(".tab").forEach((tab) => {
-      const on = tab.dataset.tab === name;
-      tab.setAttribute("aria-selected", String(on));
-      $("tab-" + tab.dataset.tab).hidden = !on;
-    });
-    history.replaceState(null, "", name === "messages" ? "#messages" : location.pathname);
-  }
-  document.querySelectorAll(".tab").forEach((tab) =>
-    tab.addEventListener("click", () => {
-      showTab(tab.dataset.tab);
-      if (tab.dataset.tab === "messages") loadMessages();
-    }));
 
   async function loadAdmins() {
     const status = $("list-status");
@@ -283,114 +262,6 @@
 
   $("search").addEventListener("input", renderList);
   $("refresh").addEventListener("click", loadAdmins);
-
-  // ------------------------------------------------------------ website messages
-  const STATUS_LABEL = { new: "New", read: "Read", replied: "Replied", archived: "Archived" };
-
-  async function loadMessages() {
-    const status = $("messages-status");
-    if (!messages.length) {
-      status.textContent = "Loading…";
-      status.hidden = false;
-    }
-    const { data, error } = await sb.rpc("list_contact_messages");
-    if (error) {
-      status.textContent = await messageOf(error, "Could not load the messages.");
-      status.hidden = false;
-      $("messages-list").replaceChildren();
-      return;
-    }
-    messages = data || [];
-    renderMessages();
-  }
-
-  function renderMessages() {
-    const fresh = messages.filter((m) => m.status === "new").length;
-    const count = $("messages-count");
-    count.textContent = fresh;
-    count.hidden = fresh === 0;
-
-    document.querySelectorAll("#message-filters .filter").forEach((b) =>
-      b.setAttribute("aria-pressed", String(b.dataset.status === messageFilter)));
-
-    const rows = messages.filter((m) =>
-      messageFilter === "all" ? m.status !== "archived"
-        : messageFilter === "new" ? (m.status === "new" || m.status === "read")
-          : m.status === messageFilter);
-    const status = $("messages-status");
-    if (!rows.length) {
-      status.textContent = {
-        new: messages.length ? "You're all caught up: no new messages." : "No messages yet. They appear here when someone uses the Contact form on the website.",
-        all: "No messages yet.",
-        replied: "No replied messages.",
-        archived: "Nothing archived.",
-      }[messageFilter];
-      status.hidden = false;
-      $("messages-list").replaceChildren();
-      return;
-    }
-    status.hidden = true;
-    $("messages-list").replaceChildren(...rows.map(messageItem));
-  }
-
-  function messageItem(m) {
-    const sent = when(m.datecreated);
-    const subject = encodeURIComponent("Re: your message to Argus Shield");
-    const greeting = encodeURIComponent(`Hi ${m.name.split(" ")[0]},\n\n`);
-    const actions = [
-      el("a", {
-        class: "primary", href: `mailto:${m.email}?subject=${subject}&body=${greeting}`,
-        onclick: () => setStatus(m, "replied", true),
-      }, "Reply by email"),
-    ];
-    if (m.status === "new") actions.push(el("button", { class: "ghost small", type: "button", onclick: () => setStatus(m, "read") }, "Mark as read"));
-    if (m.status !== "replied") actions.push(el("button", { class: "ghost small", type: "button", onclick: () => setStatus(m, "replied") }, "Mark as replied"));
-    if (m.status !== "archived") actions.push(el("button", { class: "ghost small", type: "button", onclick: () => setStatus(m, "archived") }, "Archive"));
-    if (m.status !== "new") actions.push(el("button", { class: "link", type: "button", onclick: () => setStatus(m, "new") }, "Mark as new"));
-
-    return el("li", { class: "message" + (m.status === "new" ? " is-new" : "") },
-      el("div", { class: "message-head" },
-        el("div", { class: "message-who" },
-          el("div", { class: "avatar", "aria-hidden": "true" }, initials({ firstname: m.name.split(" ")[0], surname: m.name.split(" ").slice(-1)[0] })),
-          el("div", null,
-            el("div", null,
-              el("span", { class: "message-name" }, m.name), " ",
-              el("span", { class: "badge role" }, m.role)),
-            el("div", { class: "sub" },
-              el("a", { href: `mailto:${m.email}` }, m.email),
-              m.organisation ? " · " + m.organisation : null))),
-        el("div", { class: "message-meta" },
-          el("span", { class: "status " + m.status }, STATUS_LABEL[m.status] || m.status),
-          el("div", { title: sent ? sent.toLocaleString("en-ZA") : "" }, relative(m.datecreated)),
-          m.handledby_name && m.status !== "new" ? el("div", null, "by " + m.handledby_name) : null)),
-      m.message
-        ? el("p", { class: "message-body" }, m.message)
-        : el("p", { class: "message-body empty" }, "No message: they'd like to be contacted."),
-      el("div", { class: "message-actions" }, ...actions));
-  }
-
-  async function setStatus(m, status, quiet) {
-    const { error } = await sb.rpc("set_contact_message_status", { p_id: m.id, p_status: status });
-    if (error) {
-      toast(await messageOf(error, "Could not update the message."));
-      return;
-    }
-    m.status = status;
-    if (!quiet) toast({ read: "Marked as read", replied: "Marked as replied", archived: "Archived", new: "Marked as new" }[status]);
-    renderMessages();
-  }
-
-  document.querySelectorAll("#message-filters .filter").forEach((b) =>
-    b.addEventListener("click", () => {
-      messageFilter = b.dataset.status;
-      renderMessages();
-    }));
-  $("messages-refresh").addEventListener("click", loadMessages);
-
-  // check for new messages every 2 minutes while the console is open
-  setInterval(() => {
-    if (me && !views.console.hidden && document.visibilityState === "visible") loadMessages();
-  }, 120000);
 
   // ------------------------------------------------------------ dialogs
   document.querySelectorAll("dialog [data-close]").forEach((button) =>
