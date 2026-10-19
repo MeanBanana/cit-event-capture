@@ -374,7 +374,7 @@ class CaseCard extends StatelessWidget {
               c.incidentCount > c.preview.length
                   ? '${appSettings.t('newestWord')} ${c.preview.length} ${appSettings.t('ofWord')} ${c.incidentCount} ${appSettings.t('submissionsLabel')}'
                   : appSettings.t('submissionsLabel'),
-              style: AppText.caption.copyWith(color: AppColors.textHint),
+              style: AppText.caption.copyWith(color: AppColors.neutral),
             ),
             for (final p in c.preview) _PreviewRow(item: p),
           ],
@@ -433,7 +433,7 @@ class _SuggestedSubmission extends StatelessWidget {
             s.otherCount > 0
                 ? 'SUGGESTED SUBMISSION (+${s.otherCount} MORE)'
                 : 'SUGGESTED SUBMISSION',
-            style: AppText.caption.copyWith(color: AppColors.textHint),
+            style: AppText.caption.copyWith(color: AppColors.neutral),
           ),
           const SizedBox(height: 4),
           Text(
@@ -500,7 +500,7 @@ class _PreviewRow extends StatelessWidget {
                 : '${appSettings.t('aiPrefix')}: ${p.aiSummary}',
             style: AppText.bodyMuted.copyWith(
                 fontSize: 13,
-                color: p.aiSummary == null ? AppColors.textHint : null),
+                color: p.aiSummary == null ? AppColors.neutral : null),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),

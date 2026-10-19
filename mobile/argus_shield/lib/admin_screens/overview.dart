@@ -47,6 +47,10 @@ class AdminOverview extends StatefulWidget {
   /// How many events the "Recent activity" section shows.
   static const int recentActivityCount = 5;
 
+  /// How many events "see more" (ActivityLogPage) loads. The database's
+  /// recent_activity function returns at most 50.
+  static const int fullActivityCount = 50;
+
   @override
   State<AdminOverview> createState() => _AdminOverviewState();
 }
@@ -125,11 +129,13 @@ class _AdminOverviewState extends State<AdminOverview> {
   void _goToTab(BuildContext context, int index) =>
       DefaultTabController.maybeOf(context)?.animateTo(index);
 
-  /// Placeholder for buttons that will do something once Supabase is wired.
-  void _notReady(BuildContext context, String action) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$action ${appSettings.t('notConnected')}')),
+  /// "see more" under Recent activity: the full activity log.
+  Future<void> _openActivityLog() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ActivityLogPage(service: _service)),
     );
+    if (mounted) _fetch();
   }
 
   @override
@@ -218,7 +224,7 @@ class _AdminOverviewState extends State<AdminOverview> {
               ),
             ),
           for (final item in _activity) _ActivityRow(item: item),
-          _SeeMore(onTap: () => _notReady(context, appSettings.t('fullActivityLog'))),
+          _SeeMore(onTap: _openActivityLog),
           const SizedBox(height: AppSpacing.medium),
 
           // 3. Recent active investigators (live) -------------------------
@@ -238,10 +244,10 @@ class _AdminOverviewState extends State<AdminOverview> {
               ),
             ),
           for (final inv in _investigators) ...[
+            // PROFILE grows the card to show the investigator's full info.
             _InvestigatorMiniCard(
+              key: ValueKey('overview-investigator-${inv.userId}'),
               investigator: inv,
-              onProfile: () =>
-                  _notReady(context, appSettings.t('investigatorProfile')),
             ),
             const SizedBox(height: AppSpacing.small),
           ],
@@ -287,7 +293,7 @@ class _AdminOverviewState extends State<AdminOverview> {
 
 /// Text on the page background. White in dark mode, dark in light mode.
 Color _muted(BuildContext context) => Theme.of(context).brightness == Brightness.dark
-    ? AppColors.textMuted
+    ? AppColors.neutral
     : Colors.black54;
 
 Color _onSurface(BuildContext context) => Theme.of(context).colorScheme.onSurface;
@@ -480,14 +486,19 @@ class _ActivityRow extends StatelessWidget {
 }
 
 /// Compact investigator row: avatar, name, badge · unit, duty, PROFILE.
-class _InvestigatorMiniCard extends StatelessWidget {
+/// Tapping PROFILE grows the card to show the investigator's full info
+/// (tap HIDE to shrink it again).
+class _InvestigatorMiniCard extends StatefulWidget {
   final InvestigatorSummary investigator;
-  final VoidCallback onProfile;
 
-  const _InvestigatorMiniCard({
-    required this.investigator,
-    required this.onProfile,
-  });
+  const _InvestigatorMiniCard({super.key, required this.investigator});
+
+  @override
+  State<_InvestigatorMiniCard> createState() => _InvestigatorMiniCardState();
+}
+
+class _InvestigatorMiniCardState extends State<_InvestigatorMiniCard> {
+  bool _expanded = false;
 
   /// Database value → label and colour for the duty line.
   static (String, Color) _duty(String dutyStatus) {
@@ -497,36 +508,44 @@ class _InvestigatorMiniCard extends StatelessWidget {
       case 'available':
         return (appSettings.t('available'), AppColors.accent);
       case 'off_duty':
-        return (appSettings.t('offDuty'), AppColors.textHint);
+        return (appSettings.t('offDuty'), AppColors.neutral);
       default:
-        return (dutyStatus, AppColors.textMuted);
+        return (dutyStatus, AppColors.neutral);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final inv = investigator;
+    final inv = widget.investigator;
     final (dutyLabel, dutyColor) = _duty(inv.dutyStatus);
     final initials = '${inv.firstName[0]}${inv.surname[0]}';
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         border: Border.all(color: AppColors.accent),
         borderRadius: BorderRadius.circular(4),
       ),
       child: NavyText(
-        child: Row(
+        // AnimatedSize: the card grows / shrinks smoothly.
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
         children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: AppColors.textPrimary,
+            backgroundColor: pageInk(context),
             child: Text(
               initials,
               style: AppText.buttonSmall.copyWith(
                 fontSize: 13,
-                color: AppColors.header,
+                color: cardColor(context),
               ),
             ),
           ),
@@ -552,7 +571,7 @@ class _InvestigatorMiniCard extends StatelessWidget {
                   style: const TextStyle(
                     fontFamily: AppFonts.heading,
                     fontSize: 10,
-                    color: AppColors.textMuted,
+                    color: AppColors.neutral,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -569,7 +588,8 @@ class _InvestigatorMiniCard extends StatelessWidget {
           const SizedBox(width: AppSpacing.small),
           // Smaller than the theme's big 30px button, so style it here.
           ElevatedButton(
-            onPressed: onProfile,
+            key: ValueKey('profile-${inv.userId}'),
+            onPressed: () => setState(() => _expanded = !_expanded),
             style: ElevatedButton.styleFrom(
               foregroundColor: AppColors.header,
               textStyle: AppText.buttonSmall.copyWith(fontSize: 13),
@@ -579,10 +599,191 @@ class _InvestigatorMiniCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
-            child: Text(appSettings.t('profile')),
+            child: Text(appSettings.t(_expanded ? 'hideProfile' : 'profile')),
           ),
         ],
       ),
+              if (_expanded) _ProfileDetails(investigator: inv),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The investigator's full info, shown when PROFILE is tapped.
+class _ProfileDetails extends StatelessWidget {
+  final InvestigatorSummary investigator;
+
+  const _ProfileDetails({required this.investigator});
+
+  @override
+  Widget build(BuildContext context) {
+    final inv = investigator;
+    final ink = pageInk(context);
+    Widget line(IconData icon, String label, String value) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16, color: AppColors.accent),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 92,
+                child: Text(label,
+                    style: AppText.bodyMuted
+                        .copyWith(fontSize: 13, color: AppColors.neutral)),
+              ),
+              Expanded(
+                child: SelectableText(value,
+                    style: AppText.body.copyWith(fontSize: 14, color: ink)),
+              ),
+            ],
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(height: 1, color: AppColors.fieldBorder),
+          const SizedBox(height: 10),
+          line(Icons.person_outline, appSettings.t('fullName'),
+              inv.displayName),
+          line(Icons.badge_outlined, appSettings.t('badge'), inv.badgeNumber),
+          line(Icons.location_city_outlined, appSettings.t('station'),
+              inv.station),
+          if (inv.unit != null)
+            line(Icons.groups_outlined, appSettings.t('unitLabel'), inv.unit!),
+          line(Icons.email_outlined, appSettings.t('email'), inv.email),
+          line(
+              Icons.phone_outlined,
+              appSettings.t('phoneNumber'),
+              inv.phoneNumber == null || inv.phoneNumber!.isEmpty
+                  ? appSettings.t('noPhone')
+                  : inv.phoneNumber!),
+          line(Icons.folder_open_outlined, appSettings.t('activeCasesLabel2'),
+              '${inv.activeCases}'),
+          if (inv.dateCreated != null)
+            line(Icons.event_outlined, appSettings.t('joined'),
+                formatDate(inv.dateCreated!.toLocal())),
+        ],
+      ),
+    );
+  }
+}
+
+// =========================================================================
+// Full activity log ("see more" under Recent activity)
+// =========================================================================
+
+/// Every recent event (the newest [AdminOverview.fullActivityCount]),
+/// newest first, with chips to show only one kind (NEW, CASE, ASGN ...).
+class ActivityLogPage extends StatefulWidget {
+  /// Optional so tests can pass in a fake; the app uses the real service.
+  final SupabaseService? service;
+
+  const ActivityLogPage({super.key, this.service});
+
+  @override
+  State<ActivityLogPage> createState() => _ActivityLogPageState();
+}
+
+class _ActivityLogPageState extends State<ActivityLogPage> {
+  late final SupabaseService _service = widget.service ?? SupabaseService();
+  List<ActivityItem> _items = const [];
+  bool _loading = true;
+  String? _error;
+
+  /// null = all kinds, otherwise a tag such as 'NEW'.
+  String? _tag;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final items = await _service.getRecentActivity(
+          limit: AdminOverview.fullActivityCount);
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _error = null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = appSettings.t('loadError');
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Only offer chips for the kinds that are actually in the list.
+    final tags = <String>{for (final i in _items) i.tag}.toList()..sort();
+    final tag = tags.contains(_tag) ? _tag : null;
+    final shown =
+        tag == null ? _items : _items.where((i) => i.tag == tag).toList();
+
+    return ListenableBuilder(
+      listenable: appSettings,
+      builder: (context, _) => Scaffold(
+        appBar: ArgusAppBar(roleLabel: appSettings.t('systemAdministrator')),
+        body: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            padding: AppSpacing.tab.copyWith(bottom: 12),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              _SectionHeading(appSettings.t('fullActivityLog')),
+              Text(
+                appSettings.t('activityLogNote'),
+                textAlign: TextAlign.center,
+                style: AppText.bodyMuted
+                    .copyWith(fontSize: 13, color: _muted(context)),
+              ),
+              const SizedBox(height: AppSpacing.small),
+              if (tags.length > 1) ...[
+                ChipRow<String?>(
+                  options: <(String, String?)>[
+                    (appSettings.t('filterAll'), null),
+                    for (final t in tags) (t, t),
+                  ],
+                  selected: tag,
+                  onSelected: (value) => setState(() => _tag = value),
+                ),
+                const SizedBox(height: AppSpacing.small),
+              ],
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.all(AppSpacing.medium),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_error != null)
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: AppText.bodyMuted.copyWith(color: AppColors.danger),
+                )
+              else if (shown.isEmpty)
+                Text(
+                  appSettings.t('noActivity'),
+                  textAlign: TextAlign.center,
+                  style: AppText.bodyMuted.copyWith(color: _muted(context)),
+                )
+              else
+                for (final item in shown) _ActivityRow(item: item),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -616,7 +817,7 @@ class _SubmissionReviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         border: Border.all(color: AppColors.accent, width: 2),
         borderRadius: BorderRadius.circular(4),
       ),
@@ -668,7 +869,7 @@ class _SubmissionReviewCard extends StatelessWidget {
             style: const TextStyle(
               fontFamily: AppFonts.heading,
               fontSize: 11,
-              color: AppColors.textMuted,
+              color: AppColors.neutral,
             ),
           ),
           const SizedBox(height: 12),
@@ -742,7 +943,10 @@ class _OutlineAction extends StatelessWidget {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        foregroundColor: textColor ?? color,
+        // White text turns dark in light mode.
+        foregroundColor: textColor == AppColors.textPrimary
+            ? pageInk(context)
+            : textColor ?? color,
         side: BorderSide(color: color, width: 2),
         textStyle: AppText.buttonSmall.copyWith(fontSize: 13),
         padding: const EdgeInsets.symmetric(horizontal: 4),

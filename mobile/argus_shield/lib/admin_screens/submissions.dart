@@ -389,7 +389,7 @@ class _NotInCaseTile extends StatelessWidget {
             child: Text('Not in a case yet: see pending submissions',
                 style: AppText.bodyMuted),
           ),
-          Icon(Icons.chevron_right, color: AppColors.textMuted),
+          Icon(Icons.chevron_right, color: AppColors.neutral),
         ],
       ),
     );
@@ -640,7 +640,7 @@ class LocationGroupCard extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: AppColors.textMuted),
+          const Icon(Icons.chevron_right, color: AppColors.neutral),
         ],
       ),
     );

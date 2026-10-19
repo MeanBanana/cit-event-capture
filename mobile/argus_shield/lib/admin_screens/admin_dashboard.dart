@@ -11,6 +11,7 @@ import 'package:argus_shield/admin_screens/investigators.dart';
 import 'package:argus_shield/admin_screens/submissions.dart';
 import 'package:argus_shield/settings_screen.dart';
 import 'package:argus_shield/app_settings.dart';
+import 'package:argus_shield/sign_out_button.dart';
 
 /// Displays the Argus header and the admin tabs.
 /// Colours and fonts come from the app theme (theme/app_theme.dart).
@@ -35,6 +36,7 @@ class AdminDashboard extends StatelessWidget {
               marker: RoleMarker.diamond,
               actions: [
                 IconButton(
+                  tooltip: appSettings.t('settings'),
                   icon: const Icon(Icons.settings),
                   onPressed: () {
                     Navigator.push(
@@ -44,6 +46,7 @@ class AdminDashboard extends StatelessWidget {
                     );
                   },
                 ),
+                const SignOutButton(),
               ],
               // Four tabs share a phone's width, so the labels are a little
               // smaller than the app default and the padding around them is

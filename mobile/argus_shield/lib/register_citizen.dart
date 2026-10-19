@@ -283,7 +283,7 @@ class TermsAndConditions extends StatelessWidget{
   const TermsAndConditions({super.key});
   final String mdText="""1. Introduction and Acceptance
 
-1.1 These Terms and Conditions ("Terms") govern your use of Argus Shield ("Argus", "the App", "the System"), a research prototype developed by [Deacs and team / Eduvos Bedfordview — confirm responsible party] as part of an Information Technology Capstone research project.
+1.1 These Terms and Conditions ("Terms") govern your use of Argus Shield ("Argus", "the App", "the System"), a research prototype developed by Deacon Nel, Carel Von Ronge, Claire Aimee Duke, Melusi Sikakane, and Eliandro Miranda / Eduvos Bedfordview as part of an Information Technology Capstone research project.
 
 1.2 By creating an account and ticking the acceptance box, you confirm that you have read, understood and agreed to these Terms and to the processing of your personal information described in them. If you do not agree, please do not register or use the App.
 

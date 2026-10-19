@@ -192,7 +192,7 @@ class _CropTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.header,
+      color: panelColor(context),
       borderRadius: BorderRadius.circular(4),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -204,7 +204,7 @@ class _CropTile extends StatelessWidget {
               image: source.image(crop.path),
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined,
-                  color: AppColors.textHint),
+                  color: AppColors.neutral),
             ),
             Positioned(
               left: 0,
@@ -249,7 +249,7 @@ class _QuestionCard extends StatelessWidget {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         border: Border.all(color: AppColors.accent),
         borderRadius: BorderRadius.circular(4),
       ),
@@ -324,7 +324,7 @@ Future<void> showCropViewer(BuildContext context, CaseEvidenceSource source,
   return showDialog<void>(
     context: context,
     builder: (dialogContext) => Dialog(
-      backgroundColor: AppColors.header,
+      backgroundColor: cardColor(context),
       insetPadding: const EdgeInsets.all(16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -336,7 +336,7 @@ Future<void> showCropViewer(BuildContext context, CaseEvidenceSource source,
               children: [
                 Expanded(child: Text(title, style: AppText.cardTitle)),
                 IconButton(
-                  icon: const Icon(Icons.close, color: AppColors.textMuted),
+                  icon: const Icon(Icons.close, color: AppColors.neutral),
                   tooltip: 'Close',
                   onPressed: () => Navigator.pop(dialogContext),
                 ),
@@ -352,7 +352,7 @@ Future<void> showCropViewer(BuildContext context, CaseEvidenceSource source,
                 errorBuilder: (_, _, _) => const Padding(
                   padding: EdgeInsets.all(40),
                   child: Icon(Icons.broken_image_outlined,
-                      color: AppColors.textHint, size: 48),
+                      color: AppColors.neutral, size: 48),
                 ),
               ),
             ),

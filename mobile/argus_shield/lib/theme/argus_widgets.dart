@@ -451,7 +451,7 @@ class _StripeBorderPainter extends CustomPainter {
 ///   MaterialApp(builder: keepAboveSystemBars, ...)
 Widget keepAboveSystemBars(BuildContext context, Widget? child) {
   return ColoredBox(
-    color: AppColors.background,
+    color: pageColor(context),
     child: SafeArea(
       top: false,
       child: child ?? const SizedBox.shrink(),

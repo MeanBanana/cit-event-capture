@@ -28,7 +28,7 @@ String formatDate(DateTime d) {
     case 'closed':
       return ('Closed', AppColors.success);
     default:
-      return (status, AppColors.textMuted);
+      return (status, AppColors.neutral);
   }
 }
 
@@ -42,9 +42,9 @@ String formatDate(DateTime d) {
     case 'rejected':
       return ('Rejected', AppColors.danger);
     case 'duplicate':
-      return ('Duplicate', AppColors.textHint);
+      return ('Duplicate', AppColors.neutral);
     default:
-      return (reviewStatus, AppColors.textMuted);
+      return (reviewStatus, AppColors.neutral);
   }
 }
 
@@ -148,6 +148,9 @@ class SmallActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // White ("neutral") buttons turn dark in light mode.
+    final color =
+        this.color == AppColors.textPrimary ? pageInk(context) : this.color;
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
@@ -227,7 +230,7 @@ class FactChip extends StatelessWidget {
   final Color color;
 
   const FactChip(this.label,
-      {super.key, this.icon, this.color = AppColors.textMuted});
+      {super.key, this.icon, this.color = AppColors.neutral});
 
   @override
   Widget build(BuildContext context) {
@@ -341,7 +344,7 @@ class SubmissionDescriptions extends StatelessWidget {
                   children: [
                     Text(label,
                         style: AppText.caption
-                            .copyWith(color: AppColors.textHint, fontSize: 11)),
+                            .copyWith(color: AppColors.neutral, fontSize: 11)),
                     const SizedBox(height: 2),
                     text,
                   ],
@@ -386,7 +389,7 @@ class SubmissionDescriptions extends StatelessWidget {
                         fontStyle: FontStyle.italic,
                         color: aiStatus == 'failed'
                             ? AppColors.danger
-                            : AppColors.textHint)),
+                            : AppColors.neutral)),
             ],
           ),
         ),
@@ -421,12 +424,12 @@ class ChipRow<T> extends StatelessWidget {
               selected: selected == value,
               onSelected: (_) => onSelected(value),
               selectedColor: AppColors.accent,
-              backgroundColor: AppColors.header,
+              backgroundColor: cardColor(context),
               labelStyle: AppText.body.copyWith(
                 fontSize: 13,
                 color: selected == value
                     ? AppColors.header
-                    : AppColors.textPrimary,
+                    : pageInk(context),
               ),
               showCheckmark: false,
             ),
@@ -454,7 +457,7 @@ class AdminCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.header,
+      color: cardColor(context),
       shape: RoundedRectangleBorder(
         side: BorderSide(color: borderColor),
         borderRadius: BorderRadius.circular(4),

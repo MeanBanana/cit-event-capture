@@ -29,7 +29,7 @@ Future<T?> showAdminSheet<T>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: AppColors.background,
+    backgroundColor: pageColor(context),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
     ),
@@ -53,7 +53,7 @@ Future<T?> showAdminSheet<T>(
                           style: AppText.cardTitle.copyWith(fontSize: 16)),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.textMuted),
+                      icon: const Icon(Icons.close, color: AppColors.neutral),
                       tooltip: 'Close',
                       onPressed: () => Navigator.pop(sheetContext),
                     ),

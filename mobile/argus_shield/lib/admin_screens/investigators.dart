@@ -302,9 +302,9 @@ class InvestigatorCard extends StatelessWidget {
       case 'available':
         return (appSettings.t('available'), AppColors.accent);
       case 'off_duty':
-        return (appSettings.t('offDuty'), AppColors.textHint);
+        return (appSettings.t('offDuty'), AppColors.neutral);
       default:
-        return (dutyStatus, AppColors.textMuted);
+        return (dutyStatus, AppColors.neutral);
     }
   }
 
@@ -316,7 +316,7 @@ class InvestigatorCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         border: Border.all(color: AppColors.fieldBorder),
         borderRadius: BorderRadius.circular(4),
       ),

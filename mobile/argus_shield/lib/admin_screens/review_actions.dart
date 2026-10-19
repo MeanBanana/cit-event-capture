@@ -379,7 +379,7 @@ class _AcceptChoiceState extends State<_AcceptChoice> {
                   children: [
                     Text('SUGGESTED CASES',
                         style:
-                            AppText.caption.copyWith(color: AppColors.textHint)),
+                            AppText.caption.copyWith(color: AppColors.neutral)),
                     const SizedBox(height: 6),
                     for (final (suggestion, c) in items) ...[
                       SuggestionTile(
@@ -513,7 +513,7 @@ class _ChoiceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.header,
+      color: cardColor(context),
       shape: RoundedRectangleBorder(
         side: const BorderSide(color: AppColors.accent),
         borderRadius: BorderRadius.circular(4),
@@ -524,7 +524,7 @@ class _ChoiceTile extends StatelessWidget {
         title: Text(title,
             style: AppText.body.copyWith(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle, style: AppText.bodyMuted),
-        trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+        trailing: const Icon(Icons.chevron_right, color: AppColors.neutral),
         onTap: onTap,
       ),
       ),

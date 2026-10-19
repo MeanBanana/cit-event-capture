@@ -477,12 +477,12 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
                 selected: c.status == value,
                 onSelected: _busy ? null : (_) => _setStatus(value),
                 selectedColor: statusStyle(value).$2,
-                backgroundColor: AppColors.header,
+                backgroundColor: cardColor(context),
                 labelStyle: AppText.body.copyWith(
                   fontSize: 13,
                   color: c.status == value
                       ? AppColors.header
-                      : AppColors.textPrimary,
+                      : pageInk(context),
                 ),
                 showCheckmark: false,
               ),
@@ -504,7 +504,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
                 ? 'No investigators on this case.'
                 : 'No investigator assigned yet.',
             style: AppText.bodyMuted.copyWith(
-                color: c.isClosed ? AppColors.textMuted : AppColors.accent),
+                color: c.isClosed ? AppColors.neutral : AppColors.accent),
           ),
         if (noLead)
           Padding(
@@ -521,7 +521,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
         if (past.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text('Previously assigned',
-              style: AppText.caption.copyWith(color: AppColors.textMuted)),
+              style: AppText.caption.copyWith(color: AppColors.neutral)),
           const SizedBox(height: 4),
           for (final a in past)
             Text(
@@ -640,7 +640,7 @@ class _AssignmentRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         border: Border.all(color: AppColors.accent),
         borderRadius: BorderRadius.circular(4),
       ),
@@ -695,8 +695,8 @@ class _IncidentMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'More',
-      icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
-      color: AppColors.header,
+      icon: const Icon(Icons.more_vert, color: AppColors.neutral),
+      color: cardColor(context),
       onSelected: (value) {
         if (value == 'open') {
           onOpen();

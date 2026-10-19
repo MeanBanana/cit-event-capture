@@ -19,8 +19,8 @@ import 'package:argus_shield/admin_screens/admin_ui.dart';
 (String, Color, IconData) analysisStyle(AnalysisStatus status,
     {int filesFailed = 0}) {
   return switch (status) {
-    AnalysisStatus.noFootage => ('No footage', AppColors.textHint, Icons.videocam_off_outlined),
-    AnalysisStatus.pending => ('Waiting for AI', AppColors.textHint, Icons.hourglass_empty),
+    AnalysisStatus.noFootage => ('No footage', AppColors.neutral, Icons.videocam_off_outlined),
+    AnalysisStatus.pending => ('Waiting for AI', AppColors.neutral, Icons.hourglass_empty),
     AnalysisStatus.analysing => ('AI analysing', AppColors.accent, Icons.autorenew),
     AnalysisStatus.failed => ('Analysis failed', AppColors.danger, Icons.error_outline),
     AnalysisStatus.done => filesFailed > 0
@@ -142,7 +142,7 @@ class CaseSceneCard extends StatelessWidget {
                   icon: Icons.person_search_outlined,
                   color: counted && s.suspects > 0
                       ? AppColors.accent
-                      : AppColors.textMuted,
+                      : AppColors.neutral,
                 ),
                 FactChip(
                   counted ? plural(s.vehicles, 'vehicle') : 'Vehicles: –',
@@ -153,7 +153,7 @@ class CaseSceneCard extends StatelessWidget {
                   icon: Icons.warning_amber_outlined,
                   color: counted && s.weapons > 0
                       ? AppColors.danger
-                      : AppColors.textMuted,
+                      : AppColors.neutral,
                 ),
               ],
             ),

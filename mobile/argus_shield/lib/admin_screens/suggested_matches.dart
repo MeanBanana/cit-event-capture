@@ -95,7 +95,7 @@ class _SuggestedMatchesBannerState extends State<SuggestedMatchesBanner> {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                const Icon(Icons.chevron_right, color: AppColors.neutral),
               ],
             ),
           ),
@@ -253,7 +253,7 @@ class _SuggestedMatchesPageState extends State<SuggestedMatchesPage> {
                     Expanded(
                       child: Text('$n of ${_items.length} selected',
                           style: AppText.caption
-                              .copyWith(color: AppColors.textHint)),
+                              .copyWith(color: AppColors.neutral)),
                     ),
                     TextButton(
                         onPressed: () => _setAll(true),

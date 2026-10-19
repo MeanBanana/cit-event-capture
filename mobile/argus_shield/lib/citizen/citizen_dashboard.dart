@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../theme/argus_widgets.dart';
 import '../settings_screen.dart';
 import '../app_settings.dart';
+import '../sign_out_button.dart';
 import 'citizen_store.dart';
 import 'upload_page.dart';
 import 'submissions_page.dart';
@@ -46,6 +47,7 @@ class CitizenDashboard extends StatelessWidget {
                 );
               },
             ),
+            const SignOutButton(),
           ],
           // Tabs sit on the navy header, so the words stay white in both modes.
           bottom: TabBar(

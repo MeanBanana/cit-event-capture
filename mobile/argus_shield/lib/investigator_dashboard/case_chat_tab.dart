@@ -161,7 +161,7 @@ class _CaseChatTabState extends State<CaseChatTab>
         Expanded(child: _list()),
         if (widget.readOnly)
           Container(
-            color: AppColors.header,
+            color: cardColor(context),
             padding: const EdgeInsets.all(12),
             child: NavyText(
               child: Text('This case is closed: its chat is read-only.',
@@ -189,7 +189,7 @@ class _CaseChatTabState extends State<CaseChatTab>
           children: [
             Icon(Icons.forum_outlined,
                 size: 40,
-                color: _error != null ? AppColors.danger : AppColors.textHint),
+                color: _error != null ? AppColors.danger : AppColors.neutral),
             const SizedBox(height: 12),
             Text(empty,
                 textAlign: TextAlign.center,
@@ -229,7 +229,8 @@ class _CaseChatTabState extends State<CaseChatTab>
   }
 
   Widget _composer() => Material(
-        color: AppColors.header,
+        color: cardColor(context),
+        elevation: isDark(context) ? 0 : 4,
         child: SafeArea(
           top: false,
           child: Padding(
@@ -245,14 +246,16 @@ class _CaseChatTabState extends State<CaseChatTab>
                     maxLines: 4,
                     maxLength: 2000,
                     textCapitalization: TextCapitalization.sentences,
-                    style: AppText.body.copyWith(fontSize: 15),
+                    style: AppText.body
+                        .copyWith(fontSize: 15, color: pageInk(context)),
                     decoration: InputDecoration(
                       hintText: 'Message the investigators on this case',
-                      hintStyle: AppText.bodyMuted.copyWith(fontSize: 14),
+                      hintStyle: AppText.bodyMuted
+                          .copyWith(fontSize: 14, color: AppColors.neutral),
                       counterText: '',
                       isDense: true,
                       filled: true,
-                      fillColor: AppColors.background,
+                      fillColor: panelColor(context),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 10),
                       border: OutlineInputBorder(
@@ -310,7 +313,7 @@ class _DayLabel extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           decoration: BoxDecoration(
-            color: AppColors.header,
+            color: panelColor(context),
             borderRadius: BorderRadius.circular(10),
           ),
           child: NavyText(
@@ -340,7 +343,12 @@ class _Bubble extends StatelessWidget {
           margin: EdgeInsets.only(top: showName ? 8 : 3),
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
           decoration: BoxDecoration(
-            color: mine ? AppColors.accent.withAlpha(45) : AppColors.header,
+            // light mode: soft orange (mine) / soft grey (others), dark text
+            color: mine
+                ? AppColors.accent.withAlpha(isDark(context) ? 45 : 60)
+                : isDark(context)
+                    ? AppColors.header
+                    : panelColor(context),
             border: Border.all(
                 color: mine ? AppColors.accent.withAlpha(120) : AppColors.fieldBorder.withAlpha(90)),
             borderRadius: BorderRadius.only(
@@ -362,7 +370,9 @@ class _Bubble extends StatelessWidget {
                       style: AppText.body.copyWith(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.accent)),
+                          color: isDark(context)
+                              ? AppColors.accent
+                              : const Color(0xFFB26A00))),
                 ),
               Text(message.body, style: AppText.body.copyWith(fontSize: 15)),
               const SizedBox(height: 2),

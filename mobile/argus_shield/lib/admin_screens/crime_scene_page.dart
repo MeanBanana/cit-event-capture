@@ -410,7 +410,7 @@ class _SceneHeader extends StatelessWidget {
                     icon: Icons.warning_amber,
                     color: count('weapon') > 0
                         ? AppColors.danger
-                        : AppColors.textMuted),
+                        : AppColors.neutral),
               ],
             ),
           if (message != null) ...[
@@ -440,7 +440,7 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.large),
       child: Column(
         children: [
-          Icon(icon, size: 40, color: AppColors.textHint),
+          Icon(icon, size: 40, color: AppColors.neutral),
           const SizedBox(height: 12),
           Text(text,
               textAlign: TextAlign.center,
@@ -549,14 +549,14 @@ class DetectionTile extends StatelessWidget {
                 height: 56,
                 child: cover == null || pictures == null
                     ? ColoredBox(
-                        color: AppColors.background,
-                        child: Icon(iconFor(d.kind), color: AppColors.textHint),
+                        color: panelColor(context),
+                        child: Icon(iconFor(d.kind), color: AppColors.neutral),
                       )
                     : Image(
                         image: pictures!.image(cover),
                         fit: BoxFit.cover,
                         errorBuilder: (_, _, _) =>
-                            Icon(iconFor(d.kind), color: AppColors.textHint),
+                            Icon(iconFor(d.kind), color: AppColors.neutral),
                       ),
               ),
             ),
@@ -586,7 +586,7 @@ class DetectionTile extends StatelessWidget {
                         TextSpan(children: [
                           TextSpan(
                               text: '${f.label}: ',
-                              style: const TextStyle(color: AppColors.textMuted)),
+                              style: const TextStyle(color: AppColors.neutral)),
                           TextSpan(
                             text: displayValue(f.field, f.value),
                             style: f.corrected
@@ -599,7 +599,7 @@ class DetectionTile extends StatelessWidget {
                             TextSpan(
                               text: '  (AI: ${displayValue(f.field, f.ai)})',
                               style: const TextStyle(
-                                  color: AppColors.textHint, fontSize: 12),
+                                  color: AppColors.neutral, fontSize: 12),
                             ),
                         ]),
                         style: AppText.body.copyWith(fontSize: 14),
@@ -619,9 +619,9 @@ class DetectionTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         border: Border.all(
-            color: d.dismissed ? AppColors.textHint : AppColors.fieldBorder),
+            color: d.dismissed ? AppColors.neutral : AppColors.fieldBorder),
         borderRadius: BorderRadius.circular(4),
       ),
       child: NavyText(
@@ -649,7 +649,7 @@ class DetectionTile extends StatelessWidget {
                     child: SecondaryButton(
                       label: 'Pictures',
                       icon: Icons.photo_library_outlined,
-                      color: AppColors.textMuted,
+                      color: AppColors.neutral,
                       onPressed: onPictures,
                     ),
                   ),
@@ -773,12 +773,12 @@ class _CorrectionFormState extends State<CorrectionForm> {
                   selected: f?.field == option.field,
                   onSelected: _saving ? null : (_) => _pick(option),
                   selectedColor: AppColors.accent,
-                  backgroundColor: AppColors.header,
+                  backgroundColor: cardColor(context),
                   labelStyle: AppText.body.copyWith(
                     fontSize: 13,
                     color: f?.field == option.field
                         ? AppColors.header
-                        : AppColors.textPrimary,
+                        : pageInk(context),
                   ),
                   showCheckmark: false,
                 ),
@@ -797,7 +797,7 @@ class _CorrectionFormState extends State<CorrectionForm> {
               DropdownButtonFormField<String>(
                 key: const ValueKey('correct-weapon-type'),
                 initialValue: _weaponType,
-                dropdownColor: AppColors.header,
+                dropdownColor: cardColor(context),
                 decoration: const InputDecoration(labelText: 'Weapon type'),
                 items: [
                   for (final t in weaponTypes)

@@ -39,6 +39,11 @@ class AppColors {
   static const Color textMuted = Colors.white70;
   static const Color textHint = Colors.white54;
 
+  /// Grey for secondary text, hints and icons on the admin and investigator
+  /// screens. Readable on the navy cards (dark mode) AND the white cards
+  /// (light mode), unlike white70 / white54 which vanish on white.
+  static const Color neutral = Color(0xFF8A94A6);
+
   /// The small "Secure Access" line under the login button.
   static const Color footer = Colors.black;
 }
@@ -298,13 +303,15 @@ ThemeData buildArgusLightTheme() {
     colorScheme: colorScheme,
     scaffoldBackgroundColor: Colors.white,
     fontFamily: AppFonts.body,
+    // Colours only: sizes and weights stay the Material defaults, exactly as
+    // in dark mode, so no text changes size when the mode is switched.
     textTheme: const TextTheme(
-      bodyLarge: TextStyle(color: Colors.black87, fontSize: 16),
-      bodyMedium: TextStyle(color: Colors.black87, fontSize: 15),
-      bodySmall: TextStyle(color: Colors.black54, fontSize: 13),
-      titleLarge: TextStyle(color: Colors.black87, fontSize: 28, fontWeight: FontWeight.bold),
-      titleMedium: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.bold),
-      labelLarge: TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.bold),
+      bodyLarge: TextStyle(color: Colors.black87),
+      bodyMedium: TextStyle(color: Colors.black87),
+      bodySmall: TextStyle(color: Colors.black54),
+      titleLarge: TextStyle(color: Colors.black87),
+      titleMedium: TextStyle(color: Colors.black87),
+      labelLarge: TextStyle(color: Colors.black87),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.header,
@@ -323,25 +330,89 @@ ThemeData buildArgusLightTheme() {
       textColor: Colors.black87,
       iconColor: Colors.black54,
     ),
+    // Same as dark mode (size 30 bold "Access System" etc.) — before, light
+    // mode had no textStyle here, so main buttons shrank to 14.
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.accent,
         foregroundColor: Colors.white,
+        disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.5),
+        disabledForegroundColor: Colors.white70,
         shape: const RoundedRectangleBorder(),
+        elevation: 4,
+        textStyle: AppText.button,
       ),
     ),
+
+    // Links ("Forgot password?", "Register as citizen"): same size as dark.
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.accent,
+        textStyle: AppText.link,
+      ),
+    ),
+
+    // Text fields: same borders and text sizes as dark mode.
+    inputDecorationTheme: const InputDecorationThemeData(
+      border: OutlineInputBorder(
+        borderSide: BorderSide(color: AppColors.fieldBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppColors.fieldBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppColors.accent, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppColors.danger),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: AppColors.danger, width: 2),
+      ),
+      hintStyle: TextStyle(color: Colors.black45),
+      prefixStyle: TextStyle(color: Colors.black87, fontSize: 16),
+      errorStyle: TextStyle(color: AppColors.danger),
+      errorMaxLines: 3,
+    ),
+
     tabBarTheme: const TabBarThemeData(
       labelColor: AppColors.accent,
       unselectedLabelColor: Colors.white70,
       indicatorColor: AppColors.accent,
       indicatorSize: TabBarIndicatorSize.tab,
       dividerColor: Colors.transparent,
+      labelStyle: TextStyle(
+        fontFamily: AppFonts.body,
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+      ),
+      unselectedLabelStyle: TextStyle(
+        fontFamily: AppFonts.body,
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+
+    snackBarTheme: const SnackBarThemeData(
+      backgroundColor: AppColors.header,
+      contentTextStyle: TextStyle(
+        fontFamily: AppFonts.body,
+        fontSize: 16,
+        height: 1.3,
+        color: Colors.white,
+      ),
+      actionTextColor: AppColors.accent,
+    ),
+
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: AppColors.accent,
     ),
   );
 }
 
-/// Puts white writing back on a navy box (cards, person rows).
-/// The page itself does not use this, so light mode can turn that writing dark.
+/// Writing inside a card (cards, person rows, chat bubbles).
+/// Dark mode: white on the navy card. Light mode: near-black on the white
+/// card (cardColor), so it stays readable in both.
 class NavyText extends StatelessWidget {
   final Widget child;
 
@@ -350,11 +421,30 @@ class NavyText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTextStyle.merge(
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: pageInk(context)),
       child: child,
     );
   }
 }
+
+/// True in dark mode.
+bool isDark(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark;
+
+/// Background of a card / list item / panel. Navy in dark mode, white in
+/// light mode. Use this instead of AppColors.header for anything that is
+/// not the app bar.
+Color cardColor(BuildContext context) =>
+    isDark(context) ? AppColors.header : Colors.white;
+
+/// A box inside a card (picture placeholders, text field fill, other
+/// people's chat bubbles). Dark: the page navy. Light: a soft grey.
+Color panelColor(BuildContext context) =>
+    isDark(context) ? AppColors.background : const Color(0xFFF1F3F6);
+
+/// The page background (bottom sheets, the strip behind the system bar).
+Color pageColor(BuildContext context) =>
+    isDark(context) ? AppColors.background : Colors.white;
 
 /// Ink for text that sits on the page background (not inside a dark card).
 /// Dark mode stays white. Light mode switches to near-black so it stays readable.

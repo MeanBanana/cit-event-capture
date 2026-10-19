@@ -293,7 +293,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
                 onPressed: () => _act(rejectSubmission)),
             SmallActionButton(
                 label: 'Duplicate',
-                color: AppColors.textMuted,
+                color: AppColors.neutral,
                 onPressed: () => _act(markAsDuplicate)),
             SmallActionButton(
                 label: 'Accept',
@@ -313,7 +313,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
           row([
             SmallActionButton(
                 label: 'Move to another case',
-                color: AppColors.textMuted,
+                color: AppColors.neutral,
                 onPressed: () => _act(moveToCase)),
             SmallActionButton(
                 label: 'Remove from case',

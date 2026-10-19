@@ -132,7 +132,7 @@ class _CaseEvidenceSectionState extends State<CaseEvidenceSection> {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: FactChip('Sample data – not this case',
-                icon: Icons.science_outlined, color: AppColors.textHint),
+                icon: Icons.science_outlined, color: AppColors.neutral),
           ),
         if (summary.isNotEmpty)
           Row(
@@ -229,7 +229,7 @@ class EntityLine extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: AppColors.header,
+          color: cardColor(context),
           border: Border.all(
               color: questions > 0 ? AppColors.accent : AppColors.fieldBorder),
           borderRadius: BorderRadius.circular(4),
@@ -244,14 +244,14 @@ class EntityLine extends StatelessWidget {
                 height: 48,
                 child: e.cover == null
                     ? ColoredBox(
-                        color: AppColors.background,
-                        child: Icon(iconFor(e.kind), color: AppColors.textHint),
+                        color: panelColor(context),
+                        child: Icon(iconFor(e.kind), color: AppColors.neutral),
                       )
                     : Image(
                         image: source.image(e.cover!),
                         fit: BoxFit.cover,
                         errorBuilder: (_, _, _) =>
-                            Icon(iconFor(e.kind), color: AppColors.textHint),
+                            Icon(iconFor(e.kind), color: AppColors.neutral),
                       ),
               ),
             ),

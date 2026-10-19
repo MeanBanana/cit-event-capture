@@ -112,14 +112,14 @@ class ClipCard extends StatelessWidget {
       'completed' => ('Analysed', AppColors.success),
       'processing' => ('Analysing…', AppColors.accent),
       'failed' => ('Analysis failed', AppColors.danger),
-      _ => ('Waiting for analysis', AppColors.textHint),
+      _ => ('Waiting for analysis', AppColors.neutral),
     };
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         border: Border.all(color: AppColors.fieldBorder),
         borderRadius: BorderRadius.circular(4),
       ),

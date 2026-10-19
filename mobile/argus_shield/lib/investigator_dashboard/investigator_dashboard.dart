@@ -226,7 +226,7 @@ class _OperationalSummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
-        color: AppColors.header,
+        color: cardColor(context),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.accent.withAlpha(128)),
       ),
@@ -270,7 +270,7 @@ class _SummaryMetric extends StatelessWidget {
               fontSize: 9,
               fontWeight: FontWeight.bold,
               letterSpacing: 0.8,
-              color: Colors.white70,
+              color: AppColors.neutral,
             ),
           ),
         ],
@@ -314,7 +314,7 @@ class _InvestigatorCaseCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     c.reference,
-                    style: AppText.cardTitle.copyWith(color: Colors.white),
+                    style: AppText.cardTitle.copyWith(color: pageInk(context)),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.small),
@@ -327,14 +327,14 @@ class _InvestigatorCaseCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: AppText.body.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: pageInk(context),
                 )),
             if (description.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(description,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: AppText.bodyMuted.copyWith(color: Colors.white70)),
+                  style: AppText.bodyMuted.copyWith(color: AppColors.neutral)),
             ],
             const SizedBox(height: 10),
             const Divider(color: AppColors.fieldBorder, height: 1),
