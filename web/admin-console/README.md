@@ -2,7 +2,9 @@
 
 A small website for the **root administrator** only. It shows every police
 station's admin and lets the root admin create new admin accounts and change
-an admin's station. Station admins keep using the mobile app.
+an admin's station. Under **Website messages** it shows what people sent
+through the Contact form on the public website (web/landing). Station admins
+keep using the mobile app.
 
 It is plain HTML / CSS / JavaScript: no build step, no Node needed.
 
@@ -61,6 +63,8 @@ When the address changes, update the set-password link: add
 * That check is only for a clear message. The real protection is on the
   server: `list_admins()` and `set_admin_station()` refuse anyone but the
   root admin, and the `create-admin` Edge Function checks the caller too.
+  The same goes for `list_contact_messages()` and
+  `set_contact_message_status()` (website messages).
 * `config.js` only has the **publishable** key (it's public by design and
   already ships in the mobile app). The service key stays inside Supabase.
 * New admins (and investigators created in the mobile app) get no password.

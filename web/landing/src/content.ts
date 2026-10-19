@@ -6,8 +6,6 @@
 export const brand = {
   name: 'Argus Shield',
   wordmark: 'ARGUS SHIELD',
-  /** TODO: the team's real contact address — the contact form drafts mail to it. */
-  email: 'hello@argus-shield.example',
   /** The root admin's web console (served from web/admin-console). */
   adminHref: '/admin/',
 };
