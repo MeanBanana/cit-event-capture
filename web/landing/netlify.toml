@@ -12,12 +12,9 @@
 [build.environment]
   NODE_VERSION = "22"
 
-# /admin -> /admin/ so the console's relative files (styles.css, app.js) load.
-[[redirects]]
-  from   = "/admin"
-  to     = "/admin/"
-  status = 301
-  force  = true
+# No /admin -> /admin/ redirect here: Netlify ignores trailing slashes when matching
+# rules, so it would also catch /admin/ and loop. Netlify already adds the slash
+# itself because dist/admin/index.html exists.
 
 # Basic security headers for every page.
 [[headers]]
