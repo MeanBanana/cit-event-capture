@@ -125,7 +125,7 @@ Our tables never store passwords or login tokens. Supabase Auth keeps them in it
 | Account | How it is created | What the database does |
 |---|---|---|
 | **Citizen** | Registers in the app with `supabase.auth.signUp(...)`, sending `username`, `firstname`, `surname`, `phonenumber`, `residence` as sign-up data | The `on_auth_user_created` trigger creates the `"User"` row and the `citizen` row. **App sign-ups are always citizens** — a role sent from the app is ignored |
-| **Investigator** | An admin taps **+ New investigator** on the Investigators tab and fills in the popup, which calls the `create-investigator` Edge Function (see [Creating investigator accounts](#creating-investigator-accounts)) | The Edge Function creates the login with the service key and puts `role: investigator` in `app_metadata`, which only the service key can set. The trigger then creates the `"User"` and `investigator` rows. The investigator then sets their own password through the same reset link as **Forgot password?** (see below) |
+| **Investigator** | An admin taps **+ New investigator** on the Investigators tab and fills in the popup, which calls the `create-investigator` Edge Function (see [Creating investigator accounts](#creating-investigator-accounts)) | The Edge Function creates the login with the service key and puts `role: investigator` in `app_metadata`, which only the service key can set. The trigger then creates the `"User"` and `investigator` rows. The function then emails the investigator a link to choose their password (see below) |
 | **Admin** | Manually, by the database owner (see below) | — |
 
 **Creating an admin** (one-time, by the database owner):
@@ -148,9 +148,9 @@ Our tables never store passwords or login tokens. Supabase Auth keeps them in it
 1. It reads the caller's login token and checks their `"User".role` is `admin` (anyone else gets "Only a system administrator can add investigators.").
 2. It checks the form (same rules as the app), then that the username (`username_available`) and badge number are free.
 3. `auth.admin.createUser` with `email_confirm: true`, `app_metadata: { role: "investigator" }` and the form fields in `user_metadata` (`username`, `firstname`, `surname`, `phonenumber`, `rank`, `badgenumber`, `station`, `unit`). The `on_auth_user_created` trigger makes the `"User"` and `investigator` rows.
-4. It returns `{ userid, email }`. Errors come back as `{ error: "message" }`, which the app shows as they are.
+4. It emails the investigator a link to choose a password, then returns `{ userid, email, email_sent }`. Errors come back as `{ error: "message" }`, which the app shows as they are.
 
-The account has **no password**. The investigator opens the app on their own phone, taps **Forgot password?** and enters their email. (The function does not send the reset email itself, because reset links only open on the phone that asked for them.)
+The account has **no password** until the investigator uses that link. It is Supabase's **Reset password** email, sent with the implicit flow so the link works on any device, and it opens the web admin console's `set-password.html` (the `PASSWORD_SETUP_URL` secret; setup in step 3b of [`SUPABASE_ADMIN_CONSOLE.md`](../SUPABASE_ADMIN_CONSOLE.md)). The app's own **Forgot password?** links can't be used for this because they only open on the phone that asked for them. If the email can't be sent (`email_sent: false`), the account is kept and the app tells the admin the investigator should use **Forgot password?**.
 
 **Deploy** (once, and after every change to the function), from the `database/` folder:
 
@@ -160,7 +160,7 @@ supabase link --project-ref tnydrlxptqegzhbvwpcq   # first time only
 supabase functions deploy create-investigator
 ```
 
-`config.toml` sets `verify_jwt = false` for this function because it checks the caller itself (step 1). `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to Edge Functions automatically; nothing needs to be added by hand. Until it is deployed, the app shows "This feature is not set up on the server yet." Logs: **Dashboard → Edge Functions → create-investigator → Logs**.
+`config.toml` sets `verify_jwt = false` for this function because it checks the caller itself (step 1). `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to Edge Functions automatically; add the `PASSWORD_SETUP_URL` secret for the email link. Until it is deployed, the app shows "This feature is not set up on the server yet." Logs: **Dashboard → Edge Functions → create-investigator → Logs**.
 
 ### Logging in with a username
 

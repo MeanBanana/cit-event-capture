@@ -9,6 +9,9 @@ It is plain HTML / CSS / JavaScript: no build step, no Node needed.
 ```
 web/admin-console/
   index.html     sign-in page + console
+  set-password.html / .js
+                 "choose your password" page that the new-account
+                 email links to (admins and investigators)
   styles.css     look and feel (white, navy, amber from the logo)
   app.js         all the logic
   config.js      Supabase URL + publishable key (same as the mobile app)
@@ -45,8 +48,10 @@ It's a static site, so any static host works. Upload the whole
   onto the page. You get a link straight away.
 * **Vercel** or **GitHub Pages** work the same way (publish the folder).
 
-No Supabase setting needs to change for a new address: signing in with a
-password doesn't use redirect links.
+When the address changes, update the set-password link: add
+`<address>/set-password.html` to Supabase's **Redirect URLs** and set the
+`PASSWORD_SETUP_URL` Edge Function secret to it (see step 3b in
+[`SUPABASE_ADMIN_CONSOLE.md`](../../SUPABASE_ADMIN_CONSOLE.md)).
 
 ## How it's secured
 
@@ -58,5 +63,6 @@ password doesn't use redirect links.
   root admin, and the `create-admin` Edge Function checks the caller too.
 * `config.js` only has the **publishable** key (it's public by design and
   already ships in the mobile app). The service key stays inside Supabase.
-* New admins get a temporary password from the root admin. It is shown once
-  after creating the account and wiped from the page when the dialog closes.
+* New admins (and investigators created in the mobile app) get no password.
+  The Edge Function emails them a one-use link to `set-password.html`, which
+  only keeps the session in memory and signs out after saving.

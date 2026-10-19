@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "admin-console",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8093", "--directory", "web/admin-console"],
+      "port": 8093,
+      "autoPort": false
+    }
+  ]
+}
