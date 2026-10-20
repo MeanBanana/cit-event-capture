@@ -2,6 +2,7 @@ import {useEffect} from 'react';
 import {AttackLog} from './components/AttackLog';
 import {Footer, Header} from './components/Chrome';
 import {Contact} from './components/Contact';
+import {Download} from './components/Download';
 import {Hero} from './components/Hero';
 import {Pipeline} from './components/Pipeline';
 import {Roles} from './components/Roles';
@@ -20,6 +21,7 @@ export default function App() {
         <AttackLog />
         <Pipeline />
         <Roles />
+        <Download />
         <Contact />
       </main>
       <Footer />

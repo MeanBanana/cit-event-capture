@@ -1,5 +1,7 @@
 // new_investigator_form.dart — the form inside the "New investigator" popup
-// (opened by "+ New investigator" on the Investigators tab).
+// (opened by "+ New investigator" on the Investigators tab). The same form,
+// filled in, is the "Update investigator" popup (an investigator card's
+// Update button): there the password is optional.
 //
 // Same look as NewCaseForm (pickers.dart): Courier labels, themed fields, a
 // red error line and one big orange button. The checks here match the
@@ -44,7 +46,11 @@ class NewInvestigatorForm extends StatefulWidget {
   /// stays open so nothing typed is lost).
   final Future<void> Function(NewInvestigatorDetails details) onCreate;
 
-  const NewInvestigatorForm({super.key, required this.onCreate});
+  /// Update mode: the investigator's current details (password ''). The
+  /// password is then optional: empty keeps their password.
+  final NewInvestigatorDetails? initial;
+
+  const NewInvestigatorForm({super.key, required this.onCreate, this.initial});
 
   @override
   State<NewInvestigatorForm> createState() => _NewInvestigatorFormState();
@@ -66,6 +72,25 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
   bool _saving = false;
   bool _showPassword = false;
   String? _error;
+
+  bool get _isUpdate => widget.initial != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.initial;
+    if (d != null) {
+      _firstName.text = d.firstName;
+      _surname.text = d.surname;
+      _username.text = d.username;
+      _email.text = d.email;
+      _phone.text = d.phone;
+      _rank.text = d.rank;
+      _badge.text = d.badgeNumber;
+      _station.text = d.station;
+      _unit.text = d.unit;
+    }
+  }
 
   @override
   void dispose() {
@@ -150,9 +175,13 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
       key: _formKey,
       child: ListView(
         children: [
-          const Text(
-            'Give the investigator their username and a temporary password. '
-            'They must choose their own password the first time they log in.',
+          Text(
+            _isUpdate
+                ? 'Change their details or log-in. Leave the password empty to '
+                    'keep their current one; a new password is temporary and '
+                    'they must choose their own at their next log-in.'
+                : 'Give the investigator their username and a temporary password. '
+                    'They must choose their own password the first time they log in.',
             style: AppText.bodyMuted,
           ),
           const SizedBox(height: AppSpacing.medium),
@@ -221,7 +250,9 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
-                  _saving ? 'Creating...' : 'Create investigator account',
+                  _isUpdate
+                      ? (_saving ? 'Saving...' : 'Save changes')
+                      : (_saving ? 'Creating...' : 'Create investigator account'),
                 ),
               ),
             ),
@@ -238,7 +269,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Temporary password',
+          Text(_isUpdate ? 'New temporary password (optional)' : 'Temporary password',
               style: AppText.fieldLabel.copyWith(fontSize: 17)),
           const SizedBox(height: 6),
           Row(
@@ -255,7 +286,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
                   maxLength: 72,
                   enabled: !_saving,
                   decoration: InputDecoration(
-                    hintText: 'Tap Generate',
+                    hintText: _isUpdate ? 'Leave empty to keep it' : 'Tap Generate',
                     counterText: '',
                     suffixIcon: IconButton(
                       tooltip: _showPassword ? 'Hide password' : 'Show password',
@@ -267,7 +298,9 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
                           setState(() => _showPassword = !_showPassword),
                     ),
                   ),
-                  validator: validateTempPassword,
+                  validator: (value) => _isUpdate && (value ?? '').isEmpty
+                      ? null
+                      : validateTempPassword(value),
                 ),
               ),
               const SizedBox(width: 8),

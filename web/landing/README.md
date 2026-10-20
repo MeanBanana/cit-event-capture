@@ -33,6 +33,8 @@ talks to Supabase directly from the browser with the publishable key in
 | The attack, frame by frame (reel of stills) | `src/components/AttackLog.tsx` |
 | Phone → cloud → AI → case file, drawn on scroll | `src/components/Pipeline.tsx` |
 | Citizen / Investigator / Admin cards | `src/components/Roles.tsx` |
+| Download the Android app (Android phones only) | `src/components/Download.tsx`, `src/lib/device.ts` |
+| Blocks the APK for non-Android-phones on Netlify | `netlify/edge-functions/apk-guard.ts` |
 | Contact form + statistics | `src/components/Contact.tsx` |
 | Header (Admin login button) + footer | `src/components/Chrome.tsx` |
 | Hero layer images (desktop `d/`, phone `m/`) | `public/layers/` |
@@ -48,3 +50,14 @@ talks to Supabase directly from the browser with the publishable key in
   photos in the reel, replace `public/media/cards/s1.webp … s4.webp`
   (portrait, 840 × 1120) — only use photos you have the rights to.
 - Statistics are sourced in the footer (CITASA / SAPS, via Daily News).
+
+## Putting a new APK on the website
+
+Build it as described in `mobile/argus_shield/RELEASE_APK.md`, then copy it to
+`public/downloads/argus-shield.apk` (that exact name), update `version` and
+`size` under `download` in `src/content.ts`, commit and push.
+
+Only Android **phones** get the Download button (computers see a QR code to
+open the page on their phone). On Netlify, `netlify/edge-functions/apk-guard.ts`
+also refuses the file itself to every other device. `npm run dev` doesn't run
+that guard, so locally the file is served to anyone.

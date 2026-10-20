@@ -16,6 +16,7 @@ export const nav = [
   {label: 'The attack', href: '#attack'},
   {label: 'How it works', href: '#pipeline'},
   {label: 'Roles', href: '#roles'},
+  {label: 'Get the app', href: '#download'},
   {label: 'Contact', href: '#contact'},
 ];
 
@@ -67,7 +68,7 @@ export const roles = {
       rings: 2,
       lines: ['Film live or upload what you saw', 'Location and time stamped for you', 'Follow your report’s progress', 'English, Afrikaans and isiZulu'],
       cta: 'Get the app',
-      href: '#contact',
+      href: '#download',
     },
     {
       name: 'Investigator',
@@ -88,6 +89,23 @@ export const roles = {
       cta: 'Admin login',
       href: '/admin/',
     },
+  ],
+};
+
+/** The Android app download (Download.tsx). The APK file itself goes in
+ *  public/downloads/ (see README: "Putting a new APK on the website"). */
+export const download = {
+  eyebrow: 'Get the app',
+  heading: 'Argus Shield on your phone.',
+  body: 'Free for citizens. Film or upload what you saw, and Argus does the rest. Android phones only for now.',
+  apk: '/downloads/argus-shield.apk',
+  version: '1.0.0',
+  size: 'about 25 MB',
+  steps: [
+    'Tap Download and wait for it to finish.',
+    'Open the file (from the notification or your Downloads).',
+    'If asked, allow your browser to "Install unknown apps", then tap Install.',
+    'Open Argus Shield and register as a citizen.',
   ],
 };
 

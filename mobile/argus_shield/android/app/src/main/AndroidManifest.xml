@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:requestLegacyExternalStorage="true"
-        android:label="argus_shield"
+        android:label="Argus Shield"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

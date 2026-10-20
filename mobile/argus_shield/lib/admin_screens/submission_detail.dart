@@ -8,7 +8,8 @@
 // fit its review status:
 //   pending            Reject · Duplicate · Accept
 //   accepted (in case) Open case · Move to another case · Remove from case
-//   rejected/duplicate Reopen for review
+//   rejected           Reopen for review · Delete (for good)
+//   duplicate          Reopen for review
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -76,6 +77,13 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
   Future<void> _act(ReviewAction action) async {
     final changed = await action(context, _service, _s);
     if (changed) await _refresh();
+  }
+
+  /// Deletes a rejected submission for good, then leaves this page (the
+  /// list reloads when it shows again).
+  Future<void> _delete() async {
+    final deleted = await deleteSubmission(context, _service, _s);
+    if (deleted && mounted) Navigator.pop(context);
   }
 
   Future<void> _openCase() async {
@@ -338,6 +346,16 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
                 color: AppColors.accent,
                 onPressed: () => _act(reopenSubmission)),
           ]),
+          if (s.isRejected) ...[
+            const SizedBox(height: AppSpacing.small),
+            row([
+              SmallActionButton(
+                  key: const ValueKey('delete-submission'),
+                  label: 'Delete submission',
+                  color: AppColors.danger,
+                  onPressed: _delete),
+            ]),
+          ],
         ];
     }
   }

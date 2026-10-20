@@ -1,5 +1,5 @@
 // review_actions.dart — what happens when the admin taps Accept, Reject,
-// Duplicate, Move, Remove from case or Reopen on a submission.
+// Duplicate, Move, Remove from case, Reopen or Delete on a submission.
 //
 // Each function asks for whatever it needs (a case, a reason, ...), calls
 // SupabaseService, shows a short message, and returns true when something
@@ -248,6 +248,35 @@ Future<bool> reopenSubmission(
   if (!ok || !context.mounted) return false;
   return _run(context, '${submission.reference} is pending review again',
       () => service.reopenSubmission(submission.incidentId));
+}
+
+/// Delete a REJECTED submission for good: the submission, its footage and
+/// everything the AI found in it (delete-submission Edge Function).
+Future<bool> deleteSubmission(
+  BuildContext context,
+  SupabaseService service,
+  CrimeSceneSummary submission,
+) async {
+  final ok = await confirmAction(
+    context,
+    title: 'Delete ${submission.reference}?',
+    message: 'The submission, its ${plural(submission.mediaCount, 'file')} and '
+        'everything the AI found in them are deleted for good. '
+        'This can\'t be undone.',
+    confirmLabel: 'Delete',
+    destructive: true,
+  );
+  if (!ok || !context.mounted) return false;
+  try {
+    final warning = await service.deleteSubmission(submission.incidentId);
+    if (context.mounted) {
+      showSnack(context, warning ?? '${submission.reference} deleted');
+    }
+    return true;
+  } catch (e) {
+    if (context.mounted) showSnack(context, errorText(e));
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------

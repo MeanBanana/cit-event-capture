@@ -302,6 +302,7 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
             onTap: () => _openDetails(s),
             onAccept: () => _runReview(acceptSubmission, s),
             onReject: () => _runReview(rejectSubmission, s),
+            onDelete: () => _runReview(deleteSubmission, s),
           ),
         );
 
@@ -405,12 +406,14 @@ class _NotInCaseTile extends StatelessWidget {
 ///
 /// Tapping the card calls [onTap] (opens the details page). For a pending
 /// submission, passing [onAccept] / [onReject] adds the wireframe's
-/// Reject · View · Accept buttons. [menu] (e.g. a ⋮ button) goes top right.
+/// Reject · View · Accept buttons; for a rejected one, [onDelete] adds
+/// View · Delete. [menu] (e.g. a ⋮ button) goes top right.
 class CrimeSceneCard extends StatelessWidget {
   final CrimeSceneSummary submission;
   final VoidCallback? onTap;
   final VoidCallback? onAccept;
   final VoidCallback? onReject;
+  final VoidCallback? onDelete;
   final Widget? menu;
 
   /// Shorter descriptions (3 lines each); the details page shows them all.
@@ -422,6 +425,7 @@ class CrimeSceneCard extends StatelessWidget {
     this.onTap,
     this.onAccept,
     this.onReject,
+    this.onDelete,
     this.menu,
     this.compact = true,
   });
@@ -431,6 +435,7 @@ class CrimeSceneCard extends StatelessWidget {
     final s = submission;
     final (reviewLabel, reviewColor) = reviewStyle(s.reviewStatus);
     final showActions = s.isPending && (onAccept != null || onReject != null);
+    final showDelete = s.isRejected && onDelete != null;
 
     return AdminCard(
       onTap: onTap,
@@ -522,6 +527,28 @@ class CrimeSceneCard extends StatelessWidget {
                       label: 'Accept',
                       color: AppColors.success,
                       onPressed: onAccept),
+                ),
+              ],
+            ),
+          ],
+
+          if (showDelete) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: SmallActionButton(
+                      label: 'View',
+                      color: AppColors.textPrimary,
+                      onPressed: onTap),
+                ),
+                const SizedBox(width: AppSpacing.small),
+                Expanded(
+                  child: SmallActionButton(
+                      key: ValueKey('delete-${s.incidentId}'),
+                      label: 'Delete',
+                      color: AppColors.danger,
+                      onPressed: onDelete),
                 ),
               ],
             ),
@@ -910,6 +937,7 @@ class _SubmissionListPageState extends State<SubmissionListPage> {
                   onTap: () => _open(s),
                   onAccept: () => _review(acceptSubmission, s),
                   onReject: () => _review(rejectSubmission, s),
+                  onDelete: () => _review(deleteSubmission, s),
                 ),
               ),
             ),

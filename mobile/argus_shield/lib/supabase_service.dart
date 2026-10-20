@@ -443,6 +443,79 @@ class SupabaseService {
     );
   }
 
+  /// The log-in username of [userId] (the investigator list doesn't carry
+  /// it; the Update form needs it). Admins can read every "User" row.
+  Future<String?> getUsername(int userId) async {
+    final row = await supabase
+        .from('User')
+        .select('username')
+        .eq('userid', userId)
+        .maybeSingle();
+    return row?['username'] as String?;
+  }
+
+  /// Changes an investigator's details and log-in through the
+  /// manage-investigator Edge Function (changing someone's email or
+  /// password needs the service key). [password] is optional: a new
+  /// TEMPORARY password they must change at their next log-in.
+  /// Throws FunctionException like [createInvestigator].
+  Future<void> updateInvestigator({
+    required int userId,
+    required String firstName,
+    required String surname,
+    required String username,
+    required String email,
+    String? phone,
+    String? rank,
+    required String badgeNumber,
+    required String station,
+    String? unit,
+    String? password,
+  }) async {
+    await supabase.functions.invoke(
+      'manage-investigator',
+      body: {
+        'action': 'update',
+        'userid': userId,
+        'firstname': firstName.trim(),
+        'surname': surname.trim(),
+        'username': username.trim(),
+        'email': email.trim(),
+        'phone': phone?.trim() ?? '',
+        'rank': rank?.trim() ?? '',
+        'badgenumber': badgeNumber.trim(),
+        'station': station.trim(),
+        'unit': unit?.trim() ?? '',
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
+    );
+  }
+
+  /// Deletes an investigator's account (manage-investigator Edge Function).
+  /// Returns 'deleted' (nothing they did is on record) or 'anonymised'
+  /// (their case work stays on record as "Former investigator"; the login is
+  /// blocked for good).
+  Future<String> deleteInvestigator(int userId) async {
+    final response = await supabase.functions.invoke(
+      'manage-investigator',
+      body: {'action': 'delete', 'userid': userId},
+    );
+    final data = response.data;
+    return data is Map && data['mode'] is String ? data['mode'] as String : 'deleted';
+  }
+
+  /// Permanently deletes a REJECTED submission, its footage and everything
+  /// the AI found in it (delete-submission Edge Function). Returns a warning
+  /// when some files could not be removed, otherwise null.
+  Future<String?> deleteSubmission(int incidentId) async {
+    final response = await supabase.functions.invoke(
+      'delete-submission',
+      body: {'incidentid': incidentId},
+    );
+    final data = response.data;
+    return data is Map && data['warning'] is String ? data['warning'] as String : null;
+  }
+
   // ------------------------------------------------------------ ADMIN STATS
   /// The four SYSTEM STATUS numbers for the admin Overview tab, counted by
   /// the admin_overview_stats database function.

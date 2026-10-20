@@ -30,3 +30,13 @@
   [headers.values]
     Cache-Control = "no-store"
     X-Robots-Tag  = "noindex, nofollow"
+
+# The Android app (public/downloads/argus-shield.apk). Android phones only:
+# netlify/edge-functions/apk-guard.ts answers 403 to every other device.
+[[headers]]
+  for = "/downloads/*"
+  [headers.values]
+    Content-Type        = "application/vnd.android.package-archive"
+    Content-Disposition = "attachment; filename=\"argus-shield.apk\""
+    Cache-Control       = "public, max-age=300"
+    X-Robots-Tag        = "noindex"

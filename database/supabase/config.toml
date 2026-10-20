@@ -428,3 +428,14 @@ verify_jwt = false
 [functions.create-admin]
 enabled = true
 verify_jwt = false
+
+# Admin app: Update / Delete on an investigator card (functions/manage-investigator)
+# and Delete on a rejected submission (functions/delete-submission). Both check
+# the caller themselves (logged in AND an admin), like create-investigator.
+[functions.manage-investigator]
+enabled = true
+verify_jwt = false
+
+[functions.delete-submission]
+enabled = true
+verify_jwt = false
