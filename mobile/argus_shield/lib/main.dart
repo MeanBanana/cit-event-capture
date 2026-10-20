@@ -7,6 +7,7 @@ import 'reset_password.dart';
 import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
 import 'app_settings.dart';
+import 'connection_status.dart';
 
 // The app starts on the login page. After logging in, login.dart sends each
 // user to their own dashboard: citizens to CitizenHome, admins to
@@ -25,6 +26,10 @@ Future<void> main() async {
     url: 'https://tnydrlxptqegzhbvwpcq.supabase.co',
     publishableKey: 'sb_publishable_qyDg3_F69Cy2rpoWDvR-7A_Z3AXR8h3',
   );
+  // Shows a friendly message whenever there is no internet or the server is
+  // not answering (connection_status.dart). Not awaited: the app opens
+  // straight away and the message appears if the first check fails.
+  connection.start();
   runApp(const RootApp());
 }
 
@@ -88,8 +93,10 @@ class _RootAppState extends State<RootApp> {
       theme: buildArgusLightTheme(),
       darkTheme: buildArgusTheme(),
       themeMode: appSettings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      // keeps every page above the phone's navigation buttons
-      builder: keepAboveSystemBars,
+      // keeps every page above the phone's navigation buttons, with the
+      // "No internet" / "Server not responding" strip at the top
+      builder: (context, child) =>
+          ConnectionBanner(child: keepAboveSystemBars(context, child)),
       home: const LoginPage(),
     );
   }

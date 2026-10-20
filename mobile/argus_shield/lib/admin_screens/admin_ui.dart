@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:argus_shield/theme/app_theme.dart';
+import 'package:argus_shield/connection_status.dart';
 
 /// 28/09/2026 14:35 — formatted without adding the intl package.
 String formatDateTime(DateTime d) {
@@ -170,6 +171,9 @@ class SmallActionButton extends StatelessWidget {
 /// raised by our database functions (e.g. "Case 5 is closed ...") are
 /// shown as they are.
 String errorText(Object error) {
+  // No internet / server not answering: a friendly sentence instead of the
+  // raw exception (and the strip at the top of the screen appears).
+  if (isNetworkError(error)) return networkErrorText(error);
   if (error is PostgrestException) return error.message;
   // Edge Functions (e.g. create-investigator) answer { "error": "..." }.
   if (error is FunctionException) {

@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'connection_status.dart';
 import 'models/investigator_summary.dart';
 import 'models/system_stats.dart';
 import 'models/crime_scene_summary.dart';
@@ -51,8 +52,7 @@ class SupabaseService {
         return {"success": false, "message": "That username is already taken."};
       }
 
-      // 2. Create the account. The keys in `data` must be spelled exactly like
-      //    this - the database trigger reads them to fill "User" and "citizen".
+      // 2. Create the account.
       final authResponse = await supabase.auth.signUp(
         email: email.trim(),
         password: password,
@@ -85,6 +85,9 @@ class SupabaseService {
     } on AuthWeakPasswordException {
       return {"success": false, "message": "Password is too weak."};
     } on AuthException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       if (e.code == 'user_already_exists' || e.code == 'email_exists') {
         return {"success": false, "message": "An account with this email already exists."};
       }
@@ -97,8 +100,14 @@ class SupabaseService {
       }
       return {"success": false, "message": e.message};
     } on PostgrestException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       return {"success": false, "message": e.message};
     } catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       return {"success": false, "message": e.toString()};
     }
   }
@@ -145,13 +154,22 @@ class SupabaseService {
             authResponse.user!.appMetadata['must_change_password'] == true,
       };
     } on AuthException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       if (e.code == 'email_not_confirmed') {
         return {"success": false, "message": "Please confirm your email address first."};
       }
       return {"success": false, "message": badLogin};
     } on PostgrestException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       return {"success": false, "message": e.message};
     } catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       return {"success": false, "message": e.toString()};
     }
   }
@@ -190,6 +208,9 @@ class SupabaseService {
             "sent. Open it on this phone.",
       };
     } on AuthException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       if (e.statusCode == '429' || e.code == 'over_email_send_rate_limit') {
         return {
           "success": false,
@@ -198,6 +219,9 @@ class SupabaseService {
       }
       return {"success": false, "message": e.message};
     } catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       return {
         "success": false,
         "message": "Could not send the reset email. Check your connection.",
@@ -215,6 +239,9 @@ class SupabaseService {
     } on AuthWeakPasswordException {
       return {"success": false, "message": "Password is too weak."};
     } on AuthException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       if (e.code == 'same_password') {
         return {
           "success": false,
@@ -231,6 +258,9 @@ class SupabaseService {
       }
       return {"success": false, "message": e.message};
     } catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": networkErrorText(e)};
+      }
       return {
         "success": false,
         "message": "Could not change the password. Check your connection.",
@@ -347,6 +377,9 @@ class SupabaseService {
         "emailChangedNow": emailChangedNow,
       };
     } on AuthException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": _partly(saved, networkErrorText(e))};
+      }
       final reason = (e.code == 'email_exists' || e.code == 'user_already_exists')
           ? "That email address is already used by another account."
           : e.code == 'over_email_send_rate_limit'
@@ -354,8 +387,14 @@ class SupabaseService {
               : "Your email could not be changed: ${e.message}";
       return {"success": false, "message": _partly(saved, reason)};
     } on PostgrestException catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": _partly(saved, networkErrorText(e))};
+      }
       return {"success": false, "message": _partly(saved, e.message)};
     } catch (e) {
+      if (isNetworkError(e)) {
+        return {"success": false, "message": _partly(saved, networkErrorText(e))};
+      }
       return {"success": false, "message": _partly(saved, e.toString())};
     }
   }

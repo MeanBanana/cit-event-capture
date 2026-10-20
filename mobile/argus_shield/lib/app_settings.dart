@@ -17,6 +17,13 @@ class AppSettings extends ChangeNotifier {
   String t(String key) {
     const strings = {
       'English': {
+        'offlineTitle': 'No internet connection',
+        'offlineBody': 'Check your Wi-Fi or mobile data. Argus will reconnect by itself.',
+        'serverDownTitle': "Can't reach the Argus server",
+        'serverDownBody': "The server isn't responding right now. Trying again...",
+        'backOnline': 'Back online',
+        'backOnlineBody': 'Your connection is working again. Pull down to refresh a list.',
+        'retry': 'Retry',
         'settings': 'Settings',
         'language': 'Language',
         'display': 'Display',
@@ -243,6 +250,13 @@ class AppSettings extends ChangeNotifier {
         'passwordRules': 'Password requires one capital letter, one digit, and one special character and must be at least 8 characters long.',
       },
       'Afrikaans': {
+        'offlineTitle': 'Geen internetverbinding nie',
+        'offlineBody': 'Kontroleer jou Wi-Fi of mobiele data. Argus sal self weer koppel.',
+        'serverDownTitle': 'Kan nie die Argus-bediener bereik nie',
+        'serverDownBody': 'Die bediener reageer nie op die oomblik nie. Ons probeer weer...',
+        'backOnline': 'Weer aanlyn',
+        'backOnlineBody': "Jou verbinding werk weer. Trek af om 'n lys te verfris.",
+        'retry': 'Probeer weer',
         'settings': 'Instellings',
         'language': 'Taal',
         'display': 'Vertoon',
@@ -469,6 +483,13 @@ class AppSettings extends ChangeNotifier {
         'passwordRules': 'Wagwoord benodig een hoofletter, een syfer en een spesiale karakter, en moet minstens 8 karakters lank wees.',
       },
       'Zulu': {
+        'offlineTitle': 'Akukho ukuxhumana ne-inthanethi',
+        'offlineBody': 'Hlola i-Wi-Fi noma idatha yakho. I-Argus izophinde ixhume ngokwayo.',
+        'serverDownTitle': 'Asikwazi ukufinyelela iseva ye-Argus',
+        'serverDownBody': 'Iseva ayiphenduli okwamanje. Sizama futhi...',
+        'backOnline': 'Usuxhumekile futhi',
+        'backOnlineBody': 'Ukuxhumana kwakho kuyasebenza futhi. Donsela phansi ukuze uvuselele uhlu.',
+        'retry': 'Zama futhi',
         'settings': 'Izilungiselelo',
         'language': 'Ulimi',
         'display': 'Ukubonisa',
