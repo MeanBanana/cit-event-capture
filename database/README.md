@@ -27,11 +27,15 @@ This folder is the version-controlled record of the Argus Shield database. The l
 ```text
 database/
 ├── README.md                  ← this file
+├── AI_PIPELINE.md             ← AI job queue, worker and what it writes
+├── oneoff/                    ← one-off data scripts (not migrations)
 └── supabase/                  ← run all Supabase CLI commands from database/
     ├── config.toml            ← Supabase CLI project configuration
     ├── migrations/            ← SQL migrations, applied in timestamp order
-    └── functions/             ← Edge Functions (see "Creating investigator accounts")
-        └── create-investigator/index.ts
+    ├── tests/                 ← pgTAP tests (supabase test db)
+    └── functions/             ← Edge Functions
+        ├── create-investigator/index.ts   (admin creates investigators in the app)
+        └── create-admin/index.ts          (root admin creates admins in the web console)
 ```
 
 Never put passwords, the database password, the service role / secret key or any other credential in this folder.
@@ -42,7 +46,7 @@ Never put passwords, the database password, the service role / secret key or any
 
 ### Users and roles
 
-Everyone who uses the app has one row in `"User"`. Citizens and investigators have one extra row in their own sub-table with the details only they have. Admins have no extra details, so they only have a `"User"` row.
+Everyone who uses the app has one row in `"User"`. Citizens, investigators and admins each have one extra row in their own sub-table with the details only they have.
 
 ```text
 auth.users  (Supabase Auth: email, hashed password, login sessions)
@@ -50,8 +54,11 @@ auth.users  (Supabase Auth: email, hashed password, login sessions)
     ▼
 "User"  (everyone: username, name, email, phone, role)
     ├──► citizen       (only when role = 'citizen')
-    └──► investigator  (only when role = 'investigator')
+    ├──► investigator  (only when role = 'investigator')
+    └──► admin         (only when role = 'admin': root / normal, police station)
 ```
+
+The `admin` table (`userid`, `admin_type` `root` | `normal`, `admin_station`, `createdby`, `datecreated`) is described in [`SUPABASE_ADMIN_CONSOLE.md`](../SUPABASE_ADMIN_CONSOLE.md#the-admin-table). There is at most one root admin.
 
 **`"User"`** — note the capital U: the name must be written with quotes in SQL (`public."User"`), but in Flutter it is simply `.from('User')`.
 
@@ -105,7 +112,13 @@ The sub-tables point at `"User"` using **both** `userid` and `role`. Because of 
 | `crossreferencelink` | Links the same vehicle or suspect across different incidents, with match confidence and verification status. For `vehicle` links `entityid_a`/`entityid_b` are `vehicledetail.vehicledetectionid`; for `suspect` links they are `suspect.suspectid`. Used for the Linked view and the case suggestions (`rejected` links are ignored) | `linkedby` → User |
 | `caseevent` | The history of every submission and case: submitted, added to / removed from a case, rejected, duplicate, reopened, case created / edited / status changed / deleted, investigator assigned / removed, lead changed, detection verified, suspect confirmed / dismissed / review undone / edited (with the reason; descriptions themselves are not copied in). Written **only by triggers**, so it is complete whichever screen or function made the change; nobody can edit or delete it from the app | `caseid` → cases, `incidentid` → crimescene, `actor` → User |
 
-See `diagrams/ERD.png` for the diagram (it still needs updating to show the `citizen` and `investigator` tables).
+| `casemessage` | The case group chat for the investigators assigned to a case: sender, text, time. Read live in the app through Supabase Realtime. Written **only** by `send_case_message()`, never edited or deleted (part of the case record); read-only once the case is closed | `caseid` → cases, `senderid` → User |
+
+The AI pipeline's own tables (`aijob`, `aiworker`, `caseentity`, `entitymatchrejection`) are described in [AI_PIPELINE.md](AI_PIPELINE.md).
+
+**File storage:** footage and the AI's pictures are in the private Supabase Storage bucket `submissions`, one folder per incident (`<incidentid>/media/…`, `<incidentid>/ai/<run>/…`), made by migration `20261009090000_submissions_bucket.sql`. Citizens upload to and read their own incidents' `media/` folder only; admins and investigators assigned to the case read everything; nobody can overwrite or delete files from the app. See [`backend/README.md`](../backend/README.md).
+
+See `diagrams/ERD.png` for the diagram (it still needs updating to show the newer tables).
 
 ---
 
@@ -126,20 +139,16 @@ Our tables never store passwords or login tokens. Supabase Auth keeps them in it
 |---|---|---|
 | **Citizen** | Registers in the app with `supabase.auth.signUp(...)`, sending `username`, `firstname`, `surname`, `phonenumber`, `residence` as sign-up data | The `on_auth_user_created` trigger creates the `"User"` row and the `citizen` row. **App sign-ups are always citizens** — a role sent from the app is ignored |
 | **Investigator** | An admin taps **+ New investigator** on the Investigators tab and fills in the popup, which calls the `create-investigator` Edge Function (see [Creating investigator accounts](#creating-investigator-accounts)) | The Edge Function creates the login with the service key and puts `role: investigator` in `app_metadata`, which only the service key can set. The trigger then creates the `"User"` and `investigator` rows. The account gets the temporary password the admin chose, and the investigator must choose their own at their first log-in (see below) |
-| **Admin** | Manually, by the database owner (see below) | — |
+| **Admin** (police station) | The **root admin** clicks **+ New admin** in the web console (`web/admin-console`, at `/admin/` on the website), which calls the `create-admin` Edge Function | Same as investigators: `role: admin` and `must_change_password: true` in `app_metadata`; the triggers create the `"User"` and `admin` rows (always `normal`, station from `user_metadata.admin_station`). Temporary password, changed at first log-in |
+| **Root admin** | Once, by the database owner, in the SQL Editor (see below) | — |
 
-**Creating an admin** (one-time, by the database owner):
+**Making the root admin** (one-time, by the database owner): register the account in the app (or use an existing admin), then in the **SQL Editor**:
 
-1. **Dashboard → Authentication → Users → Add user** (email + password). The trigger creates them as a citizen.
-2. In the **SQL editor**:
-   ```sql
-   DELETE FROM public.citizen
-     WHERE userid = (SELECT userid FROM public."User" WHERE email = 'person@example.com');
-   UPDATE public."User"
-     SET role = 'admin', username = 'TheirUsername', firstname = 'First', surname = 'Last'
-     WHERE email = 'person@example.com';
-   ```
-   The `DELETE` must run first — the database will not change the role while a citizen row exists.
+```sql
+SELECT public.make_root_admin('their_username', 'Argus HQ');
+```
+
+A citizen account is converted to an admin; investigator accounts are refused. Full steps and checks: [`SUPABASE_ADMIN_CONSOLE.md`](../SUPABASE_ADMIN_CONSOLE.md).
 
 ### Creating investigator accounts
 
@@ -209,6 +218,8 @@ Every table has row-level security (RLS) enabled. The app uses the **publishable
 | `caseassignment` | — | Own assignments | Assign, reassign, close |
 | `crossreferencelink` | — | View, create, update | All, incl. delete |
 | `caseevent` | — | History of cases they are **actively assigned** to (read-only) | All (read-only) |
+| `casemessage` | — | Read and send (through `send_case_message`) on cases they are **actively assigned** to; read-only when closed | Read all (oversight), never post |
+| `admin` | — | — | Own row; the **root admin** sees all. Nobody writes it directly (`set_admin_station()` is root only) |
 
 * **AI fields** (`crimescene.aisummary`, `aisummarystatus`, `aisummaryat`, `media.aidescription`, `aidescribedat`) can only be written with the service key: a trigger refuses them from the app.
 * **Case status:** admins may set any status; an investigator assigned to the case may only move it between `open` and `under_review` (through `set_case_status`).
@@ -232,7 +243,7 @@ Under POPIA a person seen in footage is not treated as a suspect until a person 
 5. Every decision is written to `caseevent` by a trigger: who, when, what and why. Descriptions are not copied into the history.
 6. The app shows **counts only** until someone is confirmed: `list_submissions` and `list_cases` return `possiblesuspects` and `confirmedsuspects`, each the most seen at once in one clip. For a case it is the highest of its submissions (A = 2, B = 1, C = 1 → "about 2"), since the same people usually appear in several reports.
 
-The investigator screens that use these functions are not built yet (see [Still to do](#still-to-do)); until then everything stays `possible` unless an investigator account calls the functions directly.
+The investigator app does not have a suspect review screen yet (see [Still to do](#still-to-do)); until then everything stays `possible` unless an investigator account calls the functions directly. (Investigators can already dismiss a wrong detection on the crime scene page through `correct_detection`.)
 
 ---
 
@@ -341,6 +352,15 @@ Under 30 is not shown. 30–59 is a "possible match" (case page recommendations 
 | `list_case_assignments(p_caseid)` | callable by logged-in users | A case's investigators: active first (lead first), then past assignments, with `islead` |
 | `username_available(username)` | callable before login | True if nobody has that username yet (any case) |
 | `rls_auto_enable()` | event trigger | Turns RLS on for every new table in `public` (the table still needs policies before the app can use it) |
+| `handle_auth_role_change()` | trigger on `auth.users` update | When a brand-new login (last 5 minutes) gets the role `investigator` or `admin` in `app_metadata`, swaps its citizen rows for the right ones (the Edge Functions' `createUser` sets the role in a second step) |
+| `clear_must_change_password()` | trigger `on_auth_user_password_changed` | Removes `must_change_password` from `app_metadata` once the password really changes |
+| `list_case_messages(caseid, after_id, limit)` / `send_case_message(caseid, body)` | assigned investigators (admins read only) | The case chat |
+| `current_admin()` / `is_root_admin()` | any logged-in user | The caller's `admin` row / whether they are the root admin (the web console checks this at sign-in) |
+| `list_admins()` / `set_admin_station(userid, station)` | root admin only | The console's admin list (with last sign-in) and "Change station" |
+| `make_root_admin(username, station)` | SQL Editor only | One-off: makes someone the root admin |
+| `combine_case_entities(caseid, from, into)` | admin / assigned investigator | Combines two people / vehicles / weapons of a case into one (View crops → "Same as Person 1"); logged in `caseevent` |
+
+The AI pipeline's functions (`submit_for_analysis`, `claim_next_job`, `ai_save_analysis`, `get_case_evidence`, `answer_entity_match`, `ai_worker_status`, …) and the crime scene / correction functions (`list_case_crime_scenes`, `get_crime_scene`, `correct_detection`) are listed in [AI_PIPELINE.md](AI_PIPELINE.md) and under [Migrations](#migrations).
 
 ---
 
@@ -494,12 +514,18 @@ await supabase.rpc('accept_suggested_matches', params: {
 | `20261005203100_submission_views_and_ai.sql` | AI fields (`media.aidescription`, `crimescene.aisummary` + status), GPS and `locationkey` on `crimescene`; `list_submissions` and `list_cases` page with a cursor and return the AI summary, chips and case previews; `list_location_groups`, `list_linked_groups`, `list_incident_media`; suggestions (`match_incidents`, `suggest_incidents_for_case`, `suggest_cases_for_incident`) and the one-tap review (`list_suggested_matches`, `accept_suggested_matches`) |
 | `20261006081759_remote_schema.sql` | Re-sync pulled from Supabase Cloud (`supabase db pull`): re-creates the existing functions as they are on the live database, drops and re-adds the check constraints on `caseassignment`, `crimescene`, `crossreferencelink`, `detection` and `media`, adds the unique constraint on `"User".username` and makes `"User".authid` **`NOT NULL`** (see the note on `authid` above) |
 | `20261006090000_suspect_review_and_case_cards.sql` | Suspect review for POPIA: `detection.suspectstatus` (`possible` / `confirmed` / `dismissed`) with reviewer, time and reason; only assigned investigators confirm or dismiss (`review_possible_suspect`, `update_suspect_details`), admins or investigators undo (`undo_suspect_review`); admins lose direct write access to `suspect`; suspect decisions logged in `caseevent`. `list_submissions` and `list_cases` return `possiblesuspects` / `confirmedsuspects`; `case_card_suggestions` gives each case card its best suggested submission and most relevant plate |
+| `20261007120000_investigator_role_after_create.sql` | Fix: logins made by `create-investigator` became citizens. `handle_auth_role_change()` catches the follow-up update that sets the role and swaps in the right rows, in the same transaction |
+| `20261009090000_submissions_bucket.sql` | Private Storage bucket `submissions` (one folder per incident: `media/` footage, `ai/<run>/` results and pictures) with its access rules; `media.airesultpath` |
 | `20261012100000_ai_pipeline_tables.sql` | AI pipeline tables: pgvector; job queue `aijob` + `aiworker` heartbeat; `caseentity` (Person 1 / Vehicle 2 of a case) and `entitymatchrejection`; `detection` gets one row per tracked object (track, seen from/to, details, crops, appearance fingerprint, case entity link); `weapondetail` allows `long_gun` / `machete` and records who held it; `crimescene.gpssource` / `aimerged`, `media.latitude/longitude`, `cases.aisummary*`. See [AI_PIPELINE.md](AI_PIPELINE.md) |
 | `20261012100100_ai_pipeline_functions.sql` | `submit_for_analysis`; worker functions (`claim_next_job`, `finish_job`, `ai_save_analysis`, `ai_load_case`, `ai_load_submission`, `ai_save_case`, heartbeat); `get_case_evidence`, `answer_entity_match`, `ai_worker_status`; triggers that queue merges and take a removed submission's pictures out of its case; `list_cases` returns the case AI summary |
 | `20261012100200_case_suggestion_rule.sql` | New suggestion rule in `match_incidents()`: within 1 km and 14 days, or the same / 1-character-off plate; "may show Person 2" reason from the appearance fingerprints |
 | `20261013100000_crime_scenes_and_corrections.sql` | Crime scenes inside a case and investigator corrections: `list_case_crime_scenes` (case page cards: description, location, suspects / vehicles / weapons, analysis status), `get_crime_scene` (files, every detection with its correctable fields, corrections log), `correct_detection` (the only way to change AI findings; logged in `correctionlog` with `fieldname` / `note`; refused while the AI is still analysing the footage). `detection.corrections` keeps corrected values through re-analysis; the worker uses them (`ai_member`) and leaves dismissed detections out of the case (`ai_load_submission`, `detection_keep_dismissed_out`). App users lose direct write access to `vehicledetail`, `weapondetail` and `correctionlog` |
 | `20261013110000_correctionlog_crimescene.sql` | `correctionlog.incidentid` (NOT NULL, FK → `crimescene`): every correction is linked to its crime scene directly. Filled in by a trigger from the corrected detection, so it can't point at another scene; existing rows are back-filled. `list_case_crime_scenes` / `get_crime_scene` read the log by crime scene |
 | `20261014100000_detail_tables_follow_corrections.sql` | `ai_save_analysis` always writes `vehicledetail` / `weapondetail` from `detection_value()`: a corrected field keeps the investigator's value and every other field (now including `vehicledetail.model`) follows the new AI run, also after a correction was undone. Before, a detection with any `correctionlog` row was never refreshed, so plate matching and `list_submissions` could read stale values. `detection_ai_value('weapon_type')` maps a class `weapondetail` doesn't know (e.g. `pistol`) to `other`, so the crime scene page and `weapondetail` agree. Existing detail rows are brought in line once |
+| `20261015100000_case_chat.sql` | Case group chat for assigned investigators: `casemessage`, `list_case_messages`, `send_case_message`, Realtime publication; admins read only; read-only on closed cases |
+| `20261018100000_admin_accounts.sql` | `admin` table (root / normal, police station) and its rules; `current_admin`, `is_root_admin`, `list_admins`, `set_admin_station`, `make_root_admin`; sign-up triggers create the `admin` row; existing admins get one (station `Unassigned`) |
+| `20261020100000_must_change_password.sql` | `clear_must_change_password()` trigger: the "must change password" mark on new admins / investigators is removed once they choose their own password |
+| `20261020120000_combine_case_entities.sql` | `combine_case_entities(caseid, from, into)`: an admin or assigned investigator combines two people / vehicles / weapons of a case the AI kept apart ("Same as Person 1"). Pictures, open questions and held weapons move over, the old entry is removed, a `summary` job re-votes, and `ai_entities_combined` is logged in `caseevent`. Not on closed cases; same kind only |
 
 ---
 
@@ -594,6 +620,8 @@ ROLLBACK;
 
 **Crime scenes and corrections:** `python tests/test_corrections_db.py` (same setup as the AI pipeline tests) and `supabase/tests/corrections.test.sql` (run by `supabase test db`).
 
+**Chat, admin accounts, storage and the worker:** `python tests/test_case_chat_db.py`, `tests/test_admin_accounts_db.py`, `tests/test_submissions_storage.py`, `tests/test_combine_entities_db.py` and `tests/test_worker.py`, same setup (local database running).
+
 **App tests:** run `flutter analyze` and `flutter test` in `mobile/argus_shield/`. The admin screens are tested against an in-memory fake (`test/admin_fake_service.dart`), so they need no Supabase project.
 
 ---
@@ -625,26 +653,13 @@ What exists today, so nobody builds on something that isn't there yet:
 | Forgot password / reset password | Live: emailed reset link opens the app's New Password screen (see [Setting and resetting passwords](#setting-and-resetting-passwords)). Needs custom SMTP before real users rely on it |
 | Admin dashboard: Overview, Cases, Detectives, Submissions | Live on the database (review, cases, assignments, suggestions, history) |
 | Citizen profile | Live: reads and saves email, phone number and residence (`getMyCitizenProfile`, `updateMyCitizenProfile`); a new email applies once the citizen confirms it |
-| Citizen upload / My submissions | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
-| Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again |
-| Suspect review (POPIA) | **Database ready** (`review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`, logged in `caseevent`); admin cards show possible / confirmed counts. Confirming needs the investigator screens |
-| Creating investigator accounts from the app | **Built**: **+ New investigator** on the Investigators tab and the `create-investigator` Edge Function. Must be **deployed** before it works (see [Creating investigator accounts](#creating-investigator-accounts)) |
-| Footage storage | **Not built yet**: no Supabase Storage bucket or storage policies |
-| AI / computer vision pipeline | Pipeline runs locally (`ai/`). **Database side built** (job queue, results in tables, case people / vehicles / weapons, "Is this Person 2?", case AI summary, see [AI_PIPELINE.md](AI_PIPELINE.md)); the app's case screen reads it (`SupabaseEvidenceSource`). The **worker loop** that connects the two is still to be written |
-
----
-
-## Still to do
-
-* **AI worker** — the loop that takes jobs and calls the database functions; see [AI_PIPELINE.md](AI_PIPELINE.md#the-worker-loop-sketch).
-* **Citizen app on the database** — the profile page is live, but the citizen upload and My submissions pages still use a local demo store (`mobile/argus_shield/lib/citizen/citizen_store.dart`). They should insert `crimescene` + `media` rows (with the phone's GPS in `latitude`/`longitude`), upload the file to Storage, and read the citizen's own rows back (RLS already limits them to their own).
-* **Storage bucket for footage** — `media.storagepath` expects files in Supabase Storage, but no bucket or storage policies exist yet.
-* **Email** — a custom SMTP provider (Authentication → Emails → SMTP Settings), so reset and confirmation emails reach real users.
-* **Deleted logins** — decide whether `"User".authid` should be nullable again. `20261006081759_remote_schema.sql` made it `NOT NULL`, which clashes with `ON DELETE SET NULL`: deleting a login that has a profile now fails instead of keeping the profile for the evidence trail. If the old behaviour is wanted, add a migration with `ALTER TABLE public."User" ALTER COLUMN authid DROP NOT NULL;`. **Until this is decided, don't delete users under Authentication → Users**; nothing in the app deletes logins, so everything else works normally.
-* **Registration fields** — there is no registration wireframe yet. If citizens need more than residence (e.g. ID number, suburb, city), add columns to `citizen` in a new migration.
-* **ERD** — update `diagrams/ERD.png`: add `citizen`, `investigator`, `cases`, `caseevent` and `weapondetail`; `caseassignment` now points at `cases` (with `islead`); `crimescene` has `caseid`, the review columns, GPS and the AI summary; remove `fullName`, `passwordHash` and `badgeNumber` from USER.
-* **Case summary** — a de-duplicated vehicle / suspect / weapon summary on the case page ("at least 2 handguns", "Blue BMW, seen in 6 videos"), built from the detections with the same "most seen at once in one video" rule as the submission cards.
-* **Investigator app** — see the **TODO: investigator app** list in the [root README](../README.md#todo-investigator-app). Database parts that already exist: `set_case_status`, `verify_detection`, `list_case_events`, `review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`. Still needed in the database: a function listing a submission's people with their suspect status for the review screen, case notes (append-only) and logged investigator edits of submission data.
+| Citizen upload / My submissions | **Live**: the incident and footage go to Supabase (`submissions` bucket) and are queued for the AI (`submit_for_analysis`) |
+| Investigator screens | **Live**: assigned cases, crime scenes with corrections (`correct_detection`), AI summary, history, case chat, open ↔ under review |
+| Suspect review (POPIA) | **Database ready** (`review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`, logged in `caseevent`); admin cards show possible / confirmed counts. The investigator screen to confirm / dismiss is still to be built |
+| Creating investigator accounts from the app | **Live**: **+ New investigator** on the Investigators tab and the `create-investigator` Edge Function, with a temporary password |
+| Admin accounts per station + root admin | **Live**: `admin` table, `create-admin` Edge Function, web console (see [`SUPABASE_ADMIN_CONSOLE.md`](../SUPABASE_ADMIN_CONSOLE.md)) |
+| Footage storage | **Live**: private `submissions` bucket and its access rules |
+| AI / computer vision pipeline | **Built**: pipeline (`ai/`), worker (`backend/worker.py`) and database side (job queue, results, case people / vehicles / weapons, "Is this Person 2?", case AI summary, see [AI_PIPELINE.md](AI_PIPELINE.md)). Uploads are analysed only while the worker is running |
 
 ---
 

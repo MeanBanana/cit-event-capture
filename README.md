@@ -2,647 +2,311 @@
 
 **Real-Time Computer Vision Application for Suspect and Vehicle Intelligence Capture in CIT Robbery Investigations**
 
-Argus Shield is a research and development project focused on creating an investigator-facing mobile system that uses computer vision, artificial intelligence, and data management techniques to extract, store, and query suspect and vehicle intelligence from cash-in-transit (CIT) robbery footage.
+Argus Shield turns footage of cash-in-transit (CIT) robberies into structured, searchable intelligence for investigators. Citizens upload videos and photos from their phones, an AI pipeline finds the people, vehicles, weapons, number plates and gunfire in them, and admins and investigators work the resulting cases in one mobile app, with ethics, security and privacy (POPIA) designed in.
 
-The system is designed to assist investigators by transforming video footage into structured, searchable intelligence while considering ethical, security, and privacy requirements.
-
-> **Note:** The project's technology stack was revised after the initial planning phase. The application is now built as a **Flutter mobile app** backed by **Supabase**, rather than the original Android Studio (Java) + PHP web + custom Python backend design. See [Architectural Design](#architectural-design) below for details. No separate web application is planned; the Flutter app serves all user roles (see [`web/`](#web)).
-
----
-
-# Project Overview
-
-Argus Shield consists of several interconnected development areas:
-
-* **Mobile Application** — Flutter (Dart) application, targeting both iOS and Android, used by citizens, investigators, and admins to interact with the system.
-* **Backend (Supabase)** — Backend-as-a-service platform (built on PostgreSQL) providing authentication, auto-generated REST APIs, database, and file storage. Any custom server-side logic (e.g. Supabase Edge Functions) also lives here.
-* **AI / Computer Vision** — Python-based computer vision models used to extract information (suspects, vehicles, weapons, license plates) from footage.
-* **Web Application** *(optional, not in current scope)* — An admin console may be built only if time allows. See [`web/`](#web) below.
-* **Database** — Supabase/PostgreSQL schema, migrations, and row-level security (RLS) policies used to store and retrieve investigation data, managed with the Supabase CLI.
-* **Diagrams** — Architecture diagrams (C4 model), entity relationship diagrams (ERD), use-case diagrams, and UI mockups/wireframes.
-
-The three primary user roles are:
-
-* **Citizens** — submit footage/evidence of CIT incidents.
-* **Investigators / Law enforcement officers** — review structured intelligence and manage assigned cases.
-* **Admins** — manage investigator accounts, assign cases, and oversee system-wide activity ("watchover" dashboard).
-
-These components work together to provide an end-to-end system for processing and querying suspect and vehicle intelligence.
+> ## 📱 Download the app
+>
+> The Android app can be downloaded from our website: **<https://argus-shield.netlify.app/>**
+>
+> You don't need to build anything to use Argus Shield: download it, install it and log in. The rest of this README is for developers who want to run it from source or set up their own copy of the system. See [Installing the app](#installing-the-app).
 
 ---
 
-# Project Structure
+## Contents
 
-```text
-cit-event-capture/
-│
-├── mobile/
-│   └── argus_shield/             ← Flutter (Dart) app — iOS and Android (see its README)
-│
-├── backend/
-│   └── Integration glue between the app, Supabase and the AI/CV component
-│
-├── ai/
-│   └── Computer vision models and AI processing (Python)
-│
-├── web/
-│   └── Placeholder — optional admin console, only if time allows
-│
-├── database/
-│   ├── README.md                 ← full database documentation
-│   └── supabase/                 ← run Supabase CLI commands from database/
-│       ├── config.toml           ← Supabase CLI project configuration
-│       ├── migrations/           ← SQL migrations (schema, users/roles, RLS policies)
-│       └── functions/            ← Supabase Edge Functions (planned, not created yet)
-│
-├── diagrams/
-│   └── Architecture, ERD and use-case diagrams; UI mockups/wireframes
-│
-├── docs/
-│   └── Research documents and project reports
-│
-├── tests/
-│   └── Testing files, test scripts and test results
-│
-├── README.md
-├── CONTRIBUTING.md
-└── .gitignore
-```
-
-## Folder Responsibilities
-
-### `mobile/`
-
-Contains the Flutter (Dart) mobile application, targeting both iOS and Android from a single codebase.
-
-This may include:
-
-* Screens/UI (login, admin dashboard, investigator case board, citizen submission board)
-* Widgets and shared UI components
-* State management
-* Supabase client integration (auth, data, storage)
-* Mobile-specific configuration and assets
-
-### `backend/`
-
-Contains backend configuration and logic built around **Supabase**.
-
-Supabase provides authentication (JWT-based), auto-generated PostgREST APIs for each database table, database hosting, and file storage — removing the need for a hand-rolled API server. This folder may include:
-
-* Integration glue between the mobile app, Supabase, and the AI/CV component
-
-**Edge Functions** (TypeScript, Deno) for custom server-side logic, such as letting an admin create investigator accounts from inside the app, live in `database/supabase/functions/`, because the Supabase CLI deploys functions from its own `supabase/` folder. The Supabase CLI configuration (`config.toml`) and all RLS policies also live in [`database/`](#database), not in this folder.
-
-### `ai/`
-
-Contains artificial intelligence and computer vision functionality, written in Python.
-
-This may include:
-
-* Computer vision models (e.g. YOLOv8-based detection)
-* Image and video processing
-* Object detection: weapons, vehicles, license plates
-* Person/suspect detection
-* Feature extraction
-* Model configuration and related scripts
-
-### `web/`
-
-**Status: confirmed — no web application in the current scope.**
-
-The original project plan included a PHP/HTML/CSS/JS web application for investigators. Following the move to Flutter, the team has decided that the **Flutter mobile app will serve all user roles** (citizens, investigators, and admins).
-
-If time allows at the end of the project, a web-based **admin console** may be built. This folder is kept as a placeholder for that possibility.
-
-### `database/`
-
-Contains the Supabase/PostgreSQL database, managed with the **Supabase CLI**. The live database is hosted on Supabase Cloud; this folder is the version-controlled record of its structure.
-
-```text
-database/
-├── README.md
-└── supabase/
-    ├── config.toml
-    └── migrations/
-        ├── 20260929072508_remote_schema.sql            ← baseline schema pulled from Supabase Cloud
-        ├── 20260929114152_auth_and_rls.sql             ← Supabase Auth link + role-based RLS policies
-        ├── 20260929221626_user_role_tables.sql         ← role enum, citizen/investigator tables, usernames
-        ├── 20261005141600_cases_table.sql              ← cases; assignments point at cases
-        ├── 20261005142800_weapon_detail.sql            ← weapondetail for weapon detections
-        ├── 20261005143300_drop_suspect_behaviour.sql
-        ├── 20261005152000_list_investigators.sql       ← Investigators screen
-        ├── 20261005153500_admin_overview_stats.sql     ← Overview tiles
-        ├── 20261005154500_submissions.sql              ← datereported, list_submissions
-        ├── 20261005161500_overview_activity.sql        ← Recent activity feed
-        ├── 20261005163000_review_and_cases.sql         ← accept / reject / duplicate, case actions
-        ├── 20261005203000_case_events_and_leads.sql    ← case history, lead investigator, case status rules
-        ├── 20261005203100_submission_views_and_ai.sql  ← AI fields, paging, grouping, suggestions, one-tap review
-        ├── 20261006081759_remote_schema.sql            ← re-sync pulled from Supabase Cloud (authid now NOT NULL)
-        └── 20261006090000_suspect_review_and_case_cards.sql ← possible / confirmed suspects (POPIA), case card suggestions
-```
-
-The full list with what each migration does is in [`database/README.md`](./database/README.md#migrations).
-
-**See [`database/README.md`](./database/README.md)** for the full schema, how accounts and login work, who can see what, Flutter examples, and troubleshooting.
-
-Migrations are applied in timestamp order. **All database changes must be made as migrations** (see [Database Workflow](#database-workflow)), not by editing tables in the Supabase dashboard; otherwise Git and the live database drift apart.
-
-Do not store database passwords, service role keys, or other credentials in this directory.
-
-### `diagrams/`
-
-Contains architecture and design diagrams for the project.
-
-This may include:
-
-* C4 model diagrams (Level 1 context diagram, Level 2 container diagram)
-* Entity Relationship Diagrams (ERD)
-* Use-case diagrams
-* UI mockups and wireframes (e.g. login, admin dashboard, investigator board, citizen submission board)
-
-### `docs/`
-
-Contains project documentation.
-
-This may include:
-
-* Research documentation
-* Design documents
-* Technical reports
-* Project planning documents
-* Deliverables (e.g. requirements and use-case descriptions)
-
-### `tests/`
-
-Contains testing-related files. (The Flutter app's own tests live next to the app in `mobile/argus_shield/test/`, because `flutter test` looks for them there.)
-
-This may include:
-
-* Flutter widget/unit tests
-* Supabase/API integration tests
-* AI model tests
-* Test data
-* Test results
-* Automated testing scripts
+1. [What's in the system](#whats-in-the-system)
+2. [Installing the app](#installing-the-app)
+3. [Using the app for the first time](#using-the-app-for-the-first-time)
+4. [Running from source (developers)](#running-from-source-developers)
+5. [Setting up the whole system](#setting-up-the-whole-system)
+6. [Project structure](#project-structure)
+7. [How it works](#how-it-works)
+8. [Testing](#testing)
+9. [Contributing](#contributing)
+10. [Security and privacy](#security-and-privacy)
+11. [Project status](#project-status)
+12. [Still to do](#still-to-do)
+13. [Collaborators](#collaborators)
 
 ---
 
-# Requirements
+## What's in the system
 
-Before starting development, ensure the required software for your assigned development area is installed.
+| Part | Technology | Where | Docs |
+|---|---|---|---|
+| **Mobile app** (citizens, investigators, station admins) | Flutter (Dart), Android + iOS | `mobile/argus_shield/` | [README](mobile/argus_shield/README.md) |
+| **Database, login, file storage** | Supabase (PostgreSQL 17, Auth, Storage, Realtime, Edge Functions) | `database/` | [README](database/README.md), [AI_PIPELINE.md](database/AI_PIPELINE.md) |
+| **AI / computer vision pipeline** | Python (YOLO26, YOLOE, FastALPR, YuNet, YAMNet) | `ai/` | [README](ai/README.md) |
+| **AI worker** (connects the pipeline to Supabase) | Python | `backend/` | [README](backend/README.md) |
+| **Website** (download page + web admin console, where the root admin creates admins for police stations and Hawks units) | Vite + React + TypeScript; plain HTML/JS console | `web/landing/`, `web/admin-console/` | [landing](web/landing/README.md), [console](web/admin-console/README.md), [setup](SUPABASE_ADMIN_CONSOLE.md) |
 
-General requirements include:
+User roles:
 
-* Git
-* Flutter SDK and Dart
-* Android Studio (recommended IDE for Flutter development, with emulator support)
-* Python 3.x (for AI/CV development)
-* Supabase account and Supabase CLI
-* Docker Desktop (required by the Supabase CLI for `supabase db pull`; on Windows this needs WSL and virtualization enabled)
-* Figma (for UI/UX prototyping, if contributing to design)
-
-Additional dependencies may be required depending on the component being developed.
-
-Component-specific setup instructions should be documented in the relevant folder or in the project documentation.
+* **Citizens** register in the app, report CIT incidents and upload 1–5 videos/photos per report.
+* **Investigators** see only the cases they are assigned to: crime scenes, footage, AI findings, corrections, case history and a case group chat.
+* **Station admins** review submissions, build cases, assign investigators and create investigator accounts.
+* **The root admin** (one per system) creates the admins for the different police stations and Hawks units from the web console at `/admin/` on the website.
 
 ---
 
-# Getting Started
+## Installing the app
 
-## 1. Clone the Repository
+### Android (recommended)
 
-Clone the repository from GitHub:
+1. On your phone, open **<https://argus-shield.netlify.app/>** and download the app (`.apk` file).
+2. Open the downloaded file. Android will ask to allow installs from this source (your browser or Files app): tap **Settings**, turn on **Allow from this source**, then go back.
+3. Tap **Install**. If Google Play Protect warns that the app is unknown, tap **More details → Install anyway** (the app is not on the Play Store yet).
+4. Open **Argus Shield**.
+
+To update, download the newer version from the website and install it over the old one.
+
+### iOS
+
+There is no App Store or TestFlight build yet. iPhone users can run the app from source on their own device with a Mac and Xcode (see [Running from source](#running-from-source-developers)).
+
+---
+
+## Using the app for the first time
+
+| You are | What to do |
+|---|---|
+| **Citizen** | Tap **Register as citizen**, fill in your details, then log in with your **username** and password. Use **Upload** to report an incident; follow it under **My submissions**. |
+| **Investigator** | You can't register yourself. A station admin creates your account and gives you a **temporary password**. Log in with your username and that password; the app then asks you to **choose your own password**, signs you out, and you log in again with it. |
+| **Station admin** | The root admin creates your account in the web console and gives you a temporary password. First log-in works the same as for investigators. |
+| **Root admin** | Sign in to the console at <https://argus-shield.netlify.app/admin/> (made once by the database owner, see [step 4](#4-make-the-root-admin)). |
+
+* **Forgot password?** on the login page emails a reset link. Open the link **on the same phone**: it opens the app's *New Password* screen.
+* The **settings** icon (top right) switches the language (English, Afrikaans, Zulu) and dark mode. The icon next to it signs you out.
+* Footage: upload the **original** video from the phone, not a WhatsApp/TikTok copy. Shared copies are shrunk and lose the GPS and recording time, and plates and faces become unreadable.
+
+---
+
+## Running from source (developers)
+
+### Requirements
+
+| For | Install |
+|---|---|
+| Everything | [Git](https://git-scm.com/) |
+| Mobile app | [Flutter SDK](https://docs.flutter.dev/get-started/install) (Dart `^3.13`), Android Studio (Android SDK + emulator); Xcode on a Mac for iOS |
+| Database | A [Supabase](https://supabase.com/) account, the [Supabase CLI](https://supabase.com/docs/guides/cli), [Docker Desktop](https://www.docker.com/products/docker-desktop/) (on Windows: WSL 2 + virtualisation enabled) |
+| AI pipeline / worker | Python 3 (the team uses 3.13); an NVIDIA GPU is strongly recommended (a laptop CPU takes roughly 5–9 minutes per minute of video) |
+| Website | Node.js 22 |
+
+### 1. Clone
 
 ```bash
 git clone https://github.com/MeanBanana/cit-event-capture.git
-```
-
-Enter the project directory:
-
-```bash
 cd cit-event-capture
 ```
 
-## 2. Read the Contribution Guidelines
+### 2. Run the mobile app
 
-Before making changes, read:
-
-[CONTRIBUTING.md](./CONTRIBUTING.md)
-
-This document explains:
-
-* How to create and manage branches
-* How to commit changes
-* How to synchronise a feature branch with `main`
-* How to resolve merge conflicts
-* How to push changes
-* How to create Pull Requests
-* How code review works
-* Security and repository rules
-
-All contributors are expected to follow these guidelines.
-
-## 3. Identify Your Development Area
-
-Determine which part of the project you are working on:
-
-```text
-mobile/
-backend/
-ai/
-web/
-database/
-diagrams/
-docs/
-tests/
+```bash
+cd mobile/argus_shield
+flutter pub get
+flutter run
 ```
 
-Only modify files relevant to your assigned task unless you have communicated with the team about changes to another component.
+`flutter run` starts the app on a running emulator or a phone connected with USB debugging (`flutter devices` lists them). The app already points at the team's Supabase project (URL and **publishable** key in `lib/main.dart`), so it works straight away with your existing accounts.
 
----
+To build your own Android installer:
 
-# Git Workflow
-
-The `main` branch represents the stable version of the project.
-
-Contributors must **not commit directly to `main`**.
-
-The standard workflow is:
-
-```text
-main
- |
- |-- Create feature branch
- |
- v
-Feature Branch
- |
- |-- Make changes
- |
- |-- Commit changes
- |
- |-- Synchronise with main
- |
- |-- Resolve conflicts if necessary
- |
- |-- Test
- |
- |-- Push
- |
- v
-Pull Request
- |
- v
-Code Review
- |
- v
-Approval
- |
- v
-main
+```bash
+flutter build apk --release
 ```
 
-For the complete Git workflow, see:
+The file is `build/app/outputs/flutter-apk/app-release.apk`. Copy it to a phone and install it as in [Installing the app](#installing-the-app). To publish a new version on the website, see [Website](#6-website-and-root-admin-console).
 
-[CONTRIBUTING.md](./CONTRIBUTING.md)
+> After changing `AndroidManifest.xml` or `ios/Runner/Info.plist`, stop the app and `flutter run` again; hot reload doesn't pick those files up.
 
----
+### 3. Run the AI pipeline on a video (optional)
 
-# Branch Naming
-
-Branches should have descriptive names that indicate the area or purpose of the work.
-
-Examples:
-
-```text
-feature/backend-auth-policies
-feature/vehicle-detection
-feature/investigator-dashboard
-bugfix/mobile-camera-upload
-database-schema
-diagrams/erd-update
-documentation/project-architecture
+```bash
+cd ai
+python -m venv .venv
+.venv\Scripts\activate             # Windows; macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python main.py video.mp4           # or up to 5 files: one submission
 ```
 
-Avoid vague branch names such as:
-
-```text
-test
-new
-changes
-stuff
-branch1
-```
-
-Before creating a branch, check that another team member is not already using the same branch.
+Results go to `ai/crops/submission N/` (`results.json` + pictures). Details: [`ai/README.md`](ai/README.md).
 
 ---
 
-# Development Guidelines
+## Setting up the whole system
 
-When contributing to Argus Shield:
+Only needed for a **new** Supabase project, or when a step below hasn't been done on the team's project yet. Do the steps in order.
 
-* Work on your own branch.
-* Do not commit directly to `main`.
-* Pull the latest `main` before starting new work.
-* Keep your branch synchronised with `main`.
-* Place files in the correct project directory.
-* Keep commits focused and descriptive.
-* Test your changes before creating a Pull Request.
-* Do not commit secrets or sensitive information (including Supabase keys).
-* Communicate with the team before making major cross-component changes.
-* Create a Pull Request before merging changes into `main`.
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full contribution process.
-
----
-
-# Architectural Design
-
-## Technology Stack
-
-| Layer/Component | Technology | Purpose |
-|---|---|---|
-| UI/UX | Flutter (Dart) | Cross-platform mobile framework (iOS + Android) from a single codebase |
-| Backend | Supabase | Backend-as-a-service on PostgreSQL — auth, auto-generated REST APIs, storage |
-| AI/CV | Python | Computer vision and AI/ML libraries (e.g. OpenCV, TensorFlow, PyTorch) for footage analysis |
-| Database | Supabase PostgreSQL | Relational database with row-level security |
-| Authentication | Supabase Auth (JWT) | Sign-up, login and token-based access; the Supabase client SDK refreshes sessions automatically |
-| APIs | PostgREST (auto-generated by Supabase) | Standard REST communication between mobile app and backend |
-| Edge Functions (if needed) | TypeScript (Deno, via Supabase) | Custom server-side logic beyond auto-generated APIs |
-| UI/UX Prototyping | Figma | Collaborative design and prototyping |
-
-## Development Environments / IDEs
-
-* Android Studio — Flutter development and testing (emulators)
-* Supabase — backend, database, and file storage hosting
-
-## High-Level Technical Design
-
-The high-level architecture follows the C4 model (Levels 1–2):
-
-* **Level 1 — Context diagram:** how the system interacts with its users (citizens, investigators, admins) and external systems.
-* **Level 2 — Container diagram:** the mobile app, Supabase backend, database, and AI/CV component as containers, including their responsibilities, relationships, and technologies.
-
-See [`diagrams/`](#diagrams) for the current diagrams.
-
----
-
-# Authentication and Access Control
-
-Full details, including Flutter code and the complete permission table, are in [`database/README.md`](./database/README.md).
-
-## How users are stored
-
-| Table | Managed by | Holds |
-|---|---|---|
-| `auth.users` | Supabase Auth | Email, hashed password, login sessions |
-| `public."User"` | This project | Everyone: `username`, `firstname`, `surname`, `email`, `phonenumber`, `role`, and the `userid` referenced by all other tables |
-| `public.citizen` | This project | Citizen-only details: `residence` |
-| `public.investigator` | This project | Investigator-only details: `rank`, `badgenumber`, `station`, `unit`, `dutystatus` |
-
-* `role` is an enum: `citizen`, `investigator` or `admin`. Admins have no extra details, so they only have a `"User"` row.
-* `"User".authid` links each profile to its Supabase Auth account. Passwords and tokens are **never** stored in our tables; the app sends them straight to Supabase Auth.
-* The database guarantees a citizen row only belongs to a citizen and an investigator row only to an investigator.
-
-## How accounts are created
-
-* **Citizens** register in the app (`supabase.auth.signUp`), sending their username, name, phone number and residence. A database trigger creates their `"User"` and `citizen` rows. **App sign-ups are always citizens.** A role sent from the app is ignored.
-* **Investigators** do not register themselves. An admin will create them from the admin screen through the `create-investigator` Edge Function, after which they set their own password with the same reset link as **Forgot password?**. *(The Edge Function is not built yet; until then investigator accounts are created by the database owner, and the investigator screens themselves are still to come.)*
-* **Admins** are set up manually by the database owner (see `database/README.md`).
-* **Login** uses a **username**. The app looks up the matching email with `email_for_username`, then signs in with email + password and reads `role` to choose the dashboard.
-* **Forgot password** emails a reset link (`argusshield://reset-password`). Tapping it on the same phone opens the app on a "New Password" screen; after saving, the user is signed out and logs in again. The link must be listed under **Authentication → URL Configuration → Redirect URLs** in Supabase. Details: [`database/README.md`](./database/README.md#setting-and-resetting-passwords).
-* **Deleted accounts:** the intent is that when a login is deleted, the profile row is kept (with `authid` empty) so the evidence trail on cases and uploads is preserved. *Currently blocked:* migration `20261006081759_remote_schema.sql` made `authid` `NOT NULL`, so deleting a login with a profile fails (see [TODO: other](#todo-other)).
-
-## Who can see and do what (row-level security)
-
-Every table has RLS enabled. The mobile app uses the **publishable key** and the logged-in user's token, so each query automatically returns only the rows that user is allowed to see.
-
-| Role | Access |
-|---|---|
-| **Citizen** | Report incidents and upload footage as themselves; view only their own submissions and profile; edit their own username, name, phone number and residence |
-| **Investigator** | View only cases they are actively assigned to, plus that footage, detections, vehicle details and the case history; move a case between open and under review; confirm (verify) AI detections; **confirm or dismiss possible suspects** on their cases and edit confirmed suspects' descriptions; log corrections; view cross-incident links and other investigators; change their own duty status |
-| **Admin** | Full access; review submissions (accept into a case, reject, mark duplicate); accept suggested matches; create, edit, close and reopen cases; assign investigators and choose the lead; see suspect counts and undo a suspect review (but **not** confirm suspects); manage users and investigator details |
-| **Not logged in** | No access to any table (only the username lookup used by the login screen) |
-
-The Python AI/CV pipeline uses the **service role (secret) key**, which bypasses RLS, to write detections and update processing status. Only that key can write the AI fields (per-clip descriptions, the combined summary, capture times); the database refuses them from the app. This key must **never** be placed in the mobile app or committed to Git. What the pipeline must write, and in which order, is in [`database/README.md`](./database/README.md#the-ai-pipeline-what-it-writes).
-
-## From submission to case
-
-**A citizen submits, the AI analyses, the admin decides.**
-
-1. A citizen reports an incident and uploads footage. It starts as **Pending review**.
-2. The AI pipeline (to be built) describes each clip, writes one combined summary, reads plates and links the same vehicle or suspect across reports.
-3. The admin works through the **Submissions** tab: Newest / Oldest, grouped by Location, Status, Case, or Linked (submissions the AI connected). Each card shows the citizen's description **and** the AI summary.
-4. The database suggests which case a submission belongs to (AI links, same or nearly the same plate, distance, time from the footage's own metadata), with the reasons. The admin reviews the **Suggested matches** list and accepts the right ones in one tap, or accepts a submission into a new or existing case by hand. **Nothing joins a case without an admin accepting it.**
-5. Inside a case the admin assigns investigators (the first becomes the lead), sees recommended submissions, and can remove a submission again: it goes back to Pending and is never deleted.
-6. Every person the AI sees is only a **possible suspect**. Under POPIA, only an investigator assigned to the case can confirm or dismiss them (with a reason). Until then the admin screens show counts only: the case cards show "about 2 possible suspects awaiting investigator review" or "2 confirmed suspects" (the highest of the case's submissions, so A = 2, B = 1, C = 1 → about 2). Details: [`database/README.md`](./database/README.md#suspects-and-popia).
-7. Each case card also shows the case's best **suggested submission** with its most relevant number plate (one also in the case, else the one read with the highest confidence).
-8. Every step is recorded in the case history (`caseevent`).
-
-Details: [`database/README.md`](./database/README.md#how-a-submission-becomes-a-case).
-
-## Using it from Flutter (`supabase_flutter`)
-
-```dart
-// Register (always creates a citizen account)
-await supabase.auth.signUp(email: email, password: password, data: {
-  'username': username, 'firstname': firstname, 'surname': surname,
-  'phonenumber': phone, 'residence': residence,
-});
-
-// Log in with a username, then read the role to decide which dashboard to show
-final email = await supabase.rpc('email_for_username',
-    params: {'p_username': username}) as String?;
-await supabase.auth.signInWithPassword(email: email!, password: password);
-final profile = await supabase
-    .from('User')
-    .select('userid, username, firstname, surname, role')
-    .eq('authid', supabase.auth.currentUser!.id)
-    .single();
-// profile['role'] -> 'admin' | 'investigator' | 'citizen'
-
-// Forgot password: emails a link that opens the app (see database/README.md)
-await supabase.auth.resetPasswordForEmail(email,
-    redirectTo: 'argusshield://reset-password');
-
-// Reads are filtered automatically by RLS.
-// Most screens call database functions instead of reading tables directly,
-// e.g. one page of submissions (see database/README.md for all of them):
-final page = await supabase.rpc('list_submissions', params: {'p_review': 'pending'});
-```
-
----
-
-# Database Workflow
-
-All Supabase CLI commands are run from the `database/` folder (the folder that contains `supabase/`). Git commands are run from the repository root.
-
-## First-time setup
+### 1. Create and link the Supabase project
 
 ```bash
 cd database
 supabase login
-supabase link --project-ref <project-ref>   # ask the team for the project ref and database password
-supabase migration list                     # every migration should appear under both Local and Remote
+supabase link --project-ref <project-ref>   # team project: ask Carel for the ref and database password
 ```
 
-## Making a database change
+### 2. Create the database
 
-The full step-by-step guide is in [`database/README.md`](./database/README.md#workflow-making-a-database-change). In short:
+```bash
+supabase db push            # applies every migration in supabase/migrations/, in order
+supabase migration list     # every migration shows under both Local and Remote
+```
 
-1. Create a branch, then check GitHub and Supabase match:
-   ```bash
-   cd database
-   supabase migration list     # Local and Remote must be identical
-   supabase db pull            # should say "No schema changes found"
-   ```
-2. Create a new migration and write the SQL in the new file under `supabase/migrations/`:
-   ```bash
-   supabase migration new short_descriptive_name
-   ```
-3. Check, then apply it to the Supabase database:
-   ```bash
-   supabase db push --dry-run  # must list only your new migration
-   supabase db push
-   ```
-4. Commit the migration file on your feature branch and open a Pull Request.
+This creates all tables, row-level security, database functions, the AI job queue, the case chat, the admin accounts table and the private `submissions` storage bucket.
 
-## Rules
+### 3. Deploy the Edge Functions
 
-* Do **not** change tables, columns, or policies in the Supabase dashboard. If a change is ever made there, run `supabase db pull` straight away so it is captured as a migration.
-* Do **not** edit a migration that has already been pushed. Create a new migration instead.
-* New tables automatically get RLS enabled (via the `ensure_rls` event trigger) but have **no policies**, so the app cannot read them until policies are added in a migration.
+```bash
+supabase functions deploy create-investigator
+supabase functions deploy create-admin
+```
 
-## Troubleshooting (Windows)
+`config.toml` turns **Verify JWT** off for both; that is intended (each function checks the caller itself). `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to them automatically.
 
-* **`Bind for 0.0.0.0:54320 failed: port is already allocated`** during `supabase db pull`: a leftover Docker container is using the port. Find it with `docker ps -a --filter "publish=54320"` and remove it with `docker rm -f <ID>`.
-* **`ports are not available ... 54320`** during `supabase db pull`: Windows has reserved that port. Restart the NAT service in an Administrator PowerShell (`net stop winnat` then `net start winnat`), or set `shadow_port` to a free port under `[db]` in `supabase/config.toml`.
-* **`db pull` writes a file that only drops and re-adds the same CHECK constraints:** a false alarm. Answer **No** to updating the migration history and delete the file. See `database/README.md`.
-* **Docker errors:** make sure Docker Desktop is running and `docker info` works before running Supabase CLI commands.
+### 4. Make the root admin
+
+Register a normal account in the app (or pick an existing admin), then in **Supabase → SQL Editor**:
+
+```sql
+SELECT public.make_root_admin('their_username', 'Argus HQ');
+```
+
+The root admin can now sign in to the web console and create station admins, who in turn create investigators in the app. Details and checks: [`SUPABASE_ADMIN_CONSOLE.md`](SUPABASE_ADMIN_CONSOLE.md).
+
+### 5. Supabase dashboard settings
+
+* **Authentication → URL Configuration → Redirect URLs:** add `argusshield://reset-password` (otherwise reset links open a browser instead of the app).
+* **Authentication → Emails → SMTP Settings:** add a custom SMTP provider before real users rely on email. Supabase's built-in email only reaches the project team, a few emails per hour.
+* **Your own project?** Put its URL and publishable key in `mobile/argus_shield/lib/main.dart` and `web/admin-console/config.js`. Never the service role key.
+
+### 6. Website and root admin console
+
+```bash
+cd web/landing
+npm install
+npm run dev          # http://localhost:3006  (console: http://localhost:3006/admin/)
+npm run build        # -> web/landing/dist/, the whole site including dist/admin/
+```
+
+The live site (<https://argus-shield.netlify.app/>) is deployed by **Netlify** from `main` using `web/landing/netlify.toml`; it only rebuilds when `web/landing/` or `web/admin-console/` changes. To offer a new app version for download, build the APK (step 2 above) and update the download on the website.
+
+### 7. Run the AI worker
+
+The worker runs on a GPU PC, takes analysis jobs from Supabase and writes the results back. It only makes outgoing connections, so no port forwarding is needed.
+
+```bash
+pip install -r ai/requirements.txt -r backend/requirements.txt
+copy backend\.env.example backend\.env      # macOS/Linux: cp
+# edit backend/.env: paste the service role key (Supabase → Project Settings → API)
+python backend/worker.py                    # keeps running; Ctrl+C to stop
+```
+
+While it runs, new citizen uploads are analysed within seconds (it logs to `backend/worker.log`; `ai_worker_status()` in the database tells whether a worker is online). Test without the app: `python backend/submit_test.py ai/video.mp4 --location "N1 Midrand"`. Details: [`backend/README.md`](backend/README.md).
+
+> `backend/.env` is git-ignored. The service role key bypasses all security rules: keep it on the worker PC only, never in the app, the website or Git.
 
 ---
 
-# Security and Privacy
-
-Argus Shield deals with potentially sensitive investigation-related information.
-
-Security and privacy must therefore be considered throughout development.
-
-Never commit the following to the repository:
-
-* Passwords
-* Supabase API keys or service role keys
-* Authentication tokens
-* Database credentials
-* Personal information
-* Sensitive datasets
-* Private investigation footage
-* Hard-coded secrets
-* Environment-specific credentials
-
-Sensitive configuration should be stored using appropriate environment variables or other secure configuration mechanisms (e.g. Supabase project settings, `.env` files excluded from Git).
-
-The following types of files should generally be excluded using `.gitignore`:
+## Project structure
 
 ```text
-.env
-credentials.json
-passwords.txt
-database_passwords.txt
-node_modules/
-build/
-.gradle/
-venv/
-```
-
-If sensitive information is accidentally committed, notify the team immediately rather than simply deleting it in a later commit.
-
----
-
-# Documentation
-
-Project documentation should be stored in the `docs/` directory, with diagrams stored in `diagrams/`.
-
-Examples include:
-
-* System architecture (C4 diagrams)
-* Database design and ERD
-* UI mockups/wireframes
-* API documentation
-* Research
-* Design decisions
-* Testing documentation
-* User documentation
-
-The root `README.md` should contain information needed to understand and get started with the project.
-
-Detailed technical documentation should generally be placed inside `docs/`.
-
----
-
-# Testing
-
-All contributors should test their changes before submitting a Pull Request.
-
-Testing should be appropriate to the component being modified.
-
-Examples include:
-
-* Flutter widget and unit testing: run `flutter analyze` and `flutter test` in `mobile/argus_shield/` (the admin screens are tested against an in-memory fake, so no Supabase project is needed)
-* Supabase/API integration testing
-* AI model testing
-* Database testing, including RLS policy testing: log in as a citizen, an investigator, and an admin and confirm each only sees what it should
-* Demo data: a SQL script with demo submissions, a demo case, footage, AI descriptions and AI links (kept outside the repository; see [`database/README.md`](./database/README.md#testing))
-* Mock data for suspects and case cards: `mock_suspects_and_case_cards.sql` / `mock_cleanup.sql` (also kept outside the repository; see [`database/README.md`](./database/README.md#testing))
-* Integration testing across mobile app, Supabase, and AI component
-
-Test results should be documented where appropriate.
-
-The `tests/` directory should contain reusable test code, scripts, and relevant testing resources.
-
-Before creating a Pull Request, ensure that your changes:
-
-* Work as expected.
-* Do not introduce obvious regressions.
-* Do not break other components.
-* Have been tested in the appropriate environment.
-
----
-
-# GitHub Issues
-
-GitHub Issues should be used to track:
-
-* Bugs
-* Features
-* Tasks
-* Improvements
-* Research items
-* Technical problems
-
-Each issue should clearly describe:
-
-* What needs to be done.
-* Why it needs to be done.
-* The expected outcome.
-* The team member responsible, where applicable.
-
-Examples:
-
-```text
-Bug: Vehicle detection crashes when uploading video
-
-Feature: Add investigator search functionality
-
-Task: Create database relationship diagram
-
-Research: Evaluate vehicle detection model performance
+cit-event-capture/
+├── mobile/argus_shield/       Flutter app (citizen, investigator, admin screens) + its tests
+├── database/
+│   ├── README.md              schema, accounts, RLS, functions, migrations, workflow
+│   ├── AI_PIPELINE.md         job queue and what the AI worker writes
+│   └── supabase/
+│       ├── config.toml        Supabase CLI configuration
+│       ├── migrations/        every database change, in timestamp order
+│       ├── functions/         Edge Functions: create-investigator, create-admin
+│       └── tests/             pgTAP database tests (supabase test db)
+├── ai/                        computer vision pipeline, models, case matching, weapon training notebook
+├── backend/                   AI worker, result upload, test submission script
+├── web/
+│   ├── landing/               public website (app download), deployed on Netlify
+│   └── admin-console/         root admin console, served at /admin/ on the website
+├── tests/                     Python integration tests against a local Supabase
+├── diagrams/                  C4 context/container diagrams, ERD, use cases, wireframes
+├── docs/                      research documents and reports
+├── SUPABASE_ADMIN_CONSOLE.md  step-by-step Supabase setup for the admin console
+├── CONTRIBUTING.md            Git workflow and contribution rules
+└── README.md
 ```
 
 ---
 
-# Collaborators
+## How it works
+
+**A citizen submits, the AI analyses, an admin decides, investigators investigate.**
+
+1. A citizen reports an incident with 1–5 videos/photos. The files go to the private `submissions` storage bucket and an `analyse` job is queued.
+2. The **AI worker** runs the pipeline: it tracks every vehicle, person and weapon, reads make, colour and plate, counts people and suggests clothing colours, saves a picture of clear faces (found, **never** recognised), and listens for gunfire (automatic vs semi-automatic). GPS and recording time are read from the files.
+3. In **Submissions**, the admin sees the citizen's description next to the AI summary. The database suggests a matching case (within 1 km and 14 days, or the same plate) with its reasons. **Nothing joins a case until an admin accepts it.**
+4. Accepting merges the submission's people, vehicles and weapons into the case ("Is this Person 2?" when unsure) and updates the case's AI summary.
+5. The admin assigns investigators (the first is the lead). Investigators open their cases, view crime scenes and footage, **correct** AI findings (every correction is logged), move the case between open and under review, and talk in the case's group **chat**.
+6. Every person the AI sees is only a **possible suspect**. Under POPIA only an assigned investigator may confirm or dismiss them; admin screens show counts only.
+7. Every step is recorded in the case history.
+
+The app uses the **publishable key** plus the user's login, so row-level security decides what each person can see. The full permission table is in [`database/README.md`](database/README.md#who-can-see-and-do-what-rls).
+
+The system is a decision-support tool: it doesn't decide guilt or take any action itself. Investigators remain responsible for reviewing and acting on what it finds.
+
+---
+
+## Testing
+
+| What | How |
+|---|---|
+| Mobile app | In `mobile/argus_shield/`: `flutter analyze` (must say "No issues found!") and `flutter test`. Screens are tested against in-memory fakes, so no Supabase is needed |
+| Database | In `database/`: `supabase start`, `supabase db reset`, then `supabase test db` (needs Docker Desktop) |
+| Integration | With the local database running, from the repo root: `python tests/test_ai_pipeline_db.py`, `test_corrections_db.py`, `test_case_chat_db.py`, `test_admin_accounts_db.py`, `test_combine_entities_db.py`, `test_submissions_storage.py`, `test_worker.py` (needs `pip install "psycopg[binary]"`) |
+| Permissions | Log in as a citizen, an investigator and an admin and check each sees only what it should |
+
+---
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first. In short:
+
+* Never commit directly to `main`. Create a descriptive branch (`feature/vehicle-detection`, `bugfix/mobile-camera-upload`), keep it in sync with `main`, test, push, and open a Pull Request for review.
+* **Every database change is a migration** (`supabase migration new <name>` in `database/`, then `supabase db push --dry-run` and `supabase db push`). Never change tables or policies in the Supabase dashboard, and never edit a migration that has already been pushed. Full workflow and Windows troubleshooting: [`database/README.md`](database/README.md#workflow-making-a-database-change).
+* In the app, screens never call Supabase directly: add a method to `SupabaseService` and to the test fakes (see the [app README](mobile/argus_shield/README.md#conventions)).
+* Track bugs, features and research in GitHub Issues.
+
+---
+
+## Security and privacy
+
+Argus Shield handles sensitive investigation data. Never commit:
+
+* passwords, database credentials, Supabase **service role** keys or tokens (`.env` files are git-ignored)
+* personal information, real investigation footage or sensitive datasets
+
+The **publishable** key in the app and the console is public by design; RLS protects the data. If a secret is ever committed, tell the team straight away instead of just deleting it in a later commit (it stays in the Git history and must be rotated).
+
+---
+
+## Project status
+
+| Part | State |
+|---|---|
+| Login, citizen registration, forgot / reset password | **Live**. Needs a custom SMTP provider before real users rely on email |
+| Temporary passwords for new admins and investigators | **Live**: must choose their own password at first log-in |
+| Citizen upload, My submissions, profile | **Live** on Supabase (footage in the `submissions` bucket, queued for the AI) |
+| Admin dashboard: Overview, Cases, Detectives, Submissions | **Live**: review, suggestions, cases, assignments, AI evidence, footage viewer, new investigators |
+| Investigator dashboard | **Live**: assigned cases, crime scenes, AI summary, corrections, activity, case chat, open ↔ under review |
+| Root admin web console | **Live** at <https://argus-shield.netlify.app/admin/> |
+| AI pipeline + worker | **Built**. Runs on the team's GPU PC; uploads are only analysed while `backend/worker.py` is running |
+| Settings | English / Afrikaans / Zulu, dark mode |
+| Suspect review (POPIA) | **Database ready**; the investigator screen to confirm / dismiss possible suspects is still to be built |
+| App distribution | Android APK on the website; no Play Store / App Store release yet |
+
+Features are not production-ready until implemented, tested and reviewed by the team.
+
+---
+
+## Collaborators
 
 * [Carel von Ronge](https://github.com/MeanBanana)
 * [Deacon George Nel](https://github.com/Deacs-ifbb)
@@ -652,114 +316,4 @@ Research: Evaluate vehicle detection model performance
 
 ---
 
-# Project Status
-
-Argus Shield is currently under active research and development.
-
-| Part | State |
-|---|---|
-| Login / registration (citizen) | Live on Supabase Auth |
-| Forgot password / reset password | Live: emailed reset link opens the app's New Password screen. Needs a custom SMTP provider before real users rely on it |
-| Admin dashboard: Overview, Cases, Detectives, Submissions | Live on the database (review, cases, assignments, suggestions, history) |
-| Citizen profile | Live: email, phone number and residence are read from and saved to Supabase |
-| Citizen upload / My submissions | **Local demo only**: reports are kept in memory for the session and are not saved to Supabase yet |
-| Investigator screens | **Not built yet**: an investigator who logs in is told so and signed out again (see [TODO: investigator app](#todo-investigator-app)) |
-| Suspect review (POPIA) | **Database ready**: possible / confirmed / dismissed suspects, only assigned investigators confirm, every decision logged. Admin case cards and submission cards show the counts. Confirming in the app waits for the investigator screens |
-| Creating investigator accounts from the app | **Not built yet**: needs the `create-investigator` Edge Function |
-| Footage storage | **Not built yet**: no Supabase Storage bucket or storage policies |
-| AI / computer vision pipeline | **Not built yet** (`ai/` is empty). The database is ready for it; demo data stands in for it |
-
-
-Individual components may be at different stages of development. Features should not be considered production-ready unless they have been implemented, tested, and reviewed by the team.
-
-
----
-
-# TODO
-
-## TODO: investigator app
-
-The investigator screens are not built yet. Investigators **work** their cases: they can review and correct, never delete. Every change goes through a database function that checks they are actively assigned to the case and is logged in `caseevent` automatically (the same pattern as the admin actions).
-
-**Already in the database** (the screens only need to call these):
-
-* `set_case_status`: move a case between open and under review
-* `verify_detection`: confirm an AI detection
-* `review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`: the POPIA suspect review
-* `list_case_events`: the case history
-* `list_cases`, `list_submissions`, `list_incident_media`: already filtered to their assigned cases by RLS
-
-**To build:**
-
-- [ ] **Login routing**: send investigators to their own dashboard instead of signing them out (`login.dart`).
-- [ ] **My cases**: the cases they are actively assigned to (`list_cases`), lead cases first.
-- [ ] **Case page for investigators**: submissions, footage, history, status open ↔ under review. No adding/removing submissions, assigning or closing (admin only).
-- [ ] **Suspect review screen** (POPIA): per submission, the people the AI saw with their status (possible first), each with the frame / bounding box from the footage. Confirm (with physical and clothing descriptions), dismiss (reason required), edit, undo. Needs:
-  - [ ] a database function listing a submission's person detections with `suspectstatus`, reviewer and note (for the assigned investigators; admins keep seeing counts only);
-  - [ ] the footage itself (Supabase Storage bucket + storage policies, see below).
-- [ ] **Verify detections**: confirm / un-confirm AI vehicle and weapon detections (`verify_detection`), correct vehicle details (plate, make, colour) with the old and new value in `correctionlog`.
-- [ ] **Case notes**: a new `casenote` table (case or submission, author, text, time). Append-only: no editing or deleting, a correction is a new note. Written through a function, logged in `caseevent`.
-- [ ] **Investigator edits of submission data** (e.g. attack type, location, time): through functions only, never deletes. Each edit must be logged with the **old and new value**; decide whether that is a new column on `caseevent` (`oldvalue` / `newvalue`) or one `changelog` table that `correctionlog` folds into.
-- [ ] **Suspect links across incidents**: let investigators verify or reject AI `crossreferencelink`s for confirmed suspects.
-- [ ] **POPIA follow-ups** to decide as a team: how long dismissed people and their detections are kept; whether viewing a suspect's details should itself be logged; who may see footage of possible suspects.
-
-## TODO: other
-
-- [ ] `create-investigator` Edge Function (admin creates investigator accounts from the app)
-- [ ] Supabase Storage bucket and policies for footage
-- [ ] Citizen upload / My submissions on the database instead of the local demo store (the profile is already live)
-- [ ] Custom SMTP provider in Supabase so reset and confirmation emails reach real users
-- [ ] Decide whether `"User".authid` should be nullable again so deleting a login keeps the profile (see [`database/README.md`](./database/README.md#still-to-do)). Until then, don't delete users in the Supabase dashboard
-- [ ] AI / computer vision pipeline (`ai/`), writing what [`database/README.md`](./database/README.md#the-ai-pipeline-what-it-writes) describes
-- [ ] Update the ERD (`diagrams/`) with the new tables and columns, including `detection.suspectstatus`
-
----
-
-# Project Goal
-
-The goal of Argus Shield is to create a computer vision-based intelligence application capable of assisting investigations by transforming video footage into structured, searchable suspect and vehicle information.
-
-The project aims to combine:
-
-```text
-Video Footage
-      |
-      v
-Computer Vision / AI
-      |
-      v
-Information Extraction
-      |
-      v
-Database (Supabase/PostgreSQL)
-      |
-      v
-Backend (Supabase)
-      |
-      v
-Investigator Interface (Flutter mobile app)
-```
-
-The system should ultimately allow investigators to efficiently search, retrieve, and analyse relevant suspect and vehicle intelligence extracted from CIT robbery footage.
-
-Development should maintain appropriate ethical, security, privacy, and responsible-AI considerations throughout the project. In particular, the system is designed as a decision-support tool: it does not determine guilt, make arrests, or take autonomous enforcement action — investigators remain responsible for reviewing and acting on system-generated intelligence.
-
----
-
-# Repository Information
-
-**Repository:** `cit-event-capture`
-
-**Project Name:** Argus Shield
-
-**Primary Branch:** `main`
-
-**Project Type:** Research and Development
-
-**Focus:** Computer Vision, Artificial Intelligence, Investigation Support, Data Management
-
----
-
 This project is currently not licensed for redistribution.
-
-The team should decide on the appropriate license before publicly distributing the project.

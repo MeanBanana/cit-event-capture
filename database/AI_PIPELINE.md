@@ -219,8 +219,8 @@ moving and re-analysing submissions.
 
 ## Still to do
 
-* **The worker itself** (loop above) — AI side.
-* **Citizen upload** — the upload page is still a local demo. When it uploads for real, call `SupabaseService.submitForAnalysis(incidentId)` after the last file.
+* ~~The worker itself~~ — done: `backend/worker.py` (see [`backend/README.md`](../backend/README.md#ai-worker-workerpy)); the sketch above shows the idea.
+* ~~Citizen upload~~ — done: the upload page sends the incident and files to Supabase and calls `SupabaseService.submitForAnalysis(incidentId)` after the last file.
 * **Overview tile** "AI worker online" — `getAiWorkerStatus()` is ready, no UI yet.
 * **Claude-written case summary** (plan section 7) — optional; the worker's `summary_text` is used until then.
 * `split_entity_member` / `merge_entities` (plan 4.5) — optional, later.
