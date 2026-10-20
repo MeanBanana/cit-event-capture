@@ -663,19 +663,6 @@ What exists today, so nobody builds on something that isn't there yet:
 
 ---
 
-## Still to do
-
-* **Station-scoped admins** — normal admins still see every station's submissions and cases; `admin.admin_station` is there to filter by later.
-* **Removing / disabling an admin** — needs another small Edge Function (deleting logins needs the service key).
-* **Email** — a custom SMTP provider (Authentication → Emails → SMTP Settings), so reset and confirmation emails reach real users.
-* **Deleted logins** — decide whether `"User".authid` should be nullable again. `20261006081759_remote_schema.sql` made it `NOT NULL`, which clashes with `ON DELETE SET NULL`: deleting a login that has a profile now fails instead of keeping the profile for the evidence trail. If the old behaviour is wanted, add a migration with `ALTER TABLE public."User" ALTER COLUMN authid DROP NOT NULL;`. **Until this is decided, don't delete users under Authentication → Users**; nothing in the app deletes logins, so everything else works normally.
-* **Registration fields** — there is no registration wireframe yet. If citizens need more than residence (e.g. ID number, suburb, city), add columns to `citizen` in a new migration.
-* **ERD** — update `diagrams/ERD.png`: add `citizen`, `investigator`, `admin`, `cases`, `caseevent`, `casemessage`, `weapondetail` and the AI tables (`aijob`, `aiworker`, `caseentity`, `entitymatchrejection`); `caseassignment` now points at `cases` (with `islead`); `crimescene` has `caseid`, the review columns, GPS and the AI summary; remove `fullName`, `passwordHash` and `badgeNumber` from USER.
-* **Case summary** — a de-duplicated vehicle / suspect / weapon summary on the case page ("at least 2 handguns", "Blue BMW, seen in 6 videos"), built from the detections with the same "most seen at once in one video" rule as the submission cards.
-* **Investigator app, remaining parts** — see [Still to do](../README.md#still-to-do) in the root README. Database parts that already exist: `review_possible_suspect`, `update_suspect_details`, `undo_suspect_review`, `verify_detection`. Still needed in the database: a function listing a submission's people with their suspect status for the review screen, case notes (append-only) and logged investigator edits of submission data.
-
----
-
 ## Troubleshooting
 
 **`Bind for 0.0.0.0:54320 failed: port is already allocated`** (during `db pull`)
