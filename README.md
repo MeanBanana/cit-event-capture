@@ -306,24 +306,6 @@ Features are not production-ready until implemented, tested and reviewed by the 
 
 ---
 
-## Still to do
-
-- [ ] **Suspect review screen** for investigators (confirm / dismiss possible suspects with a reason; the database functions exist)
-- [ ] **Case notes** (append-only) and logged investigator edits of submission data
-- [ ] Investigators verifying or rejecting AI links between incidents
-- [ ] **Station-scoped admins**: station admins still see every station's submissions and cases
-- [ ] Removing / disabling an admin from the console
-- [ ] "AI worker online" tile in the admin app (`getAiWorkerStatus()` is ready, no UI yet)
-- [ ] Custom SMTP provider in Supabase
-- [ ] Decide whether `"User".authid` should be nullable again (until then, don't delete users in the Supabase dashboard; see [`database/README.md`](database/README.md#still-to-do))
-- [ ] Release signing, a unique Android application ID (currently `com.example.argus_shield`) and store releases
-- [ ] AI accuracy: measure on labelled SA footage, more weapon training data (machetes / pangas), test on real automatic fire (see [`ai/README.md`](ai/README.md#still-to-do))
-- [ ] Update the ERD in `diagrams/` with the newer tables (`cases`, `caseevent`, `caseentity`, `aijob`, `casemessage`, `admin`, …)
-- [ ] POPIA decisions: how long dismissed people are kept, whether viewing suspect details is logged, who may see footage of possible suspects
-- [ ] Choose a licence before distributing the code publicly
-
----
-
 ## Collaborators
 
 * [Carel von Ronge](https://github.com/MeanBanana)
