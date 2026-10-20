@@ -158,8 +158,9 @@ runs: colour falls back to a k-means method and make is left empty.
 
 ## Cases: linking submissions and combining what they found
 
-`case_matcher.py` does the case side, on the `results.json` files, so it can be
-tried on a laptop before the Supabase part exists (cases are kept in `cases/`):
+`case_matcher.py` does the case side, on the `results.json` files, so it can also be
+tried on a laptop without Supabase (cases are kept in `cases/`; in the real
+system `backend/worker.py` runs the same code against the database):
 
 ```powershell
 python case_matcher.py create "crops\submission 1\results.json" --title "N1 Midrand CIT robbery"
@@ -288,7 +289,4 @@ Tracking", CVPR 2025).
 * Add labelled machete / panga and real CIT pictures to the weapon training
   data (knives and machetes are the weakest classes)
 * Test the sound analysis on real gunfire recordings
-* Save results to Supabase (`detection`, `vehicledetail`) with the service key,
-  and store each case's combined evidence (`case_matcher.case_view`) there for
-  the app (it shows a bundled sample until then)
 * Calibrate person matching on more clips (same people filmed by two phones)

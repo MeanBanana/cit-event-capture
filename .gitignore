@@ -12,3 +12,6 @@ backend/worker.log*
 # Python bytecode (made automatically on each PC)
 __pycache__/
 *.pyc
+
+# Claude Code project settings (local to each developer)
+.claude/

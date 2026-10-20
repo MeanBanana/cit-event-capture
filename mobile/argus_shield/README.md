@@ -1,19 +1,29 @@
 # Argus Shield — mobile app
 
-Flutter app for Argus Shield, used by **citizens** (report CIT incidents and upload footage), **admins** (review submissions, run cases, manage investigators) and, later, **investigators** (work their assigned cases). Data, login and access rules come from Supabase; see [`../../database/README.md`](../../database/README.md).
+Flutter app for Argus Shield, used by **citizens** (report CIT incidents and upload footage), **admins** (review submissions, run cases, manage investigators) and **investigators** (work their assigned cases). Data, login and access rules come from Supabase; see [`../../database/README.md`](../../database/README.md).
+
+> **Just want to use the app?** Download the Android app from **<https://argus-shield.netlify.app/>**. Install steps are in the [root README](../../README.md#installing-the-app).
 
 ## Running it
 
 ```bash
 flutter pub get
-flutter run            # on an emulator or a connected phone
+flutter run            # on an emulator or a connected phone (flutter devices lists them)
 ```
 
-The app starts on the login page. Log in with a citizen account for the citizen screens or an admin account for the admin dashboard (how to create an admin: `database/README.md`, "Creating an admin"). Investigator screens are not built yet: an investigator who logs in is told so and signed out.
+The app starts on the login page and routes by role: citizens to `CitizenHome`, admins to `AdminDashboard`, investigators to `InvestigatorDashboard`. New admins and investigators log in with a temporary password and must choose their own first (Choose Password screen). How accounts are made: [`database/README.md`](../../database/README.md#how-each-type-of-account-is-created).
 
 After changing `AndroidManifest.xml` or `ios/Runner/Info.plist` (for example the reset-password deep link), stop the app and run `flutter run` again; hot reload and hot restart do not pick those files up.
 
-What is live and what is still a demo: see "Current status" in [`database/README.md`](../../database/README.md#current-status).
+What is live and what is still to come: see "Current status" in [`database/README.md`](../../database/README.md#current-status).
+
+## Building an installer
+
+```bash
+flutter build apk --release      # -> build/app/outputs/flutter-apk/app-release.apk
+```
+
+That APK is what the website offers for download. Install it on a phone by opening the file (allow installs from that source when Android asks). The Android application ID is still the Flutter default `com.example.argus_shield` and release builds are signed with the debug key; set up a release key and a real ID before a store release.
 
 Before pushing:
 
@@ -35,6 +45,12 @@ lib/
 ├── reset_password.dart         ← "New Password" screen opened by the reset link
 ├── saved_contact_details.dart  ← remembers the last login's email/phone on the phone
 │                                  (pre-fills Forgot password; never passwords)
+├── temp_password.dart          ← rules + Generate for temporary staff passwords
+├── app_settings.dart, settings_screen.dart
+│                               ← language (English / Afrikaans / Zulu) and dark mode
+├── sign_out_button.dart        ← logout icon in every dashboard's app bar
+├── case_evidence_section.dart, case_evidence_source.dart, submission_evidence_source.dart
+│                               ← AI summary + people / vehicles / weapons of a case or submission
 ├── supabase_service.dart       ← EVERY call to Supabase goes through here
 ├── theme/
 │   ├── app_theme.dart          ← colours, fonts, text styles, spacing, ThemeData
@@ -46,10 +62,13 @@ lib/
 │   ├── submission_groups.dart     location / linked groups, suggestions, clips, case history
 │   ├── citizen_profile.dart       the logged-in citizen's details (Profile tab)
 │   └── investigator_summary.dart, system_stats.dart, activity_item.dart
-├── citizen/                    ← citizen dashboard: upload, my submissions, profile
-│                                  Profile is live on Supabase. Upload / My submissions are a
-│                                  LOCAL DEMO: citizen_store.dart keeps reports in memory;
-│                                  they are not saved to Supabase yet
+├── citizen/                    ← citizen dashboard: upload (1-5 files, phone GPS), my submissions,
+│                                  profile. citizen_store.dart sends reports to Supabase and
+│                                  queues them for the AI worker
+├── investigator_dashboard/
+│   ├── investigator_dashboard.dart   ← cases assigned to the signed-in investigator (RLS)
+│   ├── investigator_case_detail.dart ← tabs: Scenes · AI summary · Activity · Chat; open ↔ under review
+│   └── case_chat_tab.dart            ← live group chat for the case's investigators
 └── admin_screens/
     ├── admin_dashboard.dart    ← tabs: Overview · Cases · Detectives · Submissions
     ├── overview.dart           ← status tiles, recent submissions, recent activity
@@ -58,7 +77,13 @@ lib/
     ├── submission_detail.dart  ← one submission: descriptions, each clip, review actions
     ├── cases.dart              ← Cases tab (case cards: suspects, best suggestion + plate, preview)
     ├── case_detail.dart        ← one case: status, investigators, recommended, submissions, history
+    ├── crime_scene_card.dart, crime_scene_page.dart
+    │                           ← a case's crime scenes; findings + corrections (also used by investigators)
+    ├── entity_crops_page.dart  ← every picture of one person / vehicle / weapon, "Is this Person 1?"
+    ├── footage_list.dart, media_viewer_page.dart
+    │                           ← a submission's clips; full-screen player / photo with Download
     ├── investigators.dart      ← Detectives tab
+    ├── new_investigator_form.dart ← "+ New investigator" popup (create-investigator Edge Function)
     ├── review_actions.dart     ← Accept / Reject / Duplicate / Move / Remove flows
     ├── pickers.dart            ← slide-up panels to choose a case, submission or investigator
     ├── paged_list.dart         ← list that loads 30 rows at a time as you scroll
@@ -72,7 +97,8 @@ test/
 
 ## Login, registration and password reset
 
-* **Login** asks for a username; `SupabaseService.loginUser` looks up the email and signs in, then `login.dart` sends citizens to `CitizenHome` and admins to `AdminDashboard` via the 3-second `LoadingScreen`.
+* **Login** asks for a username; `SupabaseService.loginUser` looks up the email and signs in, then `login.dart` sends citizens to `CitizenHome`, admins to `AdminDashboard` and investigators to `InvestigatorDashboard` via the 3-second `LoadingScreen`.
+* **First log-in with a temporary password:** when the login's `app_metadata` has `must_change_password`, the app opens `ResetPasswordPage(firstLogin: true)` (Choose Password) instead of the dashboard; after saving, the user is signed out and logs in with the new password.
 * **Forgot password?** opens a panel pre-filled with the email saved on this phone (`saved_contact_details.dart`). **Reset Password** calls `SupabaseService.sendPasswordReset`, which emails a link to `argusshield://reset-password`.
 * Tapping the link **on the same phone** opens the app (intent filter in `android/app/src/main/AndroidManifest.xml`, URL scheme in `ios/Runner/Info.plist`). `supabase_flutter` checks it and fires `AuthChangeEvent.passwordRecovery`; `main.dart` listens for that and opens `ResetPasswordPage` in place of whatever was open (via the global `navigatorKey`). An expired link shows a message instead.
 * `ResetPasswordPage` asks for the new password twice (at least 6 characters), saves it with `SupabaseService.updatePassword`, signs out and returns to Login with "Password changed, please log in". Cancel or Back also signs out, so the reset session never stays open.

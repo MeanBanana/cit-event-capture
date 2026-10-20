@@ -41,6 +41,12 @@ talks to Supabase directly from the browser with the publishable key in
 
 ## Before going live
 
+- **App download.** The root README tells users to download the Android app
+  here. Build it (`flutter build apk --release` in `mobile/argus_shield/`),
+  put the APK in `public/` (e.g. `public/argus-shield.apk`, served at
+  `/argus-shield.apk`), and point the Citizen card's **Get the app** button
+  (`href` in `src/content.ts`, now `#contact`) at it.
+
 - The contact form drafts an email to the root admin
   (carel.vonronge@gmail.com). To change who receives it, edit `brand.email`
   in `src/content.ts`.

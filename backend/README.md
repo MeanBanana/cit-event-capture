@@ -80,7 +80,7 @@ python backend\worker.py --once          # do the waiting jobs, then stop
 * A crashed / stopped worker's job goes back in the queue by itself (max 3 tries).
 * Log: `backend\worker.log`. Temporary files: `backend\work\` (deleted after each job).
 
-**Test it before the app's upload is finished:** `submit_test.py` sends files
+**Test it without the app:** `submit_test.py` sends files
 as a new submission (incident + upload + media rows + queued analysis):
 
 ```powershell
