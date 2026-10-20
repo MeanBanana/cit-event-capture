@@ -70,6 +70,15 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
   /// One submission has no "Is this Person 2?" questions.
   @override
   Future<void> answer(int caseId, String memberKey, {required bool yes}) async {}
+
+  /// Each clip's people are listed separately on purpose: combining only
+  /// happens in a case.
+  @override
+  bool get canCombine => false;
+
+  @override
+  Future<String> combine(int caseId, String fromId, String intoId) =>
+      throw UnsupportedError('Combine people in the case, not in one submission.');
 }
 
 /// Corrected field (detection.corrections) -> the attribute it replaces.

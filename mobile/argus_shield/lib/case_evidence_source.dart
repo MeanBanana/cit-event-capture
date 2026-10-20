@@ -7,6 +7,8 @@
 //     image():  the picture from the private 'submissions' bucket
 //     bytes():  the same, for downloading
 //     answer(): answer_entity_match(detectionId, yes/no)
+//     combine(): combine_case_entities(caseId, 'p3', 'p1') - "Person 3 is
+//               the same as Person 1" (see EntityCombiner)
 //   SampleEvidenceSource
 //     a sample bundled with the app (assets/sample_case/), made by running
 //     the real pipeline + case_matcher.py on test clips. Marked "Sample data"
@@ -40,10 +42,22 @@ abstract class CaseEvidenceSource {
   static CaseEvidenceSource standard = SupabaseEvidenceSource();
 }
 
+/// A source whose people / vehicles / weapons can be combined by hand
+/// ("this is the same person as Person 1"). Only a CASE's evidence can: on
+/// a single submission each clip's entries are separate on purpose.
+abstract class EntityCombiner {
+  bool get canCombine;
+
+  /// [fromId] (e.g. "p3", the one being viewed) is the same as [intoId]
+  /// ("p1"): all of its pictures move there and it is removed.
+  /// Returns the id the combined entry has now ([intoId]).
+  Future<String> combine(int caseId, String fromId, String intoId);
+}
+
 /// The real data: the case's AI evidence from Supabase and its pictures from
 /// the private 'submissions' bucket. Admins and investigators assigned to
 /// the case only (the database and the bucket's policies check that).
-class SupabaseEvidenceSource implements CaseEvidenceSource {
+class SupabaseEvidenceSource implements CaseEvidenceSource, EntityCombiner {
   static const bucket = 'submissions';
 
   /// [_client] only for tests; the app uses Supabase.instance.client.
@@ -95,6 +109,21 @@ class SupabaseEvidenceSource implements CaseEvidenceSource {
     await _supabase.rpc('answer_entity_match',
         params: {'p_detectionid': detectionId, 'p_yes': yes});
   }
+
+  @override
+  bool get canCombine => true;
+
+  /// Admins and investigators assigned to the case; not on a closed case
+  /// (the database checks both).
+  @override
+  Future<String> combine(int caseId, String fromId, String intoId) async {
+    final result = await _supabase.rpc('combine_case_entities', params: {
+      'p_caseid': caseId,
+      'p_from': fromId,
+      'p_into': intoId,
+    });
+    return (result is Map ? result['entity_id'] as String? : null) ?? intoId;
+  }
 }
 
 /// A picture from the bucket, loaded through [load] (keyed by its path so
@@ -131,7 +160,7 @@ class _BucketImage extends ImageProvider<_BucketImage> {
 }
 
 /// The bundled sample. Answers are kept in memory while the app runs.
-class SampleEvidenceSource implements CaseEvidenceSource {
+class SampleEvidenceSource implements CaseEvidenceSource, EntityCombiner {
   static const asset = 'assets/sample_case/case_view.json';
   static Map<String, dynamic>? _data; // shared, so answers survive navigation
 
@@ -194,5 +223,27 @@ class SampleEvidenceSource implements CaseEvidenceSource {
         return;
       }
     }
+  }
+
+  @override
+  bool get canCombine => true;
+
+  @override
+  Future<String> combine(int caseId, String fromId, String intoId) async {
+    final data = await _sample();
+    for (final group in ['people', 'vehicles', 'weapons']) {
+      final list = data[group] as List;
+      final from = list.cast<Map>().where((e) => e['entity_id'] == fromId).firstOrNull;
+      final into = list.cast<Map>().where((e) => e['entity_id'] == intoId).firstOrNull;
+      if (from == null || into == null) continue;
+      (into['crops'] as List).addAll(from['crops'] as List);
+      (into['questions'] as List? ?? []).addAll(from['questions'] as List? ?? []);
+      into['submission_count'] = {
+        for (final c in (into['crops'] as List)) (c as Map)['submission'],
+      }.length;
+      list.remove(from);
+      return intoId;
+    }
+    throw StateError('Not found in this case any more.');
   }
 }

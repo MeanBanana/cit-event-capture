@@ -358,6 +358,7 @@ Under 30 is not shown. 30–59 is a "possible match" (case page recommendations 
 | `current_admin()` / `is_root_admin()` | any logged-in user | The caller's `admin` row / whether they are the root admin (the web console checks this at sign-in) |
 | `list_admins()` / `set_admin_station(userid, station)` | root admin only | The console's admin list (with last sign-in) and "Change station" |
 | `make_root_admin(username, station)` | SQL Editor only | One-off: makes someone the root admin |
+| `combine_case_entities(caseid, from, into)` | admin / assigned investigator | Combines two people / vehicles / weapons of a case into one (View crops → "Same as Person 1"); logged in `caseevent` |
 
 The AI pipeline's functions (`submit_for_analysis`, `claim_next_job`, `ai_save_analysis`, `get_case_evidence`, `answer_entity_match`, `ai_worker_status`, …) and the crime scene / correction functions (`list_case_crime_scenes`, `get_crime_scene`, `correct_detection`) are listed in [AI_PIPELINE.md](AI_PIPELINE.md) and under [Migrations](#migrations).
 
@@ -524,6 +525,7 @@ await supabase.rpc('accept_suggested_matches', params: {
 | `20261015100000_case_chat.sql` | Case group chat for assigned investigators: `casemessage`, `list_case_messages`, `send_case_message`, Realtime publication; admins read only; read-only on closed cases |
 | `20261018100000_admin_accounts.sql` | `admin` table (root / normal, police station) and its rules; `current_admin`, `is_root_admin`, `list_admins`, `set_admin_station`, `make_root_admin`; sign-up triggers create the `admin` row; existing admins get one (station `Unassigned`) |
 | `20261020100000_must_change_password.sql` | `clear_must_change_password()` trigger: the "must change password" mark on new admins / investigators is removed once they choose their own password |
+| `20261020120000_combine_case_entities.sql` | `combine_case_entities(caseid, from, into)`: an admin or assigned investigator combines two people / vehicles / weapons of a case the AI kept apart ("Same as Person 1"). Pictures, open questions and held weapons move over, the old entry is removed, a `summary` job re-votes, and `ai_entities_combined` is logged in `caseevent`. Not on closed cases; same kind only |
 
 ---
 
@@ -618,7 +620,7 @@ ROLLBACK;
 
 **Crime scenes and corrections:** `python tests/test_corrections_db.py` (same setup as the AI pipeline tests) and `supabase/tests/corrections.test.sql` (run by `supabase test db`).
 
-**Chat, admin accounts, storage and the worker:** `python tests/test_case_chat_db.py`, `tests/test_admin_accounts_db.py`, `tests/test_submissions_storage.py` and `tests/test_worker.py`, same setup (local database running).
+**Chat, admin accounts, storage and the worker:** `python tests/test_case_chat_db.py`, `tests/test_admin_accounts_db.py`, `tests/test_submissions_storage.py`, `tests/test_combine_entities_db.py` and `tests/test_worker.py`, same setup (local database running).
 
 **App tests:** run `flutter analyze` and `flutter test` in `mobile/argus_shield/`. The admin screens are tested against an in-memory fake (`test/admin_fake_service.dart`), so they need no Supabase project.
 

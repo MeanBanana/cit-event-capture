@@ -38,14 +38,14 @@ Argus Shield turns footage of cash-in-transit (CIT) robberies into structured, s
 | **Database, login, file storage** | Supabase (PostgreSQL 17, Auth, Storage, Realtime, Edge Functions) | `database/` | [README](database/README.md), [AI_PIPELINE.md](database/AI_PIPELINE.md) |
 | **AI / computer vision pipeline** | Python (YOLO26, YOLOE, FastALPR, YuNet, YAMNet) | `ai/` | [README](ai/README.md) |
 | **AI worker** (connects the pipeline to Supabase) | Python | `backend/` | [README](backend/README.md) |
-| **Website** (download page + root admin console) | Vite + React + TypeScript; plain HTML/JS console | `web/landing/`, `web/admin-console/` | [landing](web/landing/README.md), [console](web/admin-console/README.md), [setup](SUPABASE_ADMIN_CONSOLE.md) |
+| **Website** (download page + web admin console, where the root admin creates admins for police stations and Hawks units) | Vite + React + TypeScript; plain HTML/JS console | `web/landing/`, `web/admin-console/` | [landing](web/landing/README.md), [console](web/admin-console/README.md), [setup](SUPABASE_ADMIN_CONSOLE.md) |
 
 User roles:
 
 * **Citizens** register in the app, report CIT incidents and upload 1–5 videos/photos per report.
 * **Investigators** see only the cases they are assigned to: crime scenes, footage, AI findings, corrections, case history and a case group chat.
 * **Station admins** review submissions, build cases, assign investigators and create investigator accounts.
-* **The root admin** (one per system) creates station admins from the web console at `/admin/` on the website.
+* **The root admin** (one per system) creates the admins for the different police stations and Hawks units from the web console at `/admin/` on the website.
 
 ---
 
@@ -260,7 +260,7 @@ The system is a decision-support tool: it doesn't decide guilt or take any actio
 |---|---|
 | Mobile app | In `mobile/argus_shield/`: `flutter analyze` (must say "No issues found!") and `flutter test`. Screens are tested against in-memory fakes, so no Supabase is needed |
 | Database | In `database/`: `supabase start`, `supabase db reset`, then `supabase test db` (needs Docker Desktop) |
-| Integration | With the local database running, from the repo root: `python tests/test_ai_pipeline_db.py`, `test_corrections_db.py`, `test_case_chat_db.py`, `test_admin_accounts_db.py`, `test_submissions_storage.py`, `test_worker.py` (needs `pip install "psycopg[binary]"`) |
+| Integration | With the local database running, from the repo root: `python tests/test_ai_pipeline_db.py`, `test_corrections_db.py`, `test_case_chat_db.py`, `test_admin_accounts_db.py`, `test_combine_entities_db.py`, `test_submissions_storage.py`, `test_worker.py` (needs `pip install "psycopg[binary]"`) |
 | Permissions | Log in as a citizen, an investigator and an admin and check each sees only what it should |
 
 ---
