@@ -294,6 +294,58 @@ def drop_duplicate_people(detections, inside=0.9, same_height=0.1):
     return others + kept
 
 
+def same_vehicle(a, b, min_iou=0.6, inside=0.85, min_area_ratio=0.6):
+    """True if boxes a and b ([x1, y1, x2, y2]) are almost certainly the
+    SAME vehicle: they overlap a lot (IoU >= min_iou), or one lies nearly
+    all inside the other and they're about the same size. A small car in
+    front of a big truck is NOT the same vehicle (very different sizes)."""
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    area_a = max(1e-6, (a[2] - a[0]) * (a[3] - a[1]))
+    area_b = max(1e-6, (b[2] - b[0]) * (b[3] - b[1]))
+    if inter / (area_a + area_b - inter) >= min_iou:
+        return True
+    small, big = min(area_a, area_b), max(area_a, area_b)
+    return inter >= inside * small and small / big >= min_area_ratio
+
+
+def drop_duplicate_vehicles(detections, **rules):
+    """Removes a second box around the SAME vehicle.
+
+    YOLO26 has no cross-class NMS, so a bakkie (pickup) or minibus often
+    gets two boxes at once: "car" AND "truck" (or "bus"). Without this the
+    summary says "a silver car and a silver truck" for one bakkie. The
+    surest box is kept; see same_vehicle for what counts as the same one.
+
+    detections: [(id, class_id, confidence, [x1, y1, x2, y2]), ...]
+    """
+    vehicles = [d for d in detections if d[1] in VEHICLE_CLASSES]
+    others = [d for d in detections if d[1] not in VEHICLE_CLASSES]
+    kept = []
+    for det in sorted(vehicles, key=lambda d: -d[2]):          # surest first
+        if not any(same_vehicle(det[3], k[3], **rules) for k in kept):
+            kept.append(det)
+    return others + kept
+
+
+def _drop_duplicate_vehicle_boxes(predictor):
+    """Ultralytics callback (on_predict_postprocess_end): removes duplicate
+    vehicle boxes from each result BEFORE the tracker sees them, so one
+    bakkie never becomes two tracks (one "car", one "truck") in a video.
+    Registered in ArgusDetector.__init__, i.e. before track() adds the
+    tracker's own callback, so it runs first."""
+    for i, result in enumerate(predictor.results):
+        boxes = result.boxes
+        if boxes is None or len(boxes) < 2:
+            continue
+        dets = [(j, int(c), float(s), [float(v) for v in xy])
+                for j, (c, s, xy) in enumerate(zip(boxes.cls, boxes.conf, boxes.xyxy))]
+        keep = sorted(d[0] for d in drop_duplicate_vehicles(dets))
+        if len(keep) < len(dets):
+            predictor.results[i] = result[keep]
+
+
 def _boxed(frame, boxes):
     """A copy of the frame with an orange box around each [x1, y1, x2, y2]."""
     picture = frame.copy()
@@ -307,6 +359,9 @@ class ArgusDetector:
     def __init__(self, model_path=DEFAULT_MODEL, tracker=TRACKER_CONFIG):
         # Downloads the YOLO model file the first time.
         self.model = YOLO(model_path)
+        # One box per vehicle (a bakkie is not "a car AND a truck"). Added
+        # before the first track() call, so it runs before the tracker.
+        self.model.add_callback("on_predict_postprocess_end", _drop_duplicate_vehicle_boxes)
         self.model_name = Path(model_path).stem      # e.g. "yolo26s"
         self.tracker = tracker
 
@@ -483,7 +538,7 @@ class ArgusDetector:
                      [round(float(v), 1) for v in box.xyxy[0]])
                     for box, track_id in zip(boxes, boxes.id)]
 
-            detections = drop_duplicate_people(detections)
+            detections = drop_duplicate_vehicles(drop_duplicate_people(detections))
             people_now = self._learn_from_frame(
                 frame, frame_number, frame_time, detections, tracks,
                 min_conf=min_conf, min_vehicle_size=min_vehicle_size,
@@ -543,7 +598,7 @@ class ArgusDetector:
         tracks = {}
         if self.weapons is not None:
             self.weapons.reset()
-        detections = drop_duplicate_people(detections)
+        detections = drop_duplicate_vehicles(drop_duplicate_people(detections))
         people_now = self._learn_from_frame(
             frame, 1, 0.0, detections, tracks,
             min_conf=min_conf, min_vehicle_size=min_vehicle_size,

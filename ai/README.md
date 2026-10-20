@@ -36,6 +36,12 @@ voting across frames: answers are less certain than from a video. A plate is
 reported from one clear reading (a video needs 2 frames to agree), and a car
 touching the photo's edge is still judged at half weight.
 
+**One box per vehicle.** The detector sometimes labels one vehicle twice at
+once, e.g. a bakkie as both "car" and "truck". Boxes that are almost the
+same vehicle (overlap a lot and about the same size) are merged before
+tracking and the surest label is kept, so one bakkie is one vehicle in the
+summary (`drop_duplicate_vehicles` in `detector.py`).
+
 Output (all pictures are PNG: lossless, so no compression smudging on
 plates and faces):
 
