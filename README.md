@@ -17,7 +17,7 @@ Argus Shield consists of several interconnected development areas:
 * **Mobile Application** — Flutter (Dart) application, targeting both iOS and Android, used by citizens, investigators, and admins to interact with the system.
 * **Backend (Supabase)** — Backend-as-a-service platform (built on PostgreSQL) providing authentication, auto-generated REST APIs, database, and file storage. Any custom server-side logic (e.g. Supabase Edge Functions) also lives here.
 * **AI / Computer Vision** — Python-based computer vision models used to extract information (suspects, vehicles, weapons, license plates) from footage.
-* **Web Application** *(optional, not in current scope)* — An admin console may be built only if time allows. See [`web/`](#web) below.
+* **Web Application** An admin console built on the web where root admin can create other admins for different police stations or Hawks stations.
 * **Database** — Supabase/PostgreSQL schema, migrations, and row-level security (RLS) policies used to store and retrieve investigation data, managed with the Supabase CLI.
 * **Diagrams** — Architecture diagrams (C4 model), entity relationship diagrams (ERD), use-case diagrams, and UI mockups/wireframes.
 
