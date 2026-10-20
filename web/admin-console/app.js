@@ -5,7 +5,8 @@
 //            session is ended at once ("only the root administrator").
 //   list     list_admins()                         (root only, checked in SQL)
 //   create   Edge Function create-admin            (root only, checked there;
-//            it emails the new admin a link to set-password.html)
+//            with a temporary password the new admin must change at their
+//            first sign-in to the app)
 //   station  set_admin_station(userid, station)    (root only, checked in SQL)
 //
 // Every rule is enforced by the database / Edge Function; the checks here
@@ -273,6 +274,8 @@
 
   $("new-admin").addEventListener("click", () => {
     newForm.reset();
+    $("new-password").type = "password";
+    document.querySelector('[data-toggle-password="new-password"]').textContent = "Show";
     setError($("new-error"), "");
     newForm.hidden = false;
     $("new-done").hidden = true;
@@ -285,6 +288,52 @@
   $("login-form").addEventListener("input", () => setError($("login-error"), ""));
   $("station-form").addEventListener("input", () => setError($("station-error"), ""));
 
+  // Letters and digits without look-alikes (0/O, 1/l/I), so the password
+  // can be read out or typed over without mistakes.
+  const PASSWORD_LETTERS = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
+  const PASSWORD_DIGITS = "23456789";
+
+  /** A random 12-character temporary password with letters and digits. */
+  function generatePassword(length = 12) {
+    const all = PASSWORD_LETTERS + PASSWORD_DIGITS;
+    const pick = (chars) => {
+      // rejection sampling, so every character is equally likely
+      const limit = 256 - (256 % chars.length);
+      const byte = new Uint8Array(1);
+      do crypto.getRandomValues(byte); while (byte[0] >= limit);
+      return chars[byte[0] % chars.length];
+    };
+    while (true) {
+      let password = "";
+      for (let i = 0; i < length; i++) password += pick(all);
+      if (/[A-Za-z]/.test(password) && /\d/.test(password)) return password;
+    }
+  }
+
+  $("new-generate").addEventListener("click", () => {
+    const input = $("new-password");
+    input.value = generatePassword();
+    input.type = "text"; // show it, so it can be noted down
+    const toggle = document.querySelector('[data-toggle-password="new-password"]');
+    if (toggle) toggle.textContent = "Hide";
+    setError($("new-error"), "");
+  });
+
+  $("done-copy").addEventListener("click", async () => {
+    const text = [
+      "Argus Shield sign-in",
+      "Username: " + $("done-username").textContent,
+      "Temporary password: " + $("done-password").textContent,
+      "You will be asked to choose your own password when you first sign in.",
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Copied the sign-in details.");
+    } catch (_) {
+      toast("Could not copy. Select the details and copy them yourself.");
+    }
+  });
+
   /** Same rules as the Edge Function, for instant messages. */
   function validate(v) {
     if (!v.firstname || !v.surname) return "Enter the first name and surname.";
@@ -292,6 +341,9 @@
     if (!/^[A-Za-z0-9_.]{3,30}$/.test(v.username)) return "Username must be 3-30 letters, numbers, _ or .";
     if (v.phone && !/^\d{9}$/.test(v.phone)) return "Phone number must be the 9 digits after +27 (no initial 0).";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return "Enter a valid email address.";
+    if (v.password.length < 8 || v.password.length > 72 || !/[A-Za-z]/.test(v.password) || !/\d/.test(v.password)) {
+      return "The temporary password needs 8-72 characters, with letters and numbers. Use Generate for a strong one.";
+    }
     return null;
   }
 
@@ -305,6 +357,7 @@
       username: f.username.value.trim(),
       phone: f.phone.value.replace(/\s+/g, "").replace(/^0/, ""),
       email: f.email.value.trim().toLowerCase(),
+      password: f.password.value,
     };
     const errorBox = $("new-error");
     const problem = validate(values);
@@ -314,17 +367,13 @@
     const button = $("new-submit");
     busy(button, true, "Creating…");
     try {
-      const { data, error } = await sb.functions.invoke("create-admin", { body: values });
+      const { error } = await sb.functions.invoke("create-admin", { body: values });
       if (error) throw new Error(await messageOf(error, "The account could not be created. Try again."));
       $("done-text").textContent =
         `${values.firstname} ${values.surname} is now the admin for ${values.station}.`;
       $("done-username").textContent = values.username;
       $("done-email").textContent = values.email;
-      $("done-hint").textContent = data && data.email_sent === false
-        ? "The email with the password link could not be sent (the server's hourly email limit may be " +
-          "reached). Ask them to tap \"Forgot password?\" in the Argus Shield app and enter this email."
-        : "We've emailed them a link to choose their password. After that they sign in on the " +
-          "Argus Shield app with this username. The link expires, so ask them to use it soon.";
+      $("done-password").textContent = values.password;
       newForm.hidden = true;
       $("new-done").hidden = false;
       loadAdmins();

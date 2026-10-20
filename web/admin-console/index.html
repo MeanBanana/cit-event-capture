@@ -109,8 +109,15 @@
           <span class="prefixed"><span class="prefix">+27</span><input name="phone" inputmode="numeric" maxlength="12" placeholder="82 123 4567"></span>
         </label>
       </div>
-      <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="off">
-        <small class="hint">We email the new admin a link to choose their own password.</small>
+      <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="off"></label>
+      <label class="field">
+        <span>Temporary password</span>
+        <span class="with-button">
+          <input id="new-password" name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password" spellcheck="false">
+          <button type="button" class="ghost small" id="new-generate">Generate</button>
+          <button type="button" class="ghost small" data-toggle-password="new-password">Show</button>
+        </span>
+        <small class="hint">At least 8 characters with letters and numbers. They must choose their own password the first time they sign in to the app.</small>
       </label>
       <p id="new-error" class="form-error" role="alert" hidden></p>
       <div class="dialog-actions">
@@ -126,9 +133,11 @@
       <dl class="credentials">
         <dt>Username</dt><dd id="done-username"></dd>
         <dt>Email</dt><dd id="done-email"></dd>
+        <dt>Temporary password</dt><dd id="done-password"></dd>
       </dl>
-      <p class="hint" id="done-hint"></p>
+      <p class="hint">Share these privately. They sign in on the Argus Shield app with this username and temporary password, and must then choose their own password.</p>
       <div class="dialog-actions">
+        <button type="button" class="ghost" id="done-copy">Copy details</button>
         <button type="button" class="primary" data-close>Done</button>
       </div>
     </div>

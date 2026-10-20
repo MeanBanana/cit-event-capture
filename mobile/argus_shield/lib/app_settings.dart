@@ -228,6 +228,9 @@ class AppSettings extends ChangeNotifier {
         'correctErrors': 'Please correct errors',
         'acceptTerms': 'Please accept the Terms and Conditions',
         'newPassword': 'New Password',
+        'choosePassword': 'Choose Password',
+        'choosePasswordBody':
+            'You signed in with a temporary password. Choose your own password to continue.',
         'newPasswordBody': 'Choose a new password for your Argus Shield account.',
         'confirmNewPassword': 'Confirm new password',
         'savePassword': 'Save Password',
@@ -451,6 +454,9 @@ class AppSettings extends ChangeNotifier {
         'correctErrors': 'Korrigeer asseblief die foute',
         'acceptTerms': 'Aanvaar asseblief die bepalings en voorwaardes',
         'newPassword': 'Nuwe wagwoord',
+        'choosePassword': 'Kies wagwoord',
+        'choosePasswordBody':
+            'Jy het met ’n tydelike wagwoord aangemeld. Kies jou eie wagwoord om voort te gaan.',
         'newPasswordBody': 'Kies ’n nuwe wagwoord vir jou Argus Shield-rekening.',
         'confirmNewPassword': 'Bevestig nuwe wagwoord',
         'savePassword': 'Stoor wagwoord',
@@ -674,6 +680,9 @@ class AppSettings extends ChangeNotifier {
         'correctErrors': 'Sicela ulungise amaphutha',
         'acceptTerms': 'Sicela wamukele imigomo nemibandela',
         'newPassword': 'Iphasiwedi entsha',
+        'choosePassword': 'Khetha iphasiwedi',
+        'choosePasswordBody':
+            'Ungene ngephasiwedi yesikhashana. Khetha iphasiwedi yakho ukuze uqhubeke.',
         'newPasswordBody': 'Khetha iphasiwedi entsha ye-akhawunti yakho ye-Argus Shield.',
         'confirmNewPassword': 'Qinisekisa iphasiwedi entsha',
         'savePassword': 'Londoloza iphasiwedi',

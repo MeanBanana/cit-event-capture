@@ -9,6 +9,7 @@ import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
 import 'app_settings.dart';
 import 'loadingscreen.dart';
+import 'reset_password.dart';
 
 class LoginPage extends StatefulWidget{
   /// Optional so tests can pass in a fake; the app uses the real service.
@@ -100,6 +101,22 @@ class _LoginPageState extends State<LoginPage>{
 
     if (success) {
       _rememberContact(result["profile"] as Map<String, dynamic>?);
+    }
+
+    // Still on the temporary password from whoever made the account: they
+    // must choose their own before reaching any dashboard.
+    if (success && result["mustChangePassword"] == true) {
+      Navigator.pushReplacement(
+        ctx,
+        MaterialPageRoute(
+          builder: (_) => LoadingScreen(
+            resultMessage: "Please choose your own password",
+            nextScreen: ResetPasswordPage(firstLogin: true, service: widget.service),
+          ),
+        ),
+      );
+      if (mounted) setState(() => isLoading = false);
+      return;
     }
 
     // Choose the dashboard for the signed-in user's role

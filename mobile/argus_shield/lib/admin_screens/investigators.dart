@@ -15,6 +15,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/investigator_summary.dart';
@@ -115,17 +116,16 @@ class _InvestigatorsState extends State<Investigators> {
     _reload();
   }
 
-  /// Opens the "New investigator" popup. On success: closes it, explains
-  /// how the investigator sets their password, and reloads the list so the
-  /// new account appears at the top.
+  /// Opens the "New investigator" popup. On success: closes it, shows the
+  /// username and temporary password to pass on, and reloads the list so
+  /// the new account appears at the top.
   Future<void> _newInvestigator() async {
-    var emailSent = true;
     final created = await showAdminSheet<NewInvestigatorDetails>(
       context,
       title: 'New investigator',
       builder: (sheetContext) => NewInvestigatorForm(
         onCreate: (details) async {
-          emailSent = await _service.createInvestigator(
+          await _service.createInvestigator(
             firstName: details.firstName,
             surname: details.surname,
             username: details.username,
@@ -135,6 +135,7 @@ class _InvestigatorsState extends State<Investigators> {
             badgeNumber: details.badgeNumber,
             station: details.station,
             unit: details.unit,
+            password: details.password,
           );
           if (sheetContext.mounted) Navigator.pop(sheetContext, details);
         },
@@ -147,23 +148,46 @@ class _InvestigatorsState extends State<Investigators> {
     _query = '';
     _reload();
 
-    final passwordHelp = emailSent
-        ? 'We\'ve emailed ${created.email} a link to choose a password. '
-            'After that they log in on Argus Shield. The link expires, so ask '
-            'them to use it soon.'
-        : 'The email with the password link could not be sent. They can open '
-            'Argus Shield on their own phone, tap "Forgot password?" and '
-            'enter ${created.email}.';
+    final details = 'Argus Shield log-in\n'
+        'Username: ${created.username}\n'
+        'Temporary password: ${created.password}\n'
+        'You will be asked to choose your own password when you first log in.';
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Account created', style: AppText.cardTitle),
-        content: Text(
-          '${created.firstName} ${created.surname}\'s account is ready, with '
-          'the username "${created.username}".\n\n$passwordHelp',
-          style: AppText.body,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${created.firstName} ${created.surname}\'s account is ready.',
+              style: AppText.body,
+            ),
+            const SizedBox(height: AppSpacing.medium),
+            SelectableText(
+              'Username: ${created.username}\n'
+              'Temporary password: ${created.password}',
+              style: AppText.body.copyWith(fontFamily: 'monospace'),
+            ),
+            const SizedBox(height: AppSpacing.medium),
+            const Text(
+              'Share these privately. They must choose their own password '
+              'the first time they log in.',
+              style: AppText.bodyMuted,
+            ),
+          ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: details));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Log-in details copied')),
+              );
+            },
+            child: const Text('Copy'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('OK'),

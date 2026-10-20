@@ -106,7 +106,10 @@ class SupabaseService {
   // ------------------------------------------------------------------- LOGIN
   /// On success the result also contains "profile":
   /// {userid, username, firstname, surname, email, phonenumber, role} where
-  /// role is 'citizen', 'investigator' or 'admin'.
+  /// role is 'citizen', 'investigator' or 'admin', and "mustChangePassword":
+  /// true for a new admin/investigator still on their temporary password
+  /// (must_change_password in the login's app_metadata, set by the
+  /// create-admin / create-investigator Edge Functions).
   Future<Map<String, dynamic>> loginUser({
     required String username,
     required String password,
@@ -138,6 +141,8 @@ class SupabaseService {
         "success": true,
         "message": "Welcome ${profile['firstname']}",
         "profile": profile,
+        "mustChangePassword":
+            authResponse.user!.appMetadata['must_change_password'] == true,
       };
     } on AuthException catch (e) {
       if (e.code == 'email_not_confirmed') {
@@ -200,7 +205,9 @@ class SupabaseService {
     }
   }
 
-  /// Sets a new password for the user signed in by the reset link.
+  /// Sets a new password for the signed-in user: after a reset link, or at
+  /// the first log-in with a temporary password (the database then clears
+  /// must_change_password).
   Future<Map<String, dynamic>> updatePassword(String newPassword) async {
     try {
       await supabase.auth.updateUser(UserAttributes(password: newPassword));
@@ -395,19 +402,19 @@ class SupabaseService {
         .toList();
   }
 
-  /// Creates an investigator account (admin only). Returns whether the
-  /// email with the link to choose a password was sent.
+  /// Creates an investigator account (admin only) with the temporary
+  /// [password] the admin chose.
   ///
   /// Calls the create-investigator Edge Function, which holds the service
   /// key: only it may create a login with the 'investigator' role. The
-  /// database trigger then makes the "User" + investigator rows. The account
-  /// has no password yet; the function emails the investigator a link to
-  /// choose one (if that email fails they can use "Forgot password?").
+  /// database trigger then makes the "User" + investigator rows. The login
+  /// is marked must_change_password, so the investigator chooses their own
+  /// password at their first log-in.
   ///
   /// [phone] is the 9 digits after +27 (optional). Throws FunctionException
   /// on failure; its details['error'] is a message for the admin (see
   /// errorText in admin_ui.dart), e.g. "That badge number is already in use."
-  Future<bool> createInvestigator({
+  Future<void> createInvestigator({
     required String firstName,
     required String surname,
     required String username,
@@ -417,8 +424,9 @@ class SupabaseService {
     required String badgeNumber,
     required String station,
     String? unit,
+    required String password,
   }) async {
-    final response = await supabase.functions.invoke(
+    await supabase.functions.invoke(
       'create-investigator',
       body: {
         'firstname': firstName.trim(),
@@ -430,10 +438,9 @@ class SupabaseService {
         'badgenumber': badgeNumber.trim(),
         'station': station.trim(),
         'unit': unit?.trim() ?? '',
+        'password': password,
       },
     );
-    final data = response.data;
-    return !(data is Map && data['email_sent'] == false);
   }
 
   // ------------------------------------------------------------ ADMIN STATS

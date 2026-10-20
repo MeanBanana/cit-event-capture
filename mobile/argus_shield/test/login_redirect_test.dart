@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:argus_shield/login.dart';
+import 'package:argus_shield/reset_password.dart';
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/citizen/citizen_dashboard.dart';
 import 'package:argus_shield/admin_screens/admin_dashboard.dart';
@@ -140,6 +141,25 @@ void main() {
     expect(find.byType(LoginPage), findsNothing);
     expect(service.logoutCalls, 0);
   });
+
+  for (final role in ['admin', 'investigator']) {
+    testWidgets('$role on a temporary password must choose a password first',
+        (tester) async {
+      final service = FakeSupabaseService(
+          {...successFor(role), "mustChangePassword": true});
+      await logIn(tester, service);
+      expect(find.text('Please choose your own password'), findsOneWidget);
+
+      await finishLoading(tester);
+      expect(find.byType(ResetPasswordPage), findsOneWidget);
+      expect(find.text('Choose Password'), findsOneWidget);
+      expect(find.byType(AdminDashboard), findsNothing);
+      expect(find.byType(InvestigatorDashboard), findsNothing);
+      // no way Back to the dashboard or the login page
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      expect(navigator.canPop(), isFalse);
+    });
+  }
 
   testWidgets('an unknown role is signed out again', (tester) async {
     final service = FakeSupabaseService(successFor('visitor'));

@@ -10,6 +10,10 @@ import 'app_settings.dart';
 /// (AuthChangeEvent.passwordRecovery). The link has already signed them in
 /// for this one purpose, so all that is left is choosing a new password.
 ///
+/// Also opened by login.dart with [firstLogin] when a new admin or
+/// investigator logs in with the temporary password they were given: they
+/// must choose their own before they can use the app.
+///
 /// After saving, the user is signed out and sent back to the login page.
 /// Cancelling (or pressing Back) also signs out, so the reset session does
 /// not stay open on the phone.
@@ -17,7 +21,10 @@ class ResetPasswordPage extends StatefulWidget {
   /// Optional so tests can pass in a fake; the app uses the real service.
   final SupabaseService? service;
 
-  const ResetPasswordPage({super.key, this.service});
+  /// True at the first log-in with a temporary password (different title).
+  final bool firstLogin;
+
+  const ResetPasswordPage({super.key, this.service, this.firstLogin = false});
 
   /// Same minimum as Supabase's default (Authentication > Providers > Email).
   static const minLength = 6;
@@ -127,7 +134,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             child: Column(
               children: [
                 Text(
-                  appSettings.t('newPassword'),
+                  appSettings.t(widget.firstLogin ? 'choosePassword' : 'newPassword'),
                   textAlign: TextAlign.center,
                   style: AppText.pageTitle.copyWith(height: 1.0),
                   textHeightBehavior: const TextHeightBehavior(
@@ -137,7 +144,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 ),
                 const SizedBox(height: AppSpacing.small),
                 Text(
-                  appSettings.t('newPasswordBody'),
+                  appSettings.t(
+                      widget.firstLogin ? 'choosePasswordBody' : 'newPasswordBody'),
                   textAlign: TextAlign.center,
                   style: mutedOnPage(context),
                 ),

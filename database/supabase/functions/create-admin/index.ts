@@ -13,24 +13,25 @@
 //   1. Checks the caller is logged in AND is the root admin (admin table).
 //   2. Validates the form values.
 //   3. Checks the username isn't taken (clear message).
-//   4. auth.admin.createUser with role 'admin' in app_metadata (only the
-//      service key can set that) and no password. The sign-up triggers
-//      create the "User" row and the admin row (always 'normal', station
-//      from user_metadata.admin_station).
-//   5. Makes sure the rows are right (see create-investigator for why).
-//   6. Emails the new admin a link to choose their password, then returns
-//      { userid, email, email_sent }.
+//   4. auth.admin.createUser with the temporary password the root admin
+//      chose, and role 'admin' + must_change_password in app_metadata (only
+//      the service key can set those). The sign-up triggers create the
+//      "User" row and the admin row (always 'normal', station from
+//      user_metadata.admin_station).
+//   5. Makes sure the rows are right (see create-investigator for why), then
+//      returns { userid, email }.
 //
-// The link opens web/admin-console/set-password.html (PASSWORD_SETUP_URL
-// secret). After that the new admin signs in to the mobile app with their
-// username and the password they chose.
+// The root admin gives the new admin their username and temporary password.
+// At their first sign-in the mobile app makes them choose their own password
+// (must_change_password; cleared by the database once the password changes,
+// see migration 20261020100000_must_change_password.sql).
 //
 // Deploy (from the database/ folder):
 //   supabase functions deploy create-admin
 // verify_jwt is off in config.toml because this function checks the caller
 // itself (step 1).
 
-import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,22 +59,13 @@ const USERNAME = /^[A-Za-z0-9_.]{3,30}$/; // "User"_username_format check
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOCAL_PHONE = /^\d{9}$/; // the 9 digits after +27
 
-/**
- * Emails [email] a link to choose their password (Supabase's "Reset
- * password" email). The link opens the set-password page of the web admin
- * console (PASSWORD_SETUP_URL secret), which works on any device; the
- * mobile app's own reset links only open on the phone that asked for them.
- * Returns false if the email could not be sent (e.g. the hourly email
- * limit); the account is kept and the person can use "Forgot password?".
- */
-async function sendPasswordSetup(
-  admin: SupabaseClient,
-  email: string,
-): Promise<boolean> {
-  const redirectTo = Deno.env.get("PASSWORD_SETUP_URL") || undefined;
-  const { error } = await admin.auth.resetPasswordForEmail(email, { redirectTo });
-  if (error) console.error("Could not send the password setup email", error);
-  return !error;
+/** Rules for a temporary password, or null if it is fine. */
+function passwordProblem(password: string): string | null {
+  if (password.length < 8 || password.length > 72 ||
+      !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    return "The temporary password needs 8-72 characters, with letters and numbers.";
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -87,10 +79,8 @@ Deno.serve(async (req) => {
   }
 
   // The service-key client: bypasses RLS. Used only after the root check.
-  // Implicit flow, so the emailed set-password link carries the session
-  // itself and works in any browser (PKCE links need the asking device).
   const admin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false, flowType: "implicit" },
+    auth: { persistSession: false, autoRefreshToken: false },
   });
 
   // ---- 1. Who is calling? Must be the root admin. --------------------------
@@ -128,6 +118,8 @@ Deno.serve(async (req) => {
   const email = text(body.email).toLowerCase();
   const phone = text(body.phone); // optional, 9 digits after +27
   const station = text(body.station);
+  // not trimmed: the password is used exactly as given
+  const password = typeof body.password === "string" ? body.password : "";
 
   if (!firstname || !surname) return fail(400, "Enter the first name and surname.");
   if (firstname.length > 100 || surname.length > 100) {
@@ -142,6 +134,8 @@ Deno.serve(async (req) => {
   }
   if (!station) return fail(400, "Enter the police station.");
   if (station.length > 150) return fail(400, "Station must be at most 150 characters.");
+  const badPassword = passwordProblem(password);
+  if (badPassword) return fail(400, badPassword);
 
   // ---- 3. Clear message for a taken username. ------------------------------
   const { data: free, error: usernameError } = await admin.rpc(
@@ -156,8 +150,9 @@ Deno.serve(async (req) => {
   // 20261018100000_admin_accounts.sql).
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
+    password,
     email_confirm: true, // the root admin vouches for the address
-    app_metadata: { role: "admin" },
+    app_metadata: { role: "admin", must_change_password: true },
     user_metadata: {
       username,
       firstname,
@@ -172,6 +167,9 @@ Deno.serve(async (req) => {
     const code = (createError as { code?: string } | null)?.code;
     if (code === "email_exists" || code === "user_already_exists") {
       return fail(409, "An account with this email already exists.");
+    }
+    if (code === "weak_password") {
+      return fail(400, "That temporary password is too weak. Generate a new one.");
     }
     if (createError?.message?.includes("Database error")) {
       return fail(409, "The username is already in use.");
@@ -229,8 +227,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ---- 6. Email a link to choose a password. -------------------------------
-  const emailSent = await sendPasswordSetup(admin, email);
-
-  return reply(201, { userid: row.userid, email, email_sent: emailSent });
+  return reply(201, { userid: row.userid, email });
 });

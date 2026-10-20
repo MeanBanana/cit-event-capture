@@ -13,24 +13,24 @@
 //   1. Checks the caller is logged in AND is an admin ("User".role).
 //   2. Validates the form values (same rules as the app).
 //   3. Checks the username and badge number aren't taken (clear messages).
-//   4. auth.admin.createUser with role 'investigator' in app_metadata (only
-//      the service key can set that). The on_auth_user_created trigger then
-//      creates the "User" and investigator rows from user_metadata.
-//   5. Makes sure the rows are investigator rows (see step 5 below).
-//   6. Emails the investigator a link to choose their password, then
-//      returns { userid, email, email_sent }.
+//   4. auth.admin.createUser with the temporary password the admin chose,
+//      and role 'investigator' + must_change_password in app_metadata (only
+//      the service key can set those). The on_auth_user_created trigger
+//      then creates the "User" and investigator rows from user_metadata.
+//   5. Makes sure the rows are investigator rows (see step 5 below), then
+//      returns { userid, email }.
 //
-// The account has no password until then. The link opens the web admin
-// console's set-password page (PASSWORD_SETUP_URL secret), which works on
-// any device; the app's own "Forgot password?" links only open on the phone
-// that asked for them, so a link sent from here could not use those.
+// The admin gives the investigator their username and temporary password.
+// At their first log-in the app makes them choose their own password
+// (must_change_password; cleared by the database once the password changes,
+// see migration 20261020100000_must_change_password.sql).
 //
 // Deploy (from the database/ folder):
 //   supabase functions deploy create-investigator
 // verify_jwt is off in config.toml because this function checks the caller
 // itself (step 1), which also works with Supabase's newer JWT signing keys.
 
-import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,22 +58,13 @@ const USERNAME = /^[A-Za-z0-9_.]{3,30}$/; // "User"_username_format check
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOCAL_PHONE = /^\d{9}$/; // the 9 digits after +27
 
-/**
- * Emails [email] a link to choose their password (Supabase's "Reset
- * password" email). The link opens the set-password page of the web admin
- * console (PASSWORD_SETUP_URL secret), which works on any device; the
- * mobile app's own reset links only open on the phone that asked for them.
- * Returns false if the email could not be sent (e.g. the hourly email
- * limit); the account is kept and the person can use "Forgot password?".
- */
-async function sendPasswordSetup(
-  admin: SupabaseClient,
-  email: string,
-): Promise<boolean> {
-  const redirectTo = Deno.env.get("PASSWORD_SETUP_URL") || undefined;
-  const { error } = await admin.auth.resetPasswordForEmail(email, { redirectTo });
-  if (error) console.error("Could not send the password setup email", error);
-  return !error;
+/** Rules for a temporary password, or null if it is fine. */
+function passwordProblem(password: string): string | null {
+  if (password.length < 8 || password.length > 72 ||
+      !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    return "The temporary password needs 8-72 characters, with letters and numbers.";
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -87,10 +78,8 @@ Deno.serve(async (req) => {
   }
 
   // The service-key client: bypasses RLS. Used only after the admin check.
-  // Implicit flow, so the emailed set-password link carries the session
-  // itself and works in any browser (PKCE links need the asking device).
   const admin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false, flowType: "implicit" },
+    auth: { persistSession: false, autoRefreshToken: false },
   });
 
   // ---- 1. Who is calling? Must be a logged-in admin. ----------------------
@@ -127,6 +116,8 @@ Deno.serve(async (req) => {
   const badgenumber = text(body.badgenumber).toUpperCase();
   const station = text(body.station);
   const unit = text(body.unit); // optional
+  // not trimmed: the password is used exactly as given
+  const password = typeof body.password === "string" ? body.password : "";
 
   if (!firstname || !surname) return fail(400, "Enter the first name and surname.");
   if (!USERNAME.test(username)) {
@@ -147,6 +138,8 @@ Deno.serve(async (req) => {
   if (station.length > 150 || unit.length > 100) {
     return fail(400, "Station must be at most 150 characters and unit at most 100.");
   }
+  const badPassword = passwordProblem(password);
+  if (badPassword) return fail(400, badPassword);
 
   // ---- 3. Clear messages for the usual clashes. ---------------------------
   // (The database still enforces both; these just explain it nicely.)
@@ -170,8 +163,9 @@ Deno.serve(async (req) => {
   // reads (see the user_role_tables migration).
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
+    password,
     email_confirm: true, // the admin vouches for the address
-    app_metadata: { role: "investigator" },
+    app_metadata: { role: "investigator", must_change_password: true },
     user_metadata: {
       username,
       firstname,
@@ -188,6 +182,9 @@ Deno.serve(async (req) => {
     const code = (createError as { code?: string } | null)?.code;
     if (code === "email_exists" || code === "user_already_exists") {
       return fail(409, "An account with this email already exists.");
+    }
+    if (code === "weak_password") {
+      return fail(400, "That temporary password is too weak. Generate a new one.");
     }
     if (createError?.message?.includes("Database error")) {
       // The sign-up trigger refused the data (e.g. taken at the same moment).
@@ -249,8 +246,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ---- 6. Email a link to choose a password. -------------------------------
-  const emailSent = await sendPasswordSetup(admin, email);
-
-  return reply(201, { userid: row.userid, email, email_sent: emailSent });
+  return reply(201, { userid: row.userid, email });
 });

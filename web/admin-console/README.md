@@ -10,8 +10,9 @@ It is plain HTML / CSS / JavaScript: no build step, no Node needed.
 web/admin-console/
   index.html     sign-in page + console
   set-password.html / .js
-                 "choose your password" page that the new-account
-                 email links to (admins and investigators)
+                 "choose your password" page for emailed reset links
+                 (no longer used for new accounts: they get a
+                 temporary password instead)
   styles.css     look and feel (white, navy, amber from the logo)
   app.js         all the logic
   config.js      Supabase URL + publishable key (same as the mobile app)
@@ -48,10 +49,6 @@ It's a static site, so any static host works. Upload the whole
   onto the page. You get a link straight away.
 * **Vercel** or **GitHub Pages** work the same way (publish the folder).
 
-When the address changes, update the set-password link: add
-`<address>/set-password.html` to Supabase's **Redirect URLs** and set the
-`PASSWORD_SETUP_URL` Edge Function secret to it (see step 3b in
-[`SUPABASE_ADMIN_CONSOLE.md`](../../SUPABASE_ADMIN_CONSOLE.md)).
 
 ## How it's secured
 
@@ -63,6 +60,9 @@ When the address changes, update the set-password link: add
   root admin, and the `create-admin` Edge Function checks the caller too.
 * `config.js` only has the **publishable** key (it's public by design and
   already ships in the mobile app). The service key stays inside Supabase.
-* New admins (and investigators created in the mobile app) get no password.
-  The Edge Function emails them a one-use link to `set-password.html`, which
-  only keeps the session in memory and signs out after saving.
+* New admins (and investigators created in the mobile app) get a temporary
+  password from whoever creates them (**Generate** makes a random one in the
+  browser). Their login is marked `must_change_password`, so the mobile app
+  makes them choose their own password at their first sign-in. Only the
+  service key can set that mark, and the database clears it once the
+  password changes (migration `20261020100000_must_change_password.sql`).

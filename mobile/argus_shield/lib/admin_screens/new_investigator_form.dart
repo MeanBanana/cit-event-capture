@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
+import 'package:argus_shield/temp_password.dart';
 
 /// What the admin filled in. Optional fields are '' when left empty.
 class NewInvestigatorDetails {
@@ -22,6 +23,7 @@ class NewInvestigatorDetails {
   final String badgeNumber;
   final String station;
   final String unit;
+  final String password; // temporary; changed at their first log-in
 
   const NewInvestigatorDetails({
     required this.firstName,
@@ -33,6 +35,7 @@ class NewInvestigatorDetails {
     required this.badgeNumber,
     required this.station,
     required this.unit,
+    required this.password,
   });
 }
 
@@ -58,15 +61,17 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
   final _badge = TextEditingController();
   final _station = TextEditingController();
   final _unit = TextEditingController();
+  final _password = TextEditingController();
 
   bool _saving = false;
+  bool _showPassword = false;
   String? _error;
 
   @override
   void dispose() {
     for (final c in [
       _firstName, _surname, _username, _email, _phone,
-      _rank, _badge, _station, _unit,
+      _rank, _badge, _station, _unit, _password,
     ]) {
       c.dispose();
     }
@@ -91,6 +96,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
         badgeNumber: _badge.text.trim().toUpperCase(),
         station: _station.text.trim(),
         unit: _unit.text.trim(),
+        password: _password.text,
       ));
     } catch (e) {
       if (mounted) setState(() => _error = errorText(e));
@@ -129,6 +135,15 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
     return null;
   }
 
+  /// Fills in a random temporary password and shows it, so the admin can
+  /// note it down.
+  void _generatePassword() {
+    setState(() {
+      _password.text = generateTempPassword();
+      _showPassword = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Form(
@@ -136,8 +151,8 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
       child: ListView(
         children: [
           const Text(
-            'The investigator sets their own password: once the account '
-            'exists, we email them a link to choose one.',
+            'Give the investigator their username and a temporary password. '
+            'They must choose their own password the first time they log in.',
             style: AppText.bodyMuted,
           ),
           const SizedBox(height: AppSpacing.medium),
@@ -185,6 +200,10 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
               capitalization: TextCapitalization.words,
               maxLength: 100),
 
+          const SizedBox(height: AppSpacing.small),
+          const _SectionLabel('LOG-IN'),
+          _passwordField(),
+
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.small),
             Text(_error!,
@@ -206,6 +225,60 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The temporary password, with Show/Hide and a Generate button.
+  Widget _passwordField() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.small),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Temporary password',
+              style: AppText.fieldLabel.copyWith(fontSize: 17)),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  key: const Key('temp-password'),
+                  controller: _password,
+                  style: AppText.body,
+                  obscureText: !_showPassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  maxLength: 72,
+                  enabled: !_saving,
+                  decoration: InputDecoration(
+                    hintText: 'Tap Generate',
+                    counterText: '',
+                    suffixIcon: IconButton(
+                      tooltip: _showPassword ? 'Hide password' : 'Show password',
+                      icon: Icon(
+                        _showPassword ? Icons.visibility_off : Icons.visibility,
+                        color: AppColors.textMuted,
+                      ),
+                      onPressed: () =>
+                          setState(() => _showPassword = !_showPassword),
+                    ),
+                  ),
+                  validator: validateTempPassword,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 48,
+                child: OutlinedButton(
+                  onPressed: _saving ? null : _generatePassword,
+                  child: const Text('Generate'),
+                ),
+              ),
+            ],
           ),
         ],
       ),

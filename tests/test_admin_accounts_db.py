@@ -104,6 +104,29 @@ def test_deleting_the_user_deletes_the_admin_row():
         assert db.val("SELECT count(*) FROM public.admin WHERE userid = %s", [sandton["userid"]]) == 0
 
 
+def test_changing_the_password_clears_must_change_password():
+    # migration 20261020100000_must_change_password.sql
+    with session() as db:
+        kp = make_user(db, "admin", admin_station="Kempton Park SAPS")
+        flag = "SELECT raw_app_meta_data FROM auth.users WHERE id = %s"
+        # what create-admin / create-investigator do: temporary password + flag
+        db.rows("UPDATE auth.users SET raw_app_meta_data = raw_app_meta_data || "
+                "'{\"must_change_password\": true}', encrypted_password = 'temp-hash' "
+                "WHERE id = %s", [kp["authid"]])
+        # setting the FIRST password (account being made) keeps the flag
+        assert db.val(flag, [kp["authid"]])["must_change_password"] is True
+
+        # other changes (e.g. signing in) keep it too
+        db.rows("UPDATE auth.users SET last_sign_in_at = now(), encrypted_password = 'temp-hash' "
+                "WHERE id = %s", [kp["authid"]])
+        assert db.val(flag, [kp["authid"]])["must_change_password"] is True
+
+        # a new password takes it off, and the role stays
+        db.rows("UPDATE auth.users SET encrypted_password = 'new-hash' WHERE id = %s", [kp["authid"]])
+        meta = db.val(flag, [kp["authid"]])
+        assert "must_change_password" not in meta and meta["role"] == "admin"
+
+
 if __name__ == "__main__":
     tests = [v for k, v in dict(globals()).items() if k.startswith("test_")]
     failed = 0
