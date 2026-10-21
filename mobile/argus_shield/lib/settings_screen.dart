@@ -28,28 +28,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              RadioListTile<String>(
-                title: const Text('English'),
-                value: 'English',
+              // RadioGroup holds the selected language for the three options
+              RadioGroup<String>(
                 groupValue: appSettings.language,
-                onChanged: (value) => appSettings.setLanguage(value!),
-              ),
-              RadioListTile<String>(
-                title: const Text('Afrikaans'),
-                value: 'Afrikaans',
-                groupValue: appSettings.language,
-                onChanged: (value) => appSettings.setLanguage(value!),
-              ),
-              RadioListTile<String>(
-                title: const Text('Zulu'),
-                value: 'Zulu',
-                groupValue: appSettings.language,
-                onChanged: (value) => appSettings.setLanguage(value!),
+                onChanged: (value) {
+                  if (value != null) appSettings.setLanguage(value);
+                },
+                child: const Column(
+                  children: [
+                    RadioListTile<String>(
+                      title: Text('English'),
+                      value: 'English',
+                    ),
+                    RadioListTile<String>(
+                      title: Text('Afrikaans'),
+                      value: 'Afrikaans',
+                    ),
+                    RadioListTile<String>(
+                      title: Text('Zulu'),
+                      value: 'Zulu',
+                    ),
+                  ],
+                ),
               ),
               const Divider(),
               Text(
-			   appSettings.t('display'),
-               style: Theme.of(context).textTheme.titleLarge,
+                appSettings.t('display'),
+                style: Theme.of(context).textTheme.titleLarge,
               ),
               SwitchListTile(
                 title: Text(appSettings.t('darkMode')),

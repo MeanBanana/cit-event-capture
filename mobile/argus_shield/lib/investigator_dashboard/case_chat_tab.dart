@@ -215,7 +215,7 @@ class _CaseChatTabState extends State<CaseChatTab>
           final newDay = older == null || !_sameDay(older.sentAt, m.sentAt);
           // the name only above the first of several messages in a row
           final showName = !m.isMine &&
-              (newDay || older!.senderId != m.senderId);
+              (newDay || older.senderId != m.senderId);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
