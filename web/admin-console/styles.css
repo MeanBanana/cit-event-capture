@@ -146,6 +146,53 @@ table.admins { width: 100%; border-collapse: collapse; }
 .badge.normal { background: #f0f2f5; color: #475467; }
 .unassigned { color: var(--danger); }
 
+/* ---------- tabs ---------- */
+.tabs { display: flex; gap: 4px; padding: 0 24px; background: #fff; border-bottom: 1px solid var(--line); }
+.tab {
+  background: none; border: 0; border-radius: 0; padding: 12px 14px 10px; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab:hover { color: var(--text); }
+.tab[aria-current="page"] { color: var(--navy); border-bottom-color: var(--navy); font-weight: 600; }
+
+/* ---------- cases ---------- */
+.card-head.wrap { flex-wrap: wrap; }
+.segments { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; flex: none; }
+.segment {
+  background: #fff; border: 0; border-radius: 0; padding: 7px 12px; font-size: 13px; color: var(--text);
+  border-right: 1px solid var(--line-strong);
+}
+.segment:last-child { border-right: 0; }
+.segment:hover { background: #f2f4f7; }
+.segment.active { background: var(--navy); color: #fff; }
+.segment .count { margin-left: 6px; font-size: 12px; opacity: .7; }
+.case-group + .case-group { border-top: 1px solid var(--line); }
+/* each case is a card with a coloured bar for its stage */
+.case-list { list-style: none; margin: 0; padding: 4px 16px 16px; display: grid; gap: 10px; }
+.case-card {
+  border: 1px solid var(--line-strong); border-radius: 10px; background: #fff;
+  box-shadow: inset 4px 0 0 var(--stage); padding: 14px 16px 14px 20px;
+}
+.case-card:hover { border-color: #b9c3d3; }
+.case-card.stage-open { --stage: #3b6fc4; }
+.case-card.stage-under_review { --stage: var(--amber); }
+.case-card.stage-closed { --stage: #98a2b3; }
+.case-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.case-title { font-weight: 600; font-size: 15px; }
+.case-desc { margin: 8px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+.case-desc.none { color: var(--muted); font-style: italic; }
+.facts {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 16px;
+  margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.fact dt { color: var(--muted); font-size: 12px; }
+.fact dd { margin: 0; font-weight: 500; }
+.fact dd .sub { font-weight: 400; }
+.group-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 6px; font-size: 14px; }
+.badge.stage-open { background: #e8f0fb; color: var(--navy); }
+.badge.stage-under_review { background: var(--amber-soft); color: var(--amber-text); }
+.badge.stage-closed { background: #f0f2f5; color: #475467; }
+
 /* ---------- dialogs ---------- */
 .dialog {
   border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; width: min(560px, calc(100vw - 32px));
@@ -178,6 +225,9 @@ table.admins { width: 100%; border-collapse: collapse; }
 /* ---------- small screens ---------- */
 @media (max-width: 760px) {
   .topbar { padding: 10px 16px; }
+  .tabs { padding: 0 16px; }
+  .segments { width: 100%; }
+  .segment { flex: 1; padding: 7px 6px; }
   .pill, .me-name { display: none; }
   .page { padding: 20px 16px 40px; }
   .page-head { flex-direction: column; align-items: stretch; }
@@ -193,4 +243,6 @@ table.admins { width: 100%; border-collapse: collapse; }
     content: attr(data-label) ": "; color: var(--muted); font-size: 12px;
   }
   .actions-col { width: auto; }
+  .case-list { padding: 4px 12px 12px; }
+  .facts { grid-template-columns: 1fr 1fr; }
 }

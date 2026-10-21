@@ -10,6 +10,10 @@
 //   station  set_admin_station(userid, station)    (root only, checked in SQL)
 //   remove   Edge Function manage-admin            (root only, checked there
 //            and in SQL; the root admin itself can't be removed)
+//   cases    root_list_cases()                     (root only, checked in SQL;
+//            grouped / filtered by lifecycle stage here)
+//   delete   delete_closed_case(caseid)            (root only and closed cases
+//            only, checked in SQL and by the cases_delete policy)
 //
 // Every rule is enforced by the database / Edge Function; the checks here
 // only give clear messages.
@@ -25,6 +29,8 @@
   const $ = (id) => document.getElementById(id);
   const views = { login: $("login-view"), console: $("console-view") };
   let admins = [];
+  let cases = null;          // loaded the first time the Cases tab is opened
+  let caseFilter = "all";
   let me = null;
 
   // ------------------------------------------------------------ helpers
@@ -158,6 +164,7 @@
     await sb.auth.signOut();
     me = null;
     admins = [];
+    cases = null;
     show("login");
     $("login-id").focus();
   });
@@ -175,8 +182,22 @@
   async function openConsole() {
     $("me-name").textContent = me.name || me.username;
     show("console");
+    openTab("admins");
     await loadAdmins();
   }
+
+  function openTab(name) {
+    document.querySelectorAll(".tab").forEach((tab) => {
+      if (tab.dataset.tab === name) tab.setAttribute("aria-current", "page");
+      else tab.removeAttribute("aria-current");
+    });
+    $("admins-page").hidden = name !== "admins";
+    $("cases-page").hidden = name !== "cases";
+    if (name === "cases" && !cases) loadCases();
+  }
+
+  document.querySelectorAll(".tab").forEach((tab) =>
+    tab.addEventListener("click", () => openTab(tab.dataset.tab)));
 
   async function loadAdmins() {
     const status = $("list-status");
@@ -267,6 +288,101 @@
 
   $("search").addEventListener("input", renderList);
   $("refresh").addEventListener("click", loadAdmins);
+
+  // ------------------------------------------------------------ cases
+  // The lifecycle stages, in order (cases.status)
+  const STAGES = [
+    { key: "open", label: "Open" },
+    { key: "under_review", label: "Under review" },
+    { key: "closed", label: "Closed" },
+  ];
+  const stageLabel = (key) => (STAGES.find((s) => s.key === key) || { label: key }).label;
+  const caseRef = (id) => "CASE-" + String(id).padStart(4, "0");
+
+  async function loadCases() {
+    const status = $("cases-status");
+    status.textContent = "Loading…";
+    status.hidden = false;
+    $("cases-groups").replaceChildren();
+    const { data, error } = await sb.rpc("root_list_cases");
+    if (error) {
+      status.textContent = await messageOf(error, "Could not load the cases.");
+      return;
+    }
+    cases = data || [];
+    renderCases();
+  }
+
+  function renderCaseFilter() {
+    const count = (key) => cases.filter((c) => key === "all" || c.status === key).length;
+    const options = [{ key: "all", label: "All" }, ...STAGES];
+    $("case-filter").replaceChildren(...options.map((o) =>
+      el("button", {
+        type: "button",
+        class: "segment" + (o.key === caseFilter ? " active" : ""),
+        "aria-pressed": String(o.key === caseFilter),
+        onclick: () => { caseFilter = o.key; renderCases(); },
+      }, o.label, el("span", { class: "count" }, count(o.key)))));
+  }
+
+  function renderCases() {
+    renderCaseFilter();
+    const q = $("case-search").value.trim().toLowerCase();
+    const digits = q.replace(/^case[\s#-]*/, "");
+    const matches = cases.filter((c) =>
+      (caseFilter === "all" || c.status === caseFilter) &&
+      (!q || (c.title || "").toLowerCase().includes(q) ||
+        (/^\d+$/.test(digits) && String(c.caseid) === String(Number(digits)))));
+    const status = $("cases-status");
+    const groups = $("cases-groups");
+    if (!matches.length) {
+      status.textContent = !cases.length ? "There are no cases yet."
+        : q ? "No case matches your search."
+        : `No ${stageLabel(caseFilter).toLowerCase()} cases.`;
+      status.hidden = false;
+      groups.replaceChildren();
+      return;
+    }
+    status.hidden = true;
+    // one group per lifecycle stage, in lifecycle order
+    groups.replaceChildren(...STAGES
+      .map((s) => ({ stage: s, rows: matches.filter((c) => c.status === s.key) }))
+      .filter((g) => g.rows.length)
+      .map((g) => el("section", { class: "case-group" },
+        el("h2", { class: "group-head" },
+          el("span", { class: "badge stage-" + g.stage.key }, g.stage.label),
+          el("span", { class: "sub" }, g.rows.length + (g.rows.length === 1 ? " case" : " cases"))),
+        el("ul", { class: "case-list" }, ...g.rows.map(caseCard)))));
+  }
+
+  // One case: title, description and every detail, the same on any screen
+  function caseCard(c) {
+    const created = when(c.datecreated);
+    const closed = when(c.dateclosed);
+    const fact = (label, value, sub) => el("div", { class: "fact" },
+      el("dt", null, label), el("dd", null, value, sub ? el("div", { class: "sub" }, sub) : null));
+    return el("li", { class: "case-card stage-" + c.status },
+      el("div", { class: "case-top" },
+        el("div", null,
+          el("div", { class: "case-title" }, c.title),
+          el("div", { class: "sub" }, caseRef(c.caseid))),
+        c.status === "closed"
+          ? el("button", { class: "link danger-text", type: "button", onclick: () => openCaseDelete(c) }, "Delete")
+          : null),
+      c.description && c.description.trim()
+        ? el("p", { class: "case-desc" }, c.description.trim())
+        : el("p", { class: "case-desc none" }, "No description"),
+      el("dl", { class: "facts" },
+        fact("Submissions", c.incidentcount),
+        fact("Investigators", c.investigators),
+        fact("Created", created ? dateFmt.format(created) : "–", c.createdbyname ? "by " + c.createdbyname : null),
+        c.status === "closed"
+          ? fact("Closed", closed ? dateFmt.format(closed) : "–")
+          : fact("Last activity", relative(c.lastactivity))));
+  }
+
+  $("case-search").addEventListener("input", () => cases && renderCases());
+  $("case-refresh").addEventListener("click", loadCases);
 
   // ------------------------------------------------------------ dialogs
   document.querySelectorAll("dialog [data-close]").forEach((button) =>
@@ -449,6 +565,39 @@
       loadAdmins();
     } catch (e) {
       setError($("remove-error"), e.message);
+    } finally {
+      busy(button, false);
+    }
+  });
+
+  // Delete a closed case
+  const caseDeleteDialog = $("case-delete-dialog");
+  let deletingCase = null;
+
+  function openCaseDelete(c) {
+    deletingCase = c;
+    $("case-delete-who").textContent = `${caseRef(c.caseid)}: ${c.title}`;
+    $("case-delete-note").textContent =
+      (c.incidentcount
+        ? `Its ${c.incidentcount} submission${c.incidentcount === 1 ? "" : "s"} and their footage are kept and go back to the review queue. `
+        : "") +
+      "Its assignments, case chat and AI results are deleted. This can't be undone.";
+    setError($("case-delete-error"), "");
+    caseDeleteDialog.showModal();
+  }
+
+  $("case-delete-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = $("case-delete-submit");
+    busy(button, true, "Deleting…");
+    try {
+      const { error } = await sb.rpc("delete_closed_case", { p_caseid: deletingCase.caseid });
+      if (error) throw new Error(await messageOf(error, "The case could not be deleted. Try again."));
+      caseDeleteDialog.close();
+      toast(`${caseRef(deletingCase.caseid)} deleted`);
+      loadCases();
+    } catch (e) {
+      setError($("case-delete-error"), e.message);
     } finally {
       busy(button, false);
     }
