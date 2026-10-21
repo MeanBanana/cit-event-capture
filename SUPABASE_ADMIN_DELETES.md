@@ -76,4 +76,38 @@ Supabase provides to every Edge Function.
 python tests/test_admin_deletes_db.py
 ```
 
-Expected: `5 passed, 0 failed`.
+Expected: `8 passed, 0 failed`.
+
+---
+
+# Update: removals in the activity log + the root admin removes admins
+
+* Removing an investigator now adds a **DEL** line to the admin app's
+  **Overview → Recent activity** (and "see more"):
+  `Investigator removed: Sgt Thabo Mokoena (B1234) by Kim Pillay`.
+* In the **web admin console** the root admin has **Remove** on every station
+  admin (not on the root admin). It removes the account the same way as an
+  investigator: deleted if they never did anything on record, otherwise
+  anonymised as "Former admin". It also adds a DEL line:
+  `Admin removed: Sipho Dlamini (Sandton SAPS) by Deacon Nel`.
+
+To do on Supabase:
+
+1. Run `database/supabase/migrations/20261021100000_account_removal_log.sql`
+   (`supabase db push`, or paste it in the SQL Editor). It adds the
+   `accountevent` table, `remove_admin_account(userid, removed_by)`, gives
+   `remove_investigator_account` a `removed_by` argument and adds DEL lines to
+   `recent_activity`.
+2. Deploy both functions from `database/`:
+
+   ```
+   supabase functions deploy manage-investigator
+   supabase functions deploy manage-admin
+   ```
+
+   `config.toml` has `verify_jwt = false` for `manage-admin`; switch **Verify
+   JWT** off if you deploy from the dashboard.
+
+Removals done before this update aren't in the log (nothing was recorded).
+
+Database tests: `python tests/test_admin_deletes_db.py`

@@ -5,7 +5,7 @@ class ActivityItem {
   ///   NEW  citizen submission      CASE  case created
   ///   ASGN investigator assigned   CLSD  case closed
   ///   INV  investigator added      VER   suspect confirmed
-  ///   COR  AI detection corrected
+  ///   COR  AI detection corrected  DEL   investigator / admin removed
   final String tag;
   final String text;
   final DateTime at;
