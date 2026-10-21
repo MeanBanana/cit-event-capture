@@ -53,7 +53,12 @@
       </div>
     </header>
 
-    <main class="page">
+    <nav class="tabs" aria-label="Console sections">
+      <button type="button" class="tab" data-tab="admins" aria-current="page">Station admins</button>
+      <button type="button" class="tab" data-tab="cases">Cases</button>
+    </nav>
+
+    <main class="page" id="admins-page">
       <section class="page-head">
         <div>
           <h1>Station admins</h1>
@@ -84,6 +89,25 @@
           </thead>
           <tbody id="admins-body"></tbody>
         </table>
+      </section>
+    </main>
+
+    <main class="page" id="cases-page" hidden>
+      <section class="page-head">
+        <div>
+          <h1>Cases</h1>
+          <p class="muted">Every case on the system, by where it is in its lifecycle. Only closed cases can be deleted.</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head wrap">
+          <div class="segments" id="case-filter" role="group" aria-label="Filter by lifecycle stage"></div>
+          <input id="case-search" class="search" type="search" placeholder="Search by case number or title" aria-label="Search cases">
+          <button id="case-refresh" class="ghost small" title="Reload the list">Refresh</button>
+        </div>
+        <div id="cases-status" class="list-status" hidden></div>
+        <div id="cases-groups"></div>
       </section>
     </main>
   </div>
@@ -173,6 +197,23 @@
       <div class="dialog-actions">
         <button type="button" class="ghost" data-close>Cancel</button>
         <button id="remove-submit" class="danger" type="submit">Remove admin</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===================== Delete case ===================== -->
+  <dialog id="case-delete-dialog" class="dialog narrow">
+    <form id="case-delete-form" method="dialog" novalidate>
+      <div class="dialog-head">
+        <h2>Delete case</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close">×</button>
+      </div>
+      <p>Delete <strong id="case-delete-who"></strong>?</p>
+      <p class="muted" id="case-delete-note"></p>
+      <p id="case-delete-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close>Cancel</button>
+        <button id="case-delete-submit" class="danger" type="submit">Delete case</button>
       </div>
     </form>
   </dialog>

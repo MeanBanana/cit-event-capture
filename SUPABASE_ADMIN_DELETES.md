@@ -111,3 +111,32 @@ To do on Supabase:
 Removals done before this update aren't in the log (nothing was recorded).
 
 Database tests: `python tests/test_admin_deletes_db.py`
+
+---
+
+# Update: the root admin sees all cases and deletes closed ones
+
+The **web admin console** has a new **Cases** tab (root admin only). It lists
+every case grouped by lifecycle stage (**Open → Under review → Closed**), with
+a filter to show one stage at a time and a search by case number or title.
+A **closed** case has **Delete**. Deleting a case keeps its submissions and
+footage: they go back to the review queue. Its assignments, case chat and AI
+results are deleted.
+
+Station admins can no longer delete cases at all (before, any admin could,
+directly on the table). Only the root admin can, and only closed cases.
+
+To do on Supabase:
+
+1. Run `database/supabase/migrations/20261021120000_root_case_management.sql`
+   (`supabase db push`, or paste it in the SQL Editor). It adds
+   `root_list_cases()` and `delete_closed_case(caseid)` and tightens the
+   `cases_delete` policy.
+2. No Edge Function needed: both functions check the caller themselves.
+
+| Message | Cause |
+| --- | --- |
+| "Could not find the function public.root_list_cases" | The migration (step 1) isn't on the database |
+| "Only closed cases can be deleted" | Close the case first (in the app) |
+
+Database tests: `python tests/test_root_cases_db.py` (expected `5 passed, 0 failed`).
