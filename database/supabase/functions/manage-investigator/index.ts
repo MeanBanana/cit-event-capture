@@ -15,6 +15,8 @@
 //         'anonymised' they worked on cases -> their work stays in the case
 //                      records as "Former investigator", and the login is
 //                      blocked for good and moved to a placeholder email
+//       Either way the admin's Overview activity log gets a DEL line
+//       ("Investigator removed: ... by <admin>").
 //
 // Why here and not in the app: changing someone else's login (email,
 // password) or deleting it needs the service key, which must never be in
@@ -87,7 +89,7 @@ Deno.serve(async (req) => {
   if (authError || !auth?.user) return fail(401, "Please log in again.");
   const { data: caller, error: callerError } = await admin
     .from("User")
-    .select("role")
+    .select("userid, role")
     .eq("authid", auth.user.id)
     .maybeSingle();
   if (callerError) return fail(500, "Could not check your account. Try again.");
@@ -125,7 +127,7 @@ Deno.serve(async (req) => {
   if (action === "delete") {
     const { data: removed, error: removeError } = await admin.rpc(
       "remove_investigator_account",
-      { p_userid: userid },
+      { p_userid: userid, p_removed_by: caller.userid }, // shown in the activity log
     );
     if (removeError || !removed) {
       console.error("remove_investigator_account failed", removeError);

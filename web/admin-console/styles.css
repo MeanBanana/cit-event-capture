@@ -50,6 +50,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(22, 48, 90, 
 .wide { width: 100%; padding: 11px 16px; margin-top: 6px; }
 .link { background: none; border: 0; padding: 4px 6px; color: var(--navy); font-weight: 500; }
 .link:hover { text-decoration: underline; }
+.link.danger-text { color: var(--danger); }
+.danger { background: var(--danger); color: #fff; }
+.danger:hover:not(:disabled) { background: #a52c35; }
 .icon-button { background: none; border: 0; font-size: 22px; line-height: 1; padding: 2px 8px; color: var(--muted); }
 .icon-button:hover { color: var(--text); }
 

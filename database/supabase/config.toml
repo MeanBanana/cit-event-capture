@@ -439,3 +439,9 @@ verify_jwt = false
 [functions.delete-submission]
 enabled = true
 verify_jwt = false
+
+# Web admin console "Remove" on a station admin (functions/manage-admin). Only
+# the root admin may call it; it checks the caller itself, like create-admin.
+[functions.manage-admin]
+enabled = true
+verify_jwt = false

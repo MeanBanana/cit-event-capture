@@ -160,6 +160,23 @@
     </form>
   </dialog>
 
+  <!-- ===================== Remove admin ===================== -->
+  <dialog id="remove-dialog" class="dialog narrow">
+    <form id="remove-form" method="dialog" novalidate>
+      <div class="dialog-head">
+        <h2>Remove admin</h2>
+        <button type="button" class="icon-button" data-close aria-label="Close">×</button>
+      </div>
+      <p>Remove <strong id="remove-who"></strong>?</p>
+      <p class="muted">They can no longer sign in, and their username and email can be used again. Anything they did on submissions or cases stays on record under “Former admin”. This can't be undone.</p>
+      <p id="remove-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" data-close>Cancel</button>
+        <button id="remove-submit" class="danger" type="submit">Remove admin</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="vendor/supabase-2.118.0.js"></script>

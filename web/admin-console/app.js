@@ -8,6 +8,8 @@
 //            with a temporary password the new admin must change at their
 //            first sign-in to the app)
 //   station  set_admin_station(userid, station)    (root only, checked in SQL)
+//   remove   Edge Function manage-admin            (root only, checked there
+//            and in SQL; the root admin itself can't be removed)
 //
 // Every rule is enforced by the database / Edge Function; the checks here
 // only give clear messages.
@@ -258,7 +260,9 @@
         a.createdby_name ? el("div", { class: "sub" }, "by " + a.createdby_name) : null),
       el("td", { "data-label": "Last sign-in" }, relative(a.last_sign_in_at)),
       el("td", { class: "actions-col" },
-        el("button", { class: "link", type: "button", onclick: () => openStation(a) }, "Change station")));
+        el("button", { class: "link", type: "button", onclick: () => openStation(a) }, "Change station"),
+        isRoot ? null
+          : el("button", { class: "link danger-text", type: "button", onclick: () => openRemove(a) }, "Remove")));
   }
 
   $("search").addEventListener("input", renderList);
@@ -415,6 +419,36 @@
       loadAdmins();
     } catch (e) {
       setError(errorBox, e.message);
+    } finally {
+      busy(button, false);
+    }
+  });
+
+  // Remove admin
+  const removeDialog = $("remove-dialog");
+  let removing = null;
+
+  function openRemove(a) {
+    removing = a;
+    $("remove-who").textContent = `${a.firstname} ${a.surname} (@${a.username}, ${a.admin_station})`;
+    setError($("remove-error"), "");
+    removeDialog.showModal();
+  }
+
+  $("remove-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = $("remove-submit");
+    busy(button, true, "Removing…");
+    try {
+      const { error } = await sb.functions.invoke("manage-admin", {
+        body: { action: "delete", userid: removing.userid },
+      });
+      if (error) throw new Error(await messageOf(error, "The account could not be removed. Try again."));
+      removeDialog.close();
+      toast(`${removing.firstname} ${removing.surname} removed`);
+      loadAdmins();
+    } catch (e) {
+      setError($("remove-error"), e.message);
     } finally {
       busy(button, false);
     }
