@@ -121,7 +121,9 @@ input:focus { border-color: var(--navy); }
 
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .card-head { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
-.search { max-width: 420px; }
+.search { max-width: 420px; flex: 1 1 200px; }
+/* safety net: a table that still doesn't fit scrolls instead of being cut off */
+.table-wrap { overflow-x: auto; }
 .list-status { padding: 28px 16px; text-align: center; color: var(--muted); }
 
 table.admins { width: 100%; border-collapse: collapse; }
@@ -139,7 +141,9 @@ table.admins { width: 100%; border-collapse: collapse; }
 }
 .person-name { font-weight: 500; }
 .sub { color: var(--muted); font-size: 12px; }
-.actions-col { width: 1%; white-space: nowrap; }
+.actions-col { width: 1%; text-align: right; }
+/* actions one above the other, so the column stays narrow */
+td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
 
 .badge { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
 .badge.root { background: var(--amber-soft); color: var(--amber-text); }
@@ -182,7 +186,7 @@ table.admins { width: 100%; border-collapse: collapse; }
 .case-desc { margin: 8px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
 .case-desc.none { color: var(--muted); font-style: italic; }
 .facts {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 16px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 16px;
   margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
 }
 .fact dt { color: var(--muted); font-size: 12px; }
@@ -222,6 +226,26 @@ table.admins { width: 100%; border-collapse: collapse; }
   background: var(--text); color: #fff; padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13px;
 }
 
+/* ---------- medium screens (laptops, zoomed in, split windows) ----------
+   The admin table needs about 1100px; below that each admin becomes a block:
+   name on top, the other details in as many columns as fit, actions last. */
+@media (max-width: 1100px) {
+  .admins thead { display: none; }
+  .admins, .admins tbody { display: block; width: 100%; }
+  .admins tr {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 16px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+  }
+  .admins tr:last-child { border-bottom: 0; }
+  .admins td { display: block; border: 0; padding: 0; min-width: 0; overflow-wrap: anywhere; }
+  .admins td:first-child, .admins td.actions-col { grid-column: 1 / -1; }
+  .admins td[data-label]:not(:first-child)::before {
+    content: attr(data-label); display: block; color: var(--muted); font-size: 12px;
+  }
+  .admins td.actions-col { display: flex; flex-wrap: wrap; gap: 4px 12px; width: auto; text-align: left; }
+  td.actions-col .link { display: inline-block; margin: 0; padding-left: 0; }
+}
+
 /* ---------- small screens ---------- */
 @media (max-width: 760px) {
   .topbar { padding: 10px 16px; }
@@ -235,14 +259,17 @@ table.admins { width: 100%; border-collapse: collapse; }
   .stat { padding: 10px 12px; }
   .stat-value { font-size: 20px; }
   .grid2 { grid-template-columns: 1fr; }
-  .admins thead { display: none; }
-  .admins, .admins tbody, .admins tr, .admins td { display: block; width: 100%; }
-  .admins tr { padding: 12px 14px; border-bottom: 1px solid var(--line); }
-  .admins td { border: 0; padding: 3px 0; }
-  .admins td[data-label]:not(:first-child)::before {
-    content: attr(data-label) ": "; color: var(--muted); font-size: 12px;
-  }
-  .actions-col { width: auto; }
+  .admins tr { grid-template-columns: 1fr 1fr; padding: 12px 14px; }
   .case-list { padding: 4px 12px 12px; }
   .facts { grid-template-columns: 1fr 1fr; }
+  .case-card { padding: 12px 14px 12px 18px; }
+}
+
+/* ---------- very narrow phones ---------- */
+@media (max-width: 400px) {
+  .topbar-name { display: none; }
+  .admins tr, .facts { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr; }
+  .stat { display: flex; align-items: baseline; gap: 10px; }
+  .dialog { padding: 18px 16px; }
 }
