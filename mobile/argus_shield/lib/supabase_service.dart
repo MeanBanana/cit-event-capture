@@ -124,14 +124,15 @@ class SupabaseService {
     required String password,
   }) async {
     // Same message for a wrong username or a wrong password, so the login
-    // screen does not reveal which usernames exist.
-    const badLogin = "Invalid username or password.";
+    // screen does not reveal which usernames exist (security).
+    const badLogin = "Username or password is incorrect. Please check again.";
     try {
       final email = await supabase.rpc(
         'email_for_username',
         params: {'p_username': username.trim()},
       );
       if (email is! String) {
+        // no account with this username
         return {"success": false, "message": badLogin};
       }
 
@@ -159,6 +160,9 @@ class SupabaseService {
       }
       if (e.code == 'email_not_confirmed') {
         return {"success": false, "message": "Please confirm your email address first."};
+      }
+      if (e.code == 'user_banned') {
+        return {"success": false, "message": "This account has been disabled. Contact an administrator."};
       }
       return {"success": false, "message": badLogin};
     } on PostgrestException catch (e) {

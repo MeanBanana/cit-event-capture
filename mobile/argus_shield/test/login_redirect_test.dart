@@ -179,10 +179,11 @@ void main() {
       tester,
       FakeSupabaseService({
         "success": false,
-        "message": "Invalid username or password.",
+        "message": "Username or password is incorrect. Please check again.",
       }),
     );
-    expect(find.text('Invalid username or password.'), findsOneWidget);
+    expect(find.text('Username or password is incorrect. Please check again.'),
+        findsOneWidget);
 
     await finishLoading(tester);
     expect(find.byType(CitizenDashboard), findsNothing);
@@ -193,7 +194,9 @@ void main() {
   testWidgets('empty fields do not call Supabase', (tester) async {
     final service = FakeSupabaseService(successFor('citizen'));
     await logIn(tester, service, username: '   ', password: '');
-    expect(find.text('Enter your username and password'), findsOneWidget);
+    // stays on the login page with "required" under both fields
+    expect(find.text('Username is required'), findsOneWidget);
+    expect(find.text('Password is required.'), findsOneWidget);
 
     await finishLoading(tester);
     expect(service.loginCalls, 0);

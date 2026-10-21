@@ -28,6 +28,10 @@ class _LoginPageState extends State<LoginPage>{
   final TextEditingController userNameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
+  /// Checks that username and password are filled in before logging in;
+  /// an empty field turns red with "... is required" (like registration).
+  final _formKey = GlobalKey<FormState>();
+
   late final SupabaseService service = widget.service ?? SupabaseService();
   late final SavedContactStore savedContacts =
       widget.savedContacts ?? SavedContactStore();
@@ -70,20 +74,11 @@ class _LoginPageState extends State<LoginPage>{
   Future<void> _login() async {
     final ctx = context;
 
+    // An empty field: show "required" under it and stay on this page.
+    if (!_formKey.currentState!.validate()) return;
+
     // pushReplacement (not push) everywhere below: the loading screen takes the
     // login page's place, so Back from a dashboard does not return here.
-    if (userNameController.text.trim().isEmpty || passwordController.text.isEmpty) {
-      Navigator.pushReplacement(
-        ctx,
-        MaterialPageRoute(
-          builder: (_) => LoadingScreen(
-            resultMessage: "Enter your username and password",
-            nextScreen: const LoginPage(),
-          ),
-        ),
-      );
-      return;
-    }
 
     setState(() => isLoading = true);
 
@@ -235,47 +230,58 @@ class _LoginPageState extends State<LoginPage>{
                 const SizedBox.shrink(),
 
                 // ---- middle: the form
-                Column(
-                  children: [
-                    // height 1.0 + no extra space above the first line:
-                    // the 50px Courier font otherwise adds a tall blank band
-                    // above the letters.
-                    Text(
-                      appSettings.t('login'),
-                      style: AppText.pageTitle.copyWith(height: 1.0),
-                      textHeightBehavior: const TextHeightBehavior(
-                        applyHeightToFirstAscent: false,
-                        applyHeightToLastDescent: false,
+                Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      // height 1.0 + no extra space above the first line:
+                      // the 50px Courier font otherwise adds a tall blank band
+                      // above the letters.
+                      Text(
+                        appSettings.t('login'),
+                        style: AppText.pageTitle.copyWith(height: 1.0),
+                        textHeightBehavior: const TextHeightBehavior(
+                          applyHeightToFirstAscent: false,
+                          applyHeightToLastDescent: false,
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: AppSpacing.large),
+                      const SizedBox(height: AppSpacing.large),
 
-                    FieldLabel(appSettings.t('username')),
-                    TextField(
-                      controller: userNameController,
-                      decoration: const InputDecoration(),
-                    ),
-
-                    const SizedBox(height: AppSpacing.large),
-
-                    FieldLabel(appSettings.t('password')),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(),
-                    ),
-
-                    const SizedBox(height: AppSpacing.small),
-
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        onPressed: _showForgotPassword,
-                        child: Text(appSettings.t('forgotPassword')),
+                      FieldLabel(appSettings.t('username')),
+                      TextFormField(
+                        controller: userNameController,
+                        decoration: const InputDecoration(),
+                        textInputAction: TextInputAction.next,
+                        validator: (value) =>
+                            (value == null || value.trim().isEmpty)
+                                ? appSettings.t('usernameRequired')
+                                : null,
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: AppSpacing.large),
+
+                      FieldLabel(appSettings.t('password')),
+                      TextFormField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(),
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? appSettings.t('passwordRequired')
+                            : null,
+                      ),
+
+                      const SizedBox(height: AppSpacing.small),
+
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: _showForgotPassword,
+                          child: Text(appSettings.t('forgotPassword')),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
 
                 // ---- bottom: register, login button, footer
