@@ -15,3 +15,6 @@ __pycache__/
 
 # Claude Code settings, per developer
 .claude/
+
+# AI secrets (Supabase service key)
+ai/.env
