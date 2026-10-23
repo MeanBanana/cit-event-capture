@@ -1,7 +1,5 @@
-// Tests for the admin Investigators tab and InvestigatorSummary.fromMap.
-//
-// A fake SupabaseService stands in for the real one, so these tests run
-// without a network connection or a Supabase project.
+// The admin Investigators tab and InvestigatorSummary.fromMap. Uses a fake
+// SupabaseService so no network or Supabase project is needed.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,7 +25,7 @@ final recent = [
   inv(2, 'Naledi', 'Dlamini', 'PTA-1002'),
 ];
 
-/// Records what the screen asked for and returns canned lists.
+/// Records what the screen asked for and hands back canned lists.
 class FakeSupabaseService extends SupabaseService {
   int recentCalls = 0;
   final List<String> searches = [];
@@ -103,7 +101,7 @@ void main() {
   });
 
   group('Investigators screen', () {
-    // A phone-sized screen (360 x 800 logical pixels).
+    // phone-sized screen, 360 x 800 logical pixels
     setUp(() {
       final view =
           TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;

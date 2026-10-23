@@ -1,51 +1,35 @@
--- =====================================================================
--- Argus Shield: reviewing submissions + managing cases (admin)
+-- Admins reviewing submissions and managing cases.
 --
--- Workflow
---   1. A citizen reports an incident -> crimescene row, reviewstatus 'pending'.
---   2. An admin reviews it:
---        accept     -> added to a new or existing case  ('accepted')
---        reject     -> kept on record, not used         ('rejected')
---        duplicate  -> linked to the original incident  ('duplicate';
---                      it follows the original into its case)
---      and can undo any of these (reopen -> 'pending').
---   3. In a case the admin assigns / removes investigators and changes
---      the status (open / under_review / closed).
+-- How it works:
+--   - a citizen reports something, which is a crimescene row in 'pending'
+--   - an admin accepts it (into a new or existing case), rejects it (kept on
+--     record but not used), or marks it a duplicate of another incident (it
+--     follows the original into its case). Any of these can be undone, which
+--     puts it back to 'pending'.
+--   - inside a case the admin assigns/removes investigators and moves the
+--     status between open, under_review and closed
 --
--- Every admin action is a database function: it checks the caller is an
--- admin and does all of its changes in one transaction, so nothing is ever
--- left half done. They are SECURITY INVOKER, so the normal RLS rules and
--- triggers still apply on top.
---
--- Contents
---   1. crimescene review columns + consistency rules
---   2. who may change them (trigger)
---   3. deleting a case sends its incidents back to 'pending'
---   4. admin action functions
---   5. list functions for the app
---   6. admin_overview_stats / recent_activity updated
---   7. privileges
--- =====================================================================
+-- Every admin action is a function that checks you're an admin and does all
+-- its changes in one transaction, so nothing ends up half done. They're
+-- SECURITY INVOKER, so the normal RLS and triggers still apply on top.
 
 
--- ---------------------------------------------------------------------
--- 1. Review columns
--- ---------------------------------------------------------------------
+-- --- 1. review columns
 ALTER TABLE public.crimescene
   ADD COLUMN reviewstatus varchar(20) NOT NULL DEFAULT 'pending'
     CHECK (reviewstatus IN ('pending', 'accepted', 'rejected', 'duplicate')),
   ADD COLUMN reviewedby   integer REFERENCES public."User" (userid),
   ADD COLUMN reviewedat   timestamptz,
-  ADD COLUMN reviewnote   text,          -- e.g. the reason for a rejection
+  ADD COLUMN reviewnote   text,          -- e.g. why it was rejected
   ADD COLUMN duplicateof  integer REFERENCES public.crimescene (incidentid);
 
--- Incidents already in a case count as accepted
+-- anything already in a case counts as accepted
 UPDATE public.crimescene SET reviewstatus = 'accepted' WHERE caseid IS NOT NULL;
 
--- The review status must match the case / duplicate links:
---   pending, rejected  -> not in a case, not a duplicate
---   accepted           -> in a case, not a duplicate
---   duplicate          -> points at another incident (in its case, if any)
+-- The review status has to agree with the case/duplicate links:
+--   pending, rejected  not in a case, not a duplicate
+--   accepted           in a case, not a duplicate
+--   duplicate          points at another incident (and sits in its case, if it has one)
 ALTER TABLE public.crimescene ADD CONSTRAINT crimescene_review_check CHECK (
      (reviewstatus IN ('pending', 'rejected') AND caseid IS NULL AND duplicateof IS NULL)
   OR (reviewstatus = 'accepted'  AND caseid IS NOT NULL AND duplicateof IS NULL)
@@ -57,10 +41,8 @@ CREATE INDEX idx_crimescene_duplicateof  ON public.crimescene (duplicateof);
 CREATE INDEX idx_crimescene_reviewedby   ON public.crimescene (reviewedby);
 
 
--- ---------------------------------------------------------------------
--- 2. Only admins may review or move incidents between cases
---    (replaces the caseid-only version from the cases migration)
--- ---------------------------------------------------------------------
+-- --- 2. only admins can review incidents or move them between cases
+-- (replaces the caseid-only version from the cases migration)
 CREATE OR REPLACE FUNCTION public.protect_crimescene_caseid()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -92,11 +74,9 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 3. Deleting a case: its incidents go back to the review queue instead
---    of breaking the rules above (runs before crimescene.caseid is
---    cleared by the foreign key)
--- ---------------------------------------------------------------------
+-- --- 3. deleting a case sends its incidents back to the review queue
+-- instead of breaking the rules above. Runs before the foreign key clears
+-- crimescene.caseid.
 CREATE OR REPLACE FUNCTION public.release_case_incidents()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -109,7 +89,7 @@ BEGIN
    WHERE caseid = OLD.caseid AND reviewstatus = 'accepted';
   UPDATE public.crimescene
      SET caseid = NULL
-   WHERE caseid = OLD.caseid;   -- duplicates stay duplicates
+   WHERE caseid = OLD.caseid;   -- duplicates stay as duplicates
   RETURN OLD;
 END;
 $$;
@@ -119,11 +99,9 @@ CREATE TRIGGER release_case_incidents
   FOR EACH ROW EXECUTE FUNCTION public.release_case_incidents();
 
 
--- ---------------------------------------------------------------------
--- 4. Admin actions
--- ---------------------------------------------------------------------
+-- --- 4. admin actions
 
--- Stops the calling function unless the signed-in user is an admin
+-- bail out of the calling function unless the user is an admin
 CREATE OR REPLACE FUNCTION public.require_admin()
   RETURNS void
   LANGUAGE plpgsql
@@ -136,8 +114,8 @@ BEGIN
 END;
 $$;
 
--- Puts one incident into a case (accepting it), and its duplicates with it.
--- Used by create_case and add_incidents_to_case.
+-- Accept one incident into a case, and drag its duplicates along with it.
+-- create_case and add_incidents_to_case both use this.
 CREATE OR REPLACE FUNCTION public.attach_incident(p_incidentid integer, p_caseid integer)
   RETURNS void
   LANGUAGE plpgsql
@@ -158,7 +136,7 @@ BEGIN
 END;
 $$;
 
--- New case; optionally with incidents in it straight away. Returns caseid.
+-- New case, optionally with some incidents in it already. Returns the caseid.
 CREATE OR REPLACE FUNCTION public.create_case(
   p_title       text,
   p_description text      DEFAULT NULL,
@@ -190,7 +168,7 @@ BEGIN
 END;
 $$;
 
--- Adds (or moves) incidents into an existing, not-closed case
+-- add (or move) incidents into an existing case that isn't closed
 CREATE OR REPLACE FUNCTION public.add_incidents_to_case(
   p_caseid      integer,
   p_incidentids integer[]
@@ -217,8 +195,8 @@ BEGIN
 END;
 $$;
 
--- Back to 'pending': undoes accept / reject / duplicate. Also used for
--- "Remove from case". Its duplicates leave the case with it.
+-- Back to 'pending', undoing accept/reject/duplicate. "Remove from case"
+-- uses this too, and any duplicates leave the case along with it.
 CREATE OR REPLACE FUNCTION public.reopen_submission(p_incidentid integer)
   RETURNS void
   LANGUAGE plpgsql
@@ -239,7 +217,7 @@ BEGIN
 END;
 $$;
 
--- Rejected: stays on record (evidence is never deleted), not in any case
+-- Rejected stays on record (we never delete evidence) but isn't in any case
 CREATE OR REPLACE FUNCTION public.reject_submission(
   p_incidentid integer,
   p_note       text DEFAULT NULL
@@ -264,8 +242,8 @@ BEGIN
 END;
 $$;
 
--- Duplicate of another incident: joins the original's case (if it has one).
--- Always points at the ORIGINAL, never at another duplicate.
+-- Mark as a duplicate of another incident, joining the original's case if it
+-- has one. Always points at the real original, never at another duplicate.
 CREATE OR REPLACE FUNCTION public.mark_duplicate(
   p_incidentid integer,
   p_originalid integer
@@ -287,7 +265,7 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Incident % not found', p_originalid;
   END IF;
-  IF v_status = 'duplicate' THEN          -- follow to the real original
+  IF v_status = 'duplicate' THEN          -- walk up to the real original
     v_original := v_dupof;
     SELECT caseid INTO v_caseid FROM public.crimescene WHERE incidentid = v_original;
   END IF;
@@ -303,15 +281,15 @@ BEGIN
     RAISE EXCEPTION 'Incident % not found', p_incidentid;
   END IF;
 
-  -- anything that was a duplicate of this one now points at the original
+  -- anything that pointed at this one now points at the original instead
   UPDATE public.crimescene
      SET duplicateof = v_original, caseid = v_caseid
    WHERE duplicateof = p_incidentid;
 END;
 $$;
 
--- Assigns an investigator to a case (does nothing if already assigned).
--- Returns the assignment id.
+-- Assign an investigator to a case. No-op if they're already on it. Returns
+-- the assignment id.
 CREATE OR REPLACE FUNCTION public.assign_investigator(
   p_caseid integer,
   p_userid integer
@@ -349,7 +327,7 @@ BEGIN
 END;
 $$;
 
--- Ends an assignment; the row stays as history
+-- end an assignment, the row stays around as history
 CREATE OR REPLACE FUNCTION public.unassign_investigator(p_assignmentid integer)
   RETURNS void
   LANGUAGE plpgsql
@@ -367,14 +345,12 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 5. Lists for the app
--- ---------------------------------------------------------------------
+-- --- 5. lists for the app
 
--- Submissions, newest reported first. Now with review details and filters:
---   p_review  null = all, or 'pending' / 'accepted' / 'rejected' / 'duplicate'
---   p_caseid  only the incidents in that case
--- (signature changed, so the old version is dropped first)
+-- Submissions, newest first, now with review details and filters.
+--   p_review  NULL for all, or 'pending' / 'accepted' / 'rejected' / 'duplicate'
+--   p_caseid  only that case's incidents
+-- The signature changed, so the old one gets dropped first.
 DROP FUNCTION public.list_submissions(text, integer);
 
 CREATE FUNCTION public.list_submissions(
@@ -433,10 +409,11 @@ AS $$
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)
 $$;
 
--- Cases, most recently active first (created, or an incident added).
---   p_search  'CASE-0003', 'case 3', '#3', '3' -> case 3; text -> title
---   p_status  null = all, 'active' = open + under_review, or one status
---   p_caseid  just that case (for the case details page)
+-- Cases, most recently active first (created, or had an incident added).
+--   p_search  'CASE-0003', 'case 3', '#3' or '3' all find case 3, other text
+--             searches the title
+--   p_status  NULL for all, 'active' for open + under_review, or one status
+--   p_caseid  just that one case (for the details page)
 CREATE OR REPLACE FUNCTION public.list_cases(
   p_search text    DEFAULT NULL,
   p_status text    DEFAULT NULL,
@@ -452,7 +429,7 @@ CREATE OR REPLACE FUNCTION public.list_cases(
     dateclosed    timestamptz,
     createdbyname text,
     incidentcount integer,
-    investigators jsonb,          -- [{userid, name, badgenumber}] active only
+    investigators jsonb,          -- active only: [{userid, name, badgenumber}]
     lastactivity  timestamptz
   )
   LANGUAGE sql STABLE SECURITY INVOKER
@@ -504,7 +481,7 @@ AS $$
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)
 $$;
 
--- Who is (and was) assigned to a case: active first, then history
+-- everyone who is or was on a case, active ones first
 CREATE OR REPLACE FUNCTION public.list_case_assignments(p_caseid integer)
   RETURNS TABLE (
     assignmentid     integer,
@@ -535,10 +512,8 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 6. Overview: Pending = submissions waiting for review; activity feed
---    also shows accepted / rejected / duplicate decisions
--- ---------------------------------------------------------------------
+-- --- 6. Overview: Pending now means submissions waiting for review, and the
+-- activity feed also shows accept/reject/duplicate decisions
 CREATE OR REPLACE FUNCTION public.admin_overview_stats()
   RETURNS TABLE (
     totalcases    integer,
@@ -573,7 +548,7 @@ AS $$
            cs.datereported AS occurredat
     FROM public.crimescene cs
 
-    UNION ALL   -- an admin's decision on a submission
+    UNION ALL   -- admin decisions on submissions
     SELECT CASE cs.reviewstatus WHEN 'accepted' THEN 'ADD'
                                 WHEN 'rejected' THEN 'REJ'
                                 ELSE 'DUP' END,
@@ -639,10 +614,8 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 7. Privileges: logged-in users only (each action checks for admin);
---    attach_incident and require_admin are helpers, not for the app
--- ---------------------------------------------------------------------
+-- --- 7. privileges: logged-in users only (each action checks for admin
+-- itself). attach_incident and require_admin are internal.
 REVOKE EXECUTE ON FUNCTION public.require_admin()                        FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.attach_incident(integer, integer)      FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.create_case(text, text, integer[])     FROM PUBLIC, anon;

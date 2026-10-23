@@ -1,7 +1,6 @@
-// submissions_page.dart — the citizen's own reports, from Supabase, with
-// where each one is: received / added to a case, and whether its footage has
-// been analysed. Pull down to refresh. Citizens never see the AI's findings
-// (other people's faces and number plates) - only that it was analysed.
+// The citizen's own reports and where each one's at (received, added to a
+// case, footage analysed or not). Pull to refresh. They never see what the
+// AI found, since that's other people's faces and plates, just that it ran.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,7 +9,7 @@ import '../theme/app_theme.dart';
 import '../app_settings.dart';
 import 'citizen_store.dart';
 
-/// Lists the citizen's reports from the shared store.
+/// The citizen's reports, from the shared store.
 class SubmissionsPage extends StatefulWidget {
   final CitizenStore store;
 
@@ -32,7 +31,7 @@ class _SubmissionsPageState extends State<SubmissionsPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    // Rebuild this content when CitizenStore calls notifyListeners().
+    // rebuilds whenever CitizenStore notifies
     return ListenableBuilder(
       listenable: store,
       builder: (context, child) {
@@ -108,7 +107,7 @@ class _SubmissionsPageState extends State<SubmissionsPage>
                 ),
                 const SizedBox(height: AppSpacing.medium),
               ],
-              // An empty state is shown until the citizen sends the first report.
+              // empty state until they send their first report
               if (!store.submissionsLoading &&
                   store.submissionsError == null &&
                   all.isEmpty)
@@ -143,14 +142,14 @@ class _SubmissionsPageState extends State<SubmissionsPage>
     );
   }
 
-  /// 12/10/2026 19:42 — formatted without another package.
+  /// 12/10/2026 19:42, done by hand to avoid pulling in intl.
   String _formatDate(DateTime date) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${date.day}/${date.month}/${date.year} ${two(date.hour)}:${two(date.minute)}';
   }
 }
 
-/// Reusable presentation widget for one report; it does not modify stored data.
+/// One report card. Display only.
 class SubmissionCard extends StatelessWidget {
   final String reference;
   final String location;

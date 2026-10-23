@@ -1,5 +1,5 @@
-// crime_scene_page.dart — one crime scene of a case, in full. Opened from a
-// crime scene card on the case page (investigators and admins).
+// Full page for one crime scene in a case, opened from its card on the case
+// page (investigators and admins).
 //
 //   INC-0042                                       [ANALYSED]
 //   Part of CASE-0003 · N1 Midrand CIT robbery
@@ -8,18 +8,14 @@
 //   [2 suspects] [1 vehicle] [1 weapon]
 //   ┌ Footage (2) ┬ Findings (4) ┬ Log (1) ┐
 //
-//   Footage    each clip / photo with View (the first tab: what the
-//              investigator came for)
-//   Findings   the AI summary, then every person / vehicle / weapon the AI
-//              found with its details and a Correct button
-//   Log        every correction to this crime scene: who, when, what, why
+// Footage comes first since that's what the investigator usually wants.
+// Findings has the AI summary and every person/vehicle/weapon with a Correct
+// button. Log lists every correction on this scene.
 //
-// The header stays on screen, so the scene's key facts are visible on every
-// tab. While the footage is waiting for the AI or being analysed, the
-// header says so (and the page checks again every few seconds); findings
-// and Correct buttons appear once it is done. Corrections are saved with
-// correct_detection() and logged in correctionlog, linked to this crime
-// scene (correctionlog.incidentid).
+// The header stays put across tabs so the key facts are always visible.
+// While the AI hasn't finished, the header says so and we poll every few
+// seconds; findings and Correct buttons show up once it's done. Corrections
+// go through correct_detection() and land in correctionlog against this scene.
 
 import 'dart:async';
 
@@ -42,22 +38,22 @@ import 'package:argus_shield/admin_screens/pickers.dart' show showAdminSheet;
 class CrimeScenePage extends StatefulWidget {
   final int incidentId;
 
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
-  /// 'Investigator' or 'Admin' (top bar, footage viewer).
+  /// 'Investigator' or 'Admin', for the top bar and footage viewer.
   final String roleLabel;
 
-  /// Where the AI's pictures come from. Null = the bucket when [service] is
-  /// the real database, no pictures with a fake service (tests).
+  /// Where the AI pictures come from. Null means the bucket with the real
+  /// service, or no pictures at all with a fake one (tests).
   final CaseEvidenceSource? pictures;
 
-  /// Where a detection's own pictures (the Pictures button) come from. Null =
-  /// the submission's detections when [service] is the real database, no
-  /// Pictures button with a fake service (tests).
+  /// Where a detection's own pictures come from (the Pictures button). Null
+  /// means the submission's detections with the real service, or no
+  /// Pictures button with a fake one (tests).
   final CaseEvidenceSource? detectionPictures;
 
-  /// How often to check again while the AI is still busy (null = never).
+  /// How often to re-check while the AI is busy. Null means don't.
   final Duration? refreshEvery;
 
   const CrimeScenePage({
@@ -119,8 +115,8 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
         _error = 'Could not load this crime scene. Pull down to try again.';
         _loading = false;
       });
-      // one failed check (e.g. no network for a moment) mustn't stop the
-      // checks while the AI was still busy at the last successful one
+      // One failed check (network blip, say) shouldn't stop us polling if
+      // the AI was still busy last time we successfully checked.
       final every = widget.refreshEvery;
       if (_scene != null && _scene!.analysis.inProgress && every != null) {
         _timer = Timer(every, _load);
@@ -146,7 +142,7 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
   }
 
   Future<void> _openPictures(SceneDetection d, CaseEvidenceSource source) async {
-    // by detection id: the label's number could point at another detection
+    // match on detection id, the label's number could belong to a different detection
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -227,7 +223,7 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
     );
   }
 
-  /// One tab: a list that can be pulled down to reload the scene.
+  /// One tab, a list you can pull down to reload the scene.
   Widget _tab(List<Widget> children) => RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -344,11 +340,11 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
       ];
 }
 
-/// The top of the crime scene page, above the tabs: reference and status,
-/// what happened, where and when, the counts, and where the AI is.
+/// The top of the page above the tabs: reference and status, what happened,
+/// where and when, the counts, and the AI status.
 class _SceneHeader extends StatelessWidget {
   final CrimeSceneDetail scene;
-  final VoidCallback? onRefresh; // "check again" while the AI is busy
+  final VoidCallback? onRefresh; // "check again" while the AI is working
 
   const _SceneHeader({required this.scene, this.onRefresh});
 
@@ -358,7 +354,7 @@ class _SceneHeader extends StatelessWidget {
     final description = s.description?.trim() ?? '';
     final message = analysisMessage(s.analysis,
         files: s.fileCount, filesFailed: s.filesFailed);
-    // the same numbers as the crime scene card (see countOf)
+    // same numbers as the crime scene card (see countOf)
     final count = s.countOf;
 
     return Padding(
@@ -427,7 +423,7 @@ class _SceneHeader extends StatelessWidget {
   }
 }
 
-/// Icon + sentence for a tab with nothing (yet) to show.
+/// Icon and a sentence for a tab that has nothing in it (yet).
 class _EmptyState extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -451,7 +447,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// "Waiting for the AI ..." box at the top of the page.
+/// The "Waiting for the AI..." box at the top.
 class _AnalysisBanner extends StatelessWidget {
   final AnalysisStatus status;
   final String message;
@@ -498,8 +494,8 @@ class _AnalysisBanner extends StatelessWidget {
   }
 }
 
-/// One person / vehicle / weapon the AI found, with its fields and a
-/// Correct button.
+/// One person/vehicle/weapon the AI found, with its fields and a Correct
+/// button.
 class DetectionTile extends StatelessWidget {
   final SceneDetection detection;
   final CaseEvidenceSource? pictures;
@@ -663,9 +659,9 @@ class DetectionTile extends StatelessWidget {
   }
 }
 
-/// The sheet for correcting one detection: pick a field, type the right
-/// value, say why (optional), Save. Or mark it as not real / restore it.
-/// Pops with a message for the snackbar when something was saved.
+/// Sheet for correcting a detection: pick a field, type the right value,
+/// optionally say why, Save. Or mark it as not real / bring it back. Pops
+/// with a snackbar message when something got saved.
 class CorrectionForm extends StatefulWidget {
   final SceneDetection detection;
 
@@ -899,7 +895,7 @@ class _CorrectionFormState extends State<CorrectionForm> {
   }
 }
 
-/// A numbered step heading in the correction form ("2  The right value").
+/// Numbered step heading in the correction form ("2  The right value").
 class _Step extends StatelessWidget {
   final String number;
   final String text;
@@ -936,7 +932,7 @@ class _Step extends StatelessWidget {
   }
 }
 
-/// One line of the corrections log.
+/// One line in the corrections log.
 class _CorrectionRow extends StatelessWidget {
   final CorrectionEntry entry;
 

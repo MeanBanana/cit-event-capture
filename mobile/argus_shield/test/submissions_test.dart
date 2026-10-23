@@ -1,7 +1,5 @@
-// Tests for the admin Submissions tab and CrimeSceneSummary.fromMap.
-//
-// AdminFakeService (in-memory) stands in for SupabaseService, so these
-// tests run without a network connection or a Supabase project.
+// The admin Submissions tab and CrimeSceneSummary.fromMap, against the
+// in-memory AdminFakeService.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,7 +52,7 @@ FlakyService makeService() => FlakyService(submissions: [
           reviewStatus: 'accepted', caseId: 1, caseTitle: 'Midrand robbery'),
     ]);
 
-/// How many times the list of submissions was asked for.
+/// How many times the submissions list got requested.
 int pageCalls(AdminFakeService fake) =>
     fake.calls.where((c) => c.startsWith('listSubmissions:')).length;
 
@@ -147,7 +145,7 @@ void main() {
   });
 
   group('Submissions screen', () {
-    // A phone-sized screen (360 x 1600 logical pixels): cards are big.
+    // phone-sized screen, 360 x 1600 logical pixels, the cards are big
     setUp(() {
       final view =
           TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;

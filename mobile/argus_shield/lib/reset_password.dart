@@ -6,27 +6,28 @@ import 'theme/app_theme.dart';
 import 'theme/argus_widgets.dart';
 import 'app_settings.dart';
 
-/// Opened by main.dart when the user taps the reset link in their email
+/// Choose a new password.
+///
+/// main.dart opens this when someone taps the reset link in their email
 /// (AuthChangeEvent.passwordRecovery). The link has already signed them in
-/// for this one purpose, so all that is left is choosing a new password.
+/// for just this, so all that's left is picking the password.
 ///
-/// Also opened by login.dart with [firstLogin] when a new admin or
-/// investigator logs in with the temporary password they were given: they
-/// must choose their own before they can use the app.
+/// login.dart also opens it with [firstLogin] when a new admin or
+/// investigator signs in with their temporary password, since they have to
+/// pick their own before using the app.
 ///
-/// After saving, the user is signed out and sent back to the login page.
-/// Cancelling (or pressing Back) also signs out, so the reset session does
-/// not stay open on the phone.
+/// Saving signs them out and sends them back to login. Cancelling or Back
+/// signs out too, so the reset session never stays open on the phone.
 class ResetPasswordPage extends StatefulWidget {
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
-  /// True at the first log-in with a temporary password (different title).
+  /// True on first login with a temporary password (changes the title).
   final bool firstLogin;
 
   const ResetPasswordPage({super.key, this.service, this.firstLogin = false});
 
-  /// Same minimum as Supabase's default (Authentication > Providers > Email).
+  /// Matches Supabase's default (Authentication > Providers > Email).
   static const minLength = 6;
 
   @override
@@ -80,7 +81,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     _goToLogin("Password not changed");
   }
 
-  /// Clears every screen (this page included) so Back cannot return here.
+  /// Clear every screen including this one, so Back can't come back here.
   void _goToLogin(String message) {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
@@ -120,7 +121,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Back = cancel, so the reset session is always signed out.
+      // Back means cancel, which always signs the reset session out
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _cancel();

@@ -1,28 +1,24 @@
--- ============================================================================
--- "This is the same person as Person 1": combine two people / vehicles /
--- weapons of a case by hand
--- ============================================================================
+-- Manually combining two people/vehicles/weapons in a case ("this is the
+-- same person as Person 1").
 --
--- The AI sometimes keeps one real person (or car, or gun) as two entries,
--- e.g. Person 1 and Person 3, because they look different on two cameras.
--- On the View crops screen an admin, or an investigator assigned to the
--- case, picks "Same as Person 1" and confirms:
+-- The AI sometimes splits one real person into two entries, say Person 1 and
+-- Person 3, because they look different on two cameras. On the View crops
+-- screen an admin or assigned investigator picks "Same as Person 1":
 --
 --   combine_case_entities(caseid, 'p3', 'p1')
 --
---   * every picture of Person 3 moves to Person 1, as an admin decision
---     ('confirmed'): the AI never splits them again
---   * Person 3's open questions ("Is this Person 3?") become questions
---     about Person 1; answers of "No, not Person 3" now mean "not Person 1"
---   * guns held by Person 3 are now held by Person 1
---   * Person 3 is removed (the other numbers stay as they are, so nobody's
---     "Person 2" changes under them), the worker re-votes Person 1's
---     details and rewrites the case summary ('summary' job)
---   * the case history says who combined what
+-- What happens:
+--   - all of Person 3's pictures move to Person 1 as 'confirmed', so the AI
+--     never splits them up again
+--   - Person 3's open questions become questions about Person 1, and any
+--     "No, not Person 3" answers now count as "not Person 1"
+--   - guns Person 3 was holding now belong to Person 1
+--   - Person 3 gets deleted. The other numbers don't shift, so nobody's
+--     "Person 2" suddenly becomes someone else. The worker re-votes Person 1
+--     and rewrites the summary.
+--   - the case history records who combined what
 --
--- Same rules as the rest of a case: not on a closed case, only the same
--- kind (a person can't be combined with a car).
--- ============================================================================
+-- Not allowed on closed cases, and only within the same kind.
 
 ALTER TABLE public.caseevent DROP CONSTRAINT caseevent_eventtype_check;
 ALTER TABLE public.caseevent ADD CONSTRAINT caseevent_eventtype_check
@@ -38,8 +34,8 @@ ALTER TABLE public.caseevent ADD CONSTRAINT caseevent_eventtype_check
 
 CREATE OR REPLACE FUNCTION public.combine_case_entities(
   p_caseid integer,
-  p_from   text,      -- the entry being viewed, e.g. 'p3' (Person 3)
-  p_into   text       -- the one it is the same as, e.g. 'p1' (Person 1)
+  p_from   text,      -- the one you're looking at, e.g. 'p3'
+  p_into   text       -- the one it's actually the same as, e.g. 'p1'
 )
   RETURNS jsonb
   LANGUAGE plpgsql
@@ -59,7 +55,7 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
-  -- the same lock the worker's ai_save_case takes, so the two never mix
+  -- same lock ai_save_case takes, so we never interleave with the worker
   SELECT status INTO v_status FROM public.cases WHERE caseid = p_caseid FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Case % not found', p_caseid USING ERRCODE = 'P0002';
@@ -82,8 +78,8 @@ BEGIN
     RAISE EXCEPTION 'Only the same kind can be combined (a % with a %).', v_from.kind, v_into.kind;
   END IF;
 
-  -- 1. "No, not Person 3" now also means "not Person 1" (for pictures that
-  --    aren't being moved into Person 1 right now)
+  -- a) "No, not Person 3" now also means "not Person 1", for pictures that
+  --    aren't being moved into Person 1 right now
   INSERT INTO public.entitymatchrejection (detectionid, entityid, rejectedby, rejectedat)
   SELECT r.detectionid, v_into.entityid, r.rejectedby, r.rejectedat
     FROM public.entitymatchrejection r
@@ -92,16 +88,16 @@ BEGIN
                       WHERE d.detectionid = r.detectionid AND d.caseentityid = v_from.entityid)
   ON CONFLICT DO NOTHING;
 
-  -- this person decided they ARE the same: drop old "not Person 1"
-  -- answers about the pictures that move
+  -- someone just decided these ARE the same, so drop old "not Person 1"
+  -- answers on the pictures that are moving
   DELETE FROM public.entitymatchrejection r
    USING public.detection d
    WHERE r.entityid = v_into.entityid AND r.detectionid = d.detectionid
      AND d.caseentityid = v_from.entityid
      AND d.matchstatus IN ('first', 'auto', 'confirmed');
 
-  -- 2. the pictures: settled ones become an admin decision, open
-  --    questions now ask about Person 1 (unless already answered "No")
+  -- b) pictures: settled ones become an admin decision, open questions now
+  --    ask about Person 1 (unless already answered No)
   UPDATE public.detection d
      SET caseentityid = v_into.entityid,
          matchstatus  = 'confirmed',
@@ -124,8 +120,8 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 3. guns held by Person 3 are held by Person 1; a combined gun keeps
-  --    its holder (or takes the other one's)
+  -- c) Person 3's guns go to Person 1. A combined gun keeps its holder, or
+  --    takes the other one's if it didn't have one.
   UPDATE public.caseentity SET heldbyentityid = v_into.entityid
    WHERE heldbyentityid = v_from.entityid;
   UPDATE public.caseentity
@@ -134,10 +130,10 @@ BEGIN
          updatedat      = now()
    WHERE entityid = v_into.entityid;
 
-  -- 4. Person 3 goes (its rejections go with it, ON DELETE CASCADE)
+  -- d) delete Person 3 (its rejections cascade)
   DELETE FROM public.caseentity WHERE entityid = v_from.entityid;
 
-  -- 5. the worker re-votes Person 1 and rewrites the summary
+  -- e) worker re-votes Person 1 and rewrites the summary
   UPDATE public.cases SET aisummarystatus = 'outdated'
    WHERE caseid = p_caseid AND aisummarystatus <> 'none';
   PERFORM public.queue_ai_job('summary', NULL, p_caseid);

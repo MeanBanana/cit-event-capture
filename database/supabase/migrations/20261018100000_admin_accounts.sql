@@ -1,30 +1,23 @@
--- =====================================================================
--- Admin accounts per police station + the root administrator
+-- Admin accounts per police station, plus the root admin.
 --
--- Every admin is a "User" (role 'admin') and now also has an admin row:
+-- Every admin is still a "User" with role 'admin', and now also gets a row
+-- in admin: admin_type ('root' or 'normal'), admin_station (e.g. 'Kempton
+-- Park SAPS'), createdby and datecreated.
 --
---   admin   userid (FK -> "User"), admin_type ('root' | 'normal'),
---           admin_station (e.g. 'Kempton Park SAPS'), createdby, datecreated
+-- root is the single system owner. They sign in to web/admin-console and
+-- they're the only one who can create admins. normal admins run a station
+-- from the mobile app's admin screens like before, and can still add
+-- investigators.
 --
---   root    the one system owner. Signs in to the web admin console
---           (web/admin-console) and is the only one who can create admins.
---   normal  a station's admin. Uses the mobile app's admin screens as before
---           (and can still add investigators).
+-- Root's "New admin" form calls the create-admin Edge Function (the service
+-- key never touches the browser), and the sign-up triggers below create both
+-- the "User" row and a 'normal' admin row from the login's metadata. Root
+-- itself gets made once, by hand, in the SQL Editor:
+--     SELECT public.make_root_admin('their_username', 'Their station');
 --
--- How admins are made:
---   * the root admin's "New admin" form in the web console calls the
---     create-admin Edge Function (service key, never in the browser). The
---     sign-up triggers below create the "User" row AND the admin row
---     (always 'normal') from the login's metadata.
---   * the root admin itself is made ONCE in the SQL Editor:
---       SELECT public.make_root_admin('their_username', 'Their station');
---
--- Rules (enforced here, not just in the console):
---   * at most one root admin
---   * an admin row can only belong to a "User" with role 'admin'
---   * nobody edits the admin table directly from the apps; the root admin
---     changes a station with set_admin_station()
--- =====================================================================
+-- Enforced here, not just in the console: only ever one root, admin rows
+-- only for "User"s with role 'admin', and nobody edits the admin table
+-- directly from either app (root changes stations via set_admin_station()).
 
 CREATE TYPE public.admin_type AS ENUM ('root', 'normal');
 
@@ -39,22 +32,20 @@ CREATE TABLE public.admin (
     REFERENCES public."User" (userid, role) ON DELETE CASCADE
 );
 
--- only one root admin
+-- there can only be one root
 CREATE UNIQUE INDEX admin_one_root ON public.admin ((true)) WHERE admin_type = 'root';
 CREATE INDEX idx_admin_station ON public.admin (admin_station);
 
 ALTER TABLE public.admin ENABLE ROW LEVEL SECURITY;
 
--- Existing admins become normal (station) admins; their station can be set
--- in the web console afterwards.
+-- existing admins become normal station admins, root can fill in their
+-- station from the console later
 INSERT INTO public.admin (userid, admin_station)
   SELECT userid, 'Unassigned' FROM public."User" WHERE role = 'admin'
   ON CONFLICT (userid) DO NOTHING;
 
 
--- ---------------------------------------------------------------------
--- Helpers
--- ---------------------------------------------------------------------
+-- --- helpers
 CREATE OR REPLACE FUNCTION public.is_root_admin()
   RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER
@@ -66,8 +57,8 @@ AS $$
   )
 $$;
 
--- The signed-in admin (for the web console after login), or NULL for
--- anyone who isn't an admin.
+-- The signed-in admin, for the web console after login. NULL for anyone who
+-- isn't an admin.
 CREATE OR REPLACE FUNCTION public.current_admin()
   RETURNS jsonb
   LANGUAGE sql STABLE SECURITY DEFINER
@@ -86,9 +77,7 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- Root admin only: list admins, change an admin's station
--- ---------------------------------------------------------------------
+-- --- root only: list admins, change an admin's station
 CREATE OR REPLACE FUNCTION public.list_admins()
   RETURNS TABLE (
     userid          integer,
@@ -148,12 +137,10 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- One-off, SQL Editor only: make an existing account the root admin
+-- --- one-off, run in the SQL Editor: make an existing account the root admin
 --   SELECT public.make_root_admin('deacs', 'Argus HQ');
--- (A citizen / admin account is converted; investigators are refused so
---  their case work isn't orphaned.)
--- ---------------------------------------------------------------------
+-- Citizen and admin accounts get converted. Investigators are refused so
+-- their case work doesn't end up orphaned.
 CREATE OR REPLACE FUNCTION public.make_root_admin(p_username text, p_station text)
   RETURNS text
   LANGUAGE plpgsql SECURITY DEFINER
@@ -189,10 +176,8 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- Sign-up triggers: an 'admin' login also gets its admin row (station from
--- the login's metadata, always 'normal' - root is only made by hand above)
--- ---------------------------------------------------------------------
+-- --- sign-up triggers: an 'admin' login also gets an admin row, with the
+-- station from its metadata. Always 'normal', root only gets made by hand.
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
   RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER
@@ -256,7 +241,7 @@ BEGIN
     RETURN NEW;
   END IF;
   IF NEW.created_at < now() - interval '5 minutes' THEN
-    RETURN NEW; -- not a brand-new login: leave it alone
+    RETURN NEW; -- not a brand new login, leave it alone
   END IF;
 
   SELECT userid, role::text INTO v_userid, v_current
@@ -264,7 +249,7 @@ BEGIN
   WHERE authid = NEW.id;
 
   IF v_userid IS NULL OR v_current IS DISTINCT FROM 'citizen' THEN
-    RETURN NEW; -- no row yet, or already has the right role
+    RETURN NEW; -- no row yet, or the role is already right
   END IF;
 
   DELETE FROM public.citizen WHERE userid = v_userid;
@@ -292,15 +277,13 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- Privileges and policies
--- ---------------------------------------------------------------------
+-- --- privileges and policies
 REVOKE ALL ON public.admin FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES ON public.admin FROM authenticated;
 GRANT SELECT ON public.admin TO authenticated;
 GRANT ALL ON public.admin TO service_role;
 
--- an admin sees their own row; the root admin sees all
+-- admins see their own row, root sees everyone's
 CREATE POLICY "admin_select" ON public.admin
   FOR SELECT TO authenticated
   USING (userid = (SELECT public.current_user_id()) OR (SELECT public.is_root_admin()));

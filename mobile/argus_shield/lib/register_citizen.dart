@@ -38,16 +38,15 @@ class _RegisterPageState extends State<RegisterPage>{
       builder: (context, _) => Scaffold(
       appBar: const ArgusAppBar(),
       body:Padding(
-        // Only left/right here. Top/bottom padding sits inside the scroll
-        // view below, so it scrolls with the form instead of leaving fixed
-        // empty bands that cut the form off under the header and above the
-        // phone's buttons.
+        // Only left/right padding here. Top/bottom lives inside the scroll
+        // view below so it scrolls with the form, rather than leaving fixed
+        // empty strips that cut the form off.
         padding: const EdgeInsets.symmetric(horizontal: 30),
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
-            // Small top gap to match the login page; a bit more at the bottom
-            // so the Register button doesn't touch the edge.
+            // small gap at the top to match login, a bit more at the bottom so
+            // the Register button isn't right on the edge
             padding: const EdgeInsets.only(top: 4, bottom: 20),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
@@ -262,7 +261,7 @@ class _RegisterPageState extends State<RegisterPage>{
                             resultMessage: success
                                 ? "${result["message"]}. You can now log in."
                                 : result["message"],
-                            nextScreen: const LoginPage(), // or any screen you want
+                            nextScreen: const LoginPage(),
                           ),
                         ),
                       );

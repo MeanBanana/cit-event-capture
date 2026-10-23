@@ -1,6 +1,6 @@
-// my_submission.dart — one incident a citizen reported, as shown in their
-// Submissions tab. Citizens only see their OWN reports (database RLS), and
-// never the AI's findings (pictures of other people's faces and plates).
+// One report a citizen made, as it shows in their Submissions tab. RLS means
+// they only ever see their own, and never the AI's findings (those include
+// other people's faces and plates).
 
 class MySubmission {
   final int incidentId;
@@ -8,10 +8,10 @@ class MySubmission {
   final DateTime? reportedAt;
   final String? description;
 
-  /// 'pending' | 'accepted' | 'rejected' | 'duplicate' (the admin's review)
+  /// The admin's review: 'pending' | 'accepted' | 'rejected' | 'duplicate'
   final String reviewStatus;
 
-  /// 'none' | 'processing' | 'ready' | 'outdated' | 'failed' (the AI analysis)
+  /// AI status: 'none' | 'processing' | 'ready' | 'outdated' | 'failed'
   final String aiStatus;
   final int fileCount;
 
@@ -25,7 +25,7 @@ class MySubmission {
     this.fileCount = 0,
   });
 
-  /// [row] = a crimescene row; [fileCount] = its media rows.
+  /// [row] is a crimescene row, [fileCount] how many media rows it has.
   factory MySubmission.fromMap(Map<String, dynamic> row, {int fileCount = 0}) {
     final reported = (row['datereported'] ?? row['datetime']) as String?;
     return MySubmission(
@@ -39,10 +39,10 @@ class MySubmission {
     );
   }
 
-  /// 42 -> "INC-0042" (the same reference the admins see).
+  /// 42 -> "INC-0042", same reference the admins see.
   String get reference => 'INC-${incidentId.toString().padLeft(4, '0')}';
 
-  /// What happened to the report, in the citizen's words.
+  /// What happened to the report, in plain words for the citizen.
   String get statusLabel => switch (reviewStatus) {
         'accepted' => 'Added to a case',
         'rejected' => 'Reviewed - not used',
@@ -50,7 +50,7 @@ class MySubmission {
         _ => 'Received',
       };
 
-  /// The footage analysis, without any of its findings.
+  /// The analysis status, without giving away anything it found.
   String get aiLabel => switch (aiStatus) {
         'processing' => 'Footage being analysed…',
         'ready' || 'outdated' => 'Footage analysed',

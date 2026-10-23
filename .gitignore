@@ -1,17 +1,17 @@
-# Backend secrets (Supabase service key)
+# backend secrets, the service key lives in here
 backend/.env
 
-# Python virtual environments (each PC makes its own)
+# virtualenvs, everyone makes their own
 .venv/
 venv/
 
-# AI worker: files while a job runs, and its log
+# AI worker scratch files and its log
 backend/work/
 backend/worker.log*
 
-# Python bytecode (made automatically on each PC)
+# Python bytecode
 __pycache__/
 *.pyc
 
-# Claude Code project settings (local to each developer)
+# Claude Code settings, per developer
 .claude/

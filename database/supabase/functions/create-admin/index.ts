@@ -1,35 +1,16 @@
-// create-admin — Supabase Edge Function
+// create-admin: makes a login for a police station's admin. Called from the
+// "New admin" form in web/admin-console, and only the root admin may use it.
 //
-// Called by the web admin console's "New admin" form (web/admin-console).
-// Creates the login of a police station's admin. Only the ROOT admin may.
+// Same reason as create-investigator for living here: it needs the service
+// key, and that key must never end up in a web page.
 //
-// Why this runs here and not in the browser:
-//   Creating someone else's account with the 'admin' role needs the service
-//   key, which can do anything in the project. That key must never be in a
-//   web page, so the console calls this function and the key stays on
-//   Supabase's servers (as an environment variable).
+// The sign-up triggers create the "User" and admin rows. New admins are
+// always 'normal' (not root), with their station taken from
+// user_metadata.admin_station. Like investigators they get a temporary
+// password and have to change it on first sign-in.
 //
-// What it does:
-//   1. Checks the caller is logged in AND is the root admin (admin table).
-//   2. Validates the form values.
-//   3. Checks the username isn't taken (clear message).
-//   4. auth.admin.createUser with the temporary password the root admin
-//      chose, and role 'admin' + must_change_password in app_metadata (only
-//      the service key can set those). The sign-up triggers create the
-//      "User" row and the admin row (always 'normal', station from
-//      user_metadata.admin_station).
-//   5. Makes sure the rows are right (see create-investigator for why), then
-//      returns { userid, email }.
-//
-// The root admin gives the new admin their username and temporary password.
-// At their first sign-in the mobile app makes them choose their own password
-// (must_change_password; cleared by the database once the password changes,
-// see migration 20261020100000_must_change_password.sql).
-//
-// Deploy (from the database/ folder):
-//   supabase functions deploy create-admin
-// verify_jwt is off in config.toml because this function checks the caller
-// itself (step 1).
+// Deploy from database/:  supabase functions deploy create-admin
+// verify_jwt is off in config.toml because we check the caller ourselves.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -40,7 +21,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** JSON response. Errors are always { error: "message for the admin" }. */
+/** JSON reply. Errors are always { error: "something the admin can read" }. */
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -51,15 +32,15 @@ function reply(status: number, body: Record<string, unknown>): Response {
 const fail = (status: number, message: string) =>
   reply(status, { error: message });
 
-/** Trimmed string, or "" for anything that isn't a string. */
+/** Trimmed string, or "" if it isn't a string at all. */
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-// Same rules as the console and the database.
-const USERNAME = /^[A-Za-z0-9_.]{3,30}$/; // "User"_username_format check
+// Keep these in line with the console and the database checks
+const USERNAME = /^[A-Za-z0-9_.]{3,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOCAL_PHONE = /^\d{9}$/; // the 9 digits after +27
 
-/** Rules for a temporary password, or null if it is fine. */
+/** What's wrong with the temporary password, or null if it's fine. */
 function passwordProblem(password: string): string | null {
   if (password.length < 8 || password.length > 72 ||
       !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
@@ -78,12 +59,12 @@ Deno.serve(async (req) => {
     return fail(500, "The server is not set up correctly (missing keys).");
   }
 
-  // The service-key client: bypasses RLS. Used only after the root check.
+  // Service-key client, bypasses RLS. Don't use it until we know it's root calling.
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ---- 1. Who is calling? Must be the root admin. --------------------------
+  // 1. caller has to be the root admin
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return fail(401, "Please sign in again.");
 
@@ -104,7 +85,7 @@ Deno.serve(async (req) => {
     return fail(403, "Only the root administrator can create admin accounts.");
   }
 
-  // ---- 2. Validate the form. ----------------------------------------------
+  // 2. validate the form
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -116,9 +97,9 @@ Deno.serve(async (req) => {
   const surname = text(body.surname);
   const username = text(body.username);
   const email = text(body.email).toLowerCase();
-  const phone = text(body.phone); // optional, 9 digits after +27
+  const phone = text(body.phone); // optional
   const station = text(body.station);
-  // not trimmed: the password is used exactly as given
+  // don't trim the password, use it exactly as typed
   const password = typeof body.password === "string" ? body.password : "";
 
   if (!firstname || !surname) return fail(400, "Enter the first name and surname.");
@@ -137,7 +118,7 @@ Deno.serve(async (req) => {
   const badPassword = passwordProblem(password);
   if (badPassword) return fail(400, badPassword);
 
-  // ---- 3. Clear message for a taken username. ------------------------------
+  // 3. nicer message for a taken username (the database checks it anyway)
   const { data: free, error: usernameError } = await admin.rpc(
     "username_available",
     { p_username: username },
@@ -145,13 +126,12 @@ Deno.serve(async (req) => {
   if (usernameError) return fail(500, "Could not check the username. Try again.");
   if (free !== true) return fail(409, "That username is already taken.");
 
-  // ---- 4. Create the login. ------------------------------------------------
-  // Key names in user_metadata must match handle_new_auth_user (migration
-  // 20261018100000_admin_accounts.sql).
+  // 4. create the login. user_metadata keys have to match what
+  // handle_new_auth_user reads (20261018100000_admin_accounts.sql).
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true, // the root admin vouches for the address
+    email_confirm: true, // root is vouching for the address
     app_metadata: { role: "admin", must_change_password: true },
     user_metadata: {
       username,
@@ -178,11 +158,10 @@ Deno.serve(async (req) => {
     return fail(500, "The account could not be created. Try again.");
   }
 
-  // ---- 5. Make sure the rows are admin rows. -------------------------------
-  // Supabase Auth INSERTs the login first and adds app_metadata (our role) a
-  // moment later, so the sign-up trigger may make a citizen first; the
-  // on_auth_user_role_set trigger then fixes it. This checks, and fixes it
-  // here if needed.
+  // 5. make sure it really is an admin. See create-investigator for the long
+  // version: the trigger can briefly create a citizen because Auth adds the
+  // role a moment after the insert. Normally on_auth_user_role_set fixes it,
+  // this is the backstop.
   const authId = created.user.id;
   const undo = async (userid?: number) => {
     if (userid != null) await admin.from("User").delete().eq("userid", userid);

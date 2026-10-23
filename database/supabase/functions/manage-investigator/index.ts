@@ -1,31 +1,22 @@
-// manage-investigator — Supabase Edge Function
-//
-// Called by the admin app's Investigators tab (SupabaseService
-// updateInvestigator / deleteInvestigator):
+// manage-investigator: edit or remove an investigator from the admin app's
+// Investigators tab (SupabaseService updateInvestigator/deleteInvestigator).
 //
 //   { action: "update", userid, firstname, surname, username, email, phone,
 //     rank, badgenumber, station, unit, password? }
-//       Changes the investigator's details and log-in. A new email changes
-//       the address they log in with; a new password is a TEMPORARY one
-//       (must_change_password: they choose their own at the next log-in).
+//   Changing the email changes what they log in with. A new password is a
+//   temporary one, they'll be made to pick their own next time.
 //
 //   { action: "delete", userid }
-//       Removes the account (database function remove_investigator_account):
-//         'deleted'    nothing they did is on record -> rows + login deleted
-//         'anonymised' they worked on cases -> their work stays in the case
-//                      records as "Former investigator", and the login is
-//                      blocked for good and moved to a placeholder email
-//       Either way the admin's Overview activity log gets a DEL line
-//       ("Investigator removed: ... by <admin>").
+//   Same idea as manage-admin: if they never did anything, delete outright.
+//   If they worked on cases they stay on record as "Former investigator" and
+//   the login is banned and moved to a placeholder email. Either way there's a
+//   DEL line in the Overview activity log.
 //
-// Why here and not in the app: changing someone else's login (email,
-// password) or deleting it needs the service key, which must never be in
-// the app. The key stays on Supabase's servers.
+// Changing or deleting someone else's login needs the service key, so this
+// can't live in the app.
 //
-// Deploy (from the database/ folder):
-//   supabase functions deploy manage-investigator
-// verify_jwt is off in config.toml because this function checks the caller
-// itself (logged in AND an admin), like create-investigator.
+// Deploy from database/:  supabase functions deploy manage-investigator
+// verify_jwt is off in config.toml, we check the caller is an admin ourselves.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -36,7 +27,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** JSON response. Errors are always { error: "message for the admin" }. */
+/** JSON reply. Errors are always { error: "something the admin can read" }. */
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -47,10 +38,10 @@ function reply(status: number, body: Record<string, unknown>): Response {
 const fail = (status: number, message: string) =>
   reply(status, { error: message });
 
-/** Trimmed string, or "" for anything that isn't a string. */
+/** Trimmed string, or "" if it isn't a string at all. */
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-// Same rules as the app, create-investigator and the database.
+// Keep these in line with the app, create-investigator and the database
 const USERNAME = /^[A-Za-z0-9_.]{3,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOCAL_PHONE = /^\d{9}$/; // the 9 digits after +27
@@ -63,7 +54,7 @@ function passwordProblem(password: string): string | null {
   return null;
 }
 
-/** A long random password for a blocked login (nobody ever uses it). */
+/** Long random password for a banned login. Nobody will ever type it. */
 function randomPassword(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") + "Aa1";
@@ -82,7 +73,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ---- Who is calling? Must be a logged-in admin. ---------------------------
+  // caller has to be a logged-in admin
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return fail(401, "Please log in again.");
   const { data: auth, error: authError } = await admin.auth.getUser(token);
@@ -107,7 +98,7 @@ Deno.serve(async (req) => {
   const userid = typeof body.userid === "number" ? body.userid : Number(body.userid);
   if (!Number.isInteger(userid) || userid <= 0) return fail(400, "Which investigator?");
 
-  // ---- The investigator being changed. -------------------------------------
+  // look up the investigator we're changing
   const { data: target, error: targetError } = await admin
     .from("User")
     .select("userid, authid, role, username, email")
@@ -123,11 +114,11 @@ Deno.serve(async (req) => {
     return fail(404, "That investigator account no longer exists. Refresh the list.");
   }
 
-  // =========================================================================
+  // --- delete
   if (action === "delete") {
     const { data: removed, error: removeError } = await admin.rpc(
       "remove_investigator_account",
-      { p_userid: userid, p_removed_by: caller.userid }, // shown in the activity log
+      { p_userid: userid, p_removed_by: caller.userid }, // shows up in the activity log
     );
     if (removeError || !removed) {
       console.error("remove_investigator_account failed", removeError);
@@ -138,8 +129,8 @@ Deno.serve(async (req) => {
       const { error } = await admin.auth.admin.deleteUser(target.authid);
       if (error) console.error("deleteUser failed (the account rows are gone)", error);
     } else {
-      // Their work stays on record, so the login can't be deleted; block it
-      // for good and free the real email address.
+      // Their work is still on record so we can't delete the login. Ban it
+      // permanently instead and free up their real email address.
       const { error } = await admin.auth.admin.updateUserById(target.authid, {
         email: (removed as { email: string }).email,
         email_confirm: true,
@@ -158,8 +149,8 @@ Deno.serve(async (req) => {
 
   if (action !== "update") return fail(400, "Unknown action.");
 
-  // =========================================================================
-  // ---- Validate the form (same rules as create-investigator). -------------
+  // --- update
+  // validation is the same as create-investigator
   const firstname = text(body.firstname);
   const surname = text(body.surname);
   const username = text(body.username);
@@ -195,7 +186,7 @@ Deno.serve(async (req) => {
     if (bad) return fail(400, bad);
   }
 
-  // ---- Clashes with other accounts. -----------------------------------------
+  // clashes with other accounts
   if (username.toLowerCase() !== String(target.username).toLowerCase()) {
     const { data: free, error } = await admin.rpc("username_available", { p_username: username });
     if (error) return fail(500, "Could not check the username. Try again.");
@@ -210,11 +201,11 @@ Deno.serve(async (req) => {
   if (badgeError) return fail(500, "Could not check the badge number. Try again.");
   if (badgeTaken) return fail(409, "That badge number is already in use.");
 
-  // ---- 1. The log-in email (the database copies it to "User".email). -------
+  // a) login email. The database copies it over to "User".email.
   if (email !== String(target.email).toLowerCase()) {
     const { error } = await admin.auth.admin.updateUserById(target.authid, {
       email,
-      email_confirm: true, // the admin vouches for the address
+      email_confirm: true, // the admin is vouching for the address
     });
     if (error) {
       const code = (error as { code?: string }).code;
@@ -226,7 +217,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ---- 2. Name, username, phone, police details. --------------------------
+  // b) name, username, phone and police details
   const { error: userError } = await admin
     .from("User")
     .update({
@@ -251,9 +242,9 @@ Deno.serve(async (req) => {
     return fail(500, "The police details could not be saved. Try again.");
   }
 
-  // ---- 3. A new temporary password (optional). ------------------------------
-  // Two steps: the database clears must_change_password whenever the
-  // password changes, so the flag is set AFTER the new password.
+  // c) optional new temporary password. Order matters: the database clears
+  // must_change_password whenever the password changes, so we set the flag
+  // after the new password, not with it.
   if (password) {
     const { error: pwError } = await admin.auth.admin.updateUserById(target.authid, { password });
     if (pwError) {

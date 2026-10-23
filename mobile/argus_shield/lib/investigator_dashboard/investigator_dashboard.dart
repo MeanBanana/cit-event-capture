@@ -9,8 +9,8 @@ import 'package:argus_shield/settings_screen.dart';
 import 'package:argus_shield/app_settings.dart';
 import 'investigator_case_detail.dart';
 
-/// Investigator landing page. Case visibility is enforced by database RLS:
-/// the cases returned here are only cases assigned to the signed-in officer.
+/// The investigator's home screen. RLS only returns cases they're assigned
+/// to, so there's no filtering to do here.
 class InvestigatorDashboard extends StatefulWidget {
   final SupabaseService? service;
 
@@ -295,11 +295,10 @@ class _InvestigatorCaseCard extends StatelessWidget {
     final latest = c.preview.isEmpty ? null : c.preview.first.location;
     final description = c.description?.trim() ?? '';
 
-    // Same parts as the admin's case cards (cases.dart CaseCard): AdminCard,
-    // Courier reference + status tag, title, divider, icon lines and fact
-    // chips - with fewer lines, so it stays compact. Grey outline like the
-    // admin's case cards: they only turn gold when no investigator is
-    // assigned, and every case here is assigned to this investigator.
+    // Built from the same parts as the admin's case cards (AdminCard,
+    // Courier reference and tag, title, divider, icon lines, chips) with
+    // fewer lines to keep it compact. Grey outline as well: the admin's cards
+    // only go gold when nobody's assigned, and these are all assigned to you.
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: AdminCard(

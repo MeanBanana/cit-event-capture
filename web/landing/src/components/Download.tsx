@@ -5,13 +5,13 @@ import {useReveals} from '../hooks/useReveals';
 import {detectDevice, type DeviceKind} from '../lib/device';
 
 /**
- * Get the app. The Android APK can only be downloaded on an Android PHONE:
- *   Android phone   Download button + the four install steps
- *   computer        a QR code to open this section on the phone instead
+ * Get the app. The APK is only offered on Android phones:
+ *   Android phone   download button and the four install steps
+ *   computer        a QR code so you can open this on your phone
  *   Android tablet  "made for phones"
- *   iPhone / iPad   "Android only for now"
- * The file itself is also guarded on Netlify (netlify/edge-functions/apk-guard.ts),
- * so its link can't simply be opened on another device.
+ *   iPhone/iPad     "Android only for now"
+ * Netlify also guards the file itself (netlify/edge-functions/apk-guard.ts),
+ * so you can't just copy the link onto another device.
  */
 export function Download() {
   const ref = useReveals<HTMLElement>();

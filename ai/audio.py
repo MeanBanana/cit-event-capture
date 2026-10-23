@@ -1,43 +1,34 @@
 """
-audio.py - listens to a video's sound for GUNFIRE and EXPLOSIONS, and works
-out from the timing of the shots whether the fire sounds AUTOMATIC or
-SEMI-AUTOMATIC.
+Listens to a video's audio for gunfire and explosions, and tries to tell
+automatic from semi-automatic fire based on the timing between shots.
 
-How it works, in plain English:
+How it goes:
+  1. Pull the audio out with ffmpeg (the one bundled in imageio-ffmpeg, so
+     there's nothing extra to install).
+  2. Run YAMNet over it. It's Google's general sound classifier (521
+     classes) and gives us scores for things like "Gunshot, gunfire",
+     "Machine gun", "Explosion" and "Fireworks" every half second.
+  3. Inside anything that sounds like gunfire, find the individual bangs and
+     look at the gaps. Automatic fire is fast (~0.05-0.14s apart) and very
+     regular because the gun sets the pace. Semi-auto is one trigger pull per
+     shot, so slower and messier. Anything in between is "unclear".
 
-  1. The sound is taken out of the video (ffmpeg, bundled with the
-     imageio-ffmpeg package - nothing to install separately).
-  2. YAMNet, Google's free sound-recognition model (521 everyday sounds,
-     trained on Google's AudioSet), scores every half second of sound for
-     "Gunshot, gunfire", "Machine gun", "Explosion", "Fireworks", ...
-     Parts that sound like gunfire or an explosion become EVENTS.
-  3. Inside each gunfire event we find every individual BANG (a very sudden
-     jump in loudness) and measure the gaps between them:
-       * automatic fire: the gun's mechanism sets the rhythm, so the bangs
-         are close together (about 0.05-0.14 s, i.e. 450-1200 rounds a
-         minute) and very evenly spaced - at least 4 in a row
-       * semi-automatic: one trigger pull per shot, so the gaps are longer
-         (usually 0.15 s or more) and uneven
-       * anything else is reported as "unclear" rather than guessed
-     Timing is used instead of "what does the gun sound like" because phone
-     microphones distort loud bangs and WhatsApp compresses the sound, but
-     WHEN each bang happens survives both.
+We go by timing rather than the sound itself because phone mics clip on loud
+bangs and WhatsApp mangles the audio, but the timing survives both.
 
-Honest limits (investigators see these as leads, not proof):
-  * echoes off buildings can add extra "bangs": bangs much quieter than the
-    shot just before them are treated as echoes, and mixed rhythms come out
-    as "unclear" rather than wrong
-  * gun HANDLING (loading, cocking) makes metal clicks that the sound model
-    can mistake for shots: clicks die away much faster than a gunshot rings
-    on, so they aren't counted as shots (could_be_handling flags it)
-  * fireworks, firecrackers, a car backfiring or a door slam can sound like
-    shots: every event also reports the fireworks score so it can be checked
-  * an automatic weapon fired one shot at a time sounds like semi-automatic
+Known weak spots (which is why this is only ever a lead):
+  - echoes look like extra bangs. We drop bangs that are much quieter than
+    the one just before, and anything messy ends up "unclear".
+  - loading/cocking clicks can fool YAMNet. Real shots ring on, clicks die
+    almost instantly, so we filter on that (could_be_handling).
+  - fireworks, backfires and slammed doors. We report the fireworks score
+    alongside so someone can check.
+  - an automatic fired one shot at a time just looks like semi-auto.
 
-YAMNet: Apache 2.0, (c) Google, https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
-Converted to ONNX for this project (so no TensorFlow is needed); the sound
-preparation below copies YAMNet's own exactly (checked to 0.0001 against the
-TensorFlow original). Files in audio_models/.
+YAMNet is Apache 2.0, (c) Google:
+https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
+We converted it to ONNX so we don't need TensorFlow. The preprocessing below
+is a straight port of YAMNet's and matches the original to within 0.0001.
 """
 
 import subprocess
@@ -51,41 +42,37 @@ YAMNET_LABELS = MODELS / "yamnet_class_map.csv"
 
 SAMPLE_RATE = 16000
 
-# YAMNet class names we use (from yamnet_class_map.csv)
+# names as they appear in yamnet_class_map.csv
 GUN_CLASSES = ["Gunshot, gunfire", "Machine gun", "Fusillade", "Artillery fire", "Cap gun"]
 EXPLOSION_CLASSES = ["Explosion", "Boom"]
 LOOK_ALIKE_CLASSES = ["Fireworks", "Firecracker"]
 
-# Shot timing rules (seconds between bangs)
-MIN_GAP = 0.05          # faster than ~1200 rounds/min: same bang (or its echo)
-AUTO_MAX_GAP = 0.14     # automatic: 450+ rounds/min
-SEMI_MIN_GAP = 0.15     # semi-automatic: separate trigger pulls
-AUTO_MAX_UNEVENNESS = 0.25   # automatic gaps vary by under 25%
+# Gaps between bangs, in seconds
+MIN_GAP = 0.05          # closer than this is the same bang (or its echo)
+AUTO_MAX_GAP = 0.14     # ~450 rounds/min and up
+SEMI_MIN_GAP = 0.15
+AUTO_MAX_UNEVENNESS = 0.25   # auto fire gaps vary by less than ~25%
 
 
-# ---------------------------------------------------------------------------
-# Getting the sound out of the video
-# ---------------------------------------------------------------------------
+# --- pulling the audio out
 
 def load_audio(path, sample_rate=SAMPLE_RATE):
-    """The video's sound as mono float32 samples (-1..1) at `sample_rate`,
-    or None if the file has no sound."""
+    """Mono float32 audio at `sample_rate`, or None if there's no sound track."""
     import imageio_ffmpeg
     command = [imageio_ffmpeg.get_ffmpeg_exe(), "-nostdin", "-v", "error",
                "-i", str(path), "-vn", "-ac", "1", "-ar", str(sample_rate),
                "-f", "f32le", "-"]
     result = subprocess.run(command, capture_output=True)
     if result.returncode != 0 or not result.stdout:
-        return None                      # no sound track (or unreadable)
+        return None
     return np.frombuffer(result.stdout, dtype=np.float32).copy()
 
 
-# ---------------------------------------------------------------------------
-# YAMNet (sound recognition)
-# ---------------------------------------------------------------------------
+# --- YAMNet
 
-# Sound preparation, exactly as YAMNet's features.py: 25 ms windows every
-# 10 ms -> 64 mel bands (125-7500 Hz) -> log -> 0.96 s patches every 0.48 s.
+# Copied from YAMNet's features.py: 25ms windows every 10ms, 64 mel bands
+# from 125-7500Hz, log, then 0.96s patches every 0.48s. Don't tweak these,
+# the model was trained on exactly this.
 _WIN, _HOP, _NFFT, _MELS = 400, 160, 512, 64
 PATCH_FRAMES, PATCH_HOP_FRAMES = 96, 48
 PATCH_SECONDS, PATCH_HOP_SECONDS = 0.96, 0.48
@@ -108,7 +95,7 @@ _WINDOW = (0.5 - 0.5 * np.cos(2 * np.pi * np.arange(_WIN) / _WIN)).astype(np.flo
 
 
 def _pad(wave):
-    """Pads with silence to a whole number of patches (YAMNet's pad_waveform)."""
+    """Pad with silence to a whole number of patches, same as YAMNet does."""
     min_samples = int((PATCH_SECONDS + 0.025 - 0.010) * SAMPLE_RATE)
     n = len(wave)
     padding = max(0, min_samples - n)
@@ -120,7 +107,7 @@ def _pad(wave):
 
 
 def log_mel_patches(wave):
-    """(patches, 96, 64) YAMNet input for a 16 kHz mono wave."""
+    """Turn a 16kHz mono wave into YAMNet input, shape (patches, 96, 64)."""
     wave = _pad(np.asarray(wave, np.float32))
     frames = 1 + (len(wave) - _WIN) // _HOP
     index = np.arange(_WIN)[None, :] + _HOP * np.arange(frames)[:, None]
@@ -132,7 +119,7 @@ def log_mel_patches(wave):
 
 
 class SoundTagger:
-    """Scores every 0.48 s of sound for YAMNet's 521 sound classes."""
+    """Thin wrapper around the YAMNet ONNX model."""
 
     def __init__(self, model=YAMNET_MODEL, labels=YAMNET_LABELS):
         import csv
@@ -145,7 +132,7 @@ class SoundTagger:
         self.index = {name: i for i, name in enumerate(self.labels)}
 
     def scores(self, wave, batch=64):
-        """(patches, 521) scores 0-1. Patch i covers i*0.48 s to i*0.48+0.96 s."""
+        """Scores per patch, shape (patches, 521). Patch i starts at i*0.48s."""
         patches = log_mel_patches(wave)
         out = [self.session.run(None, {self.input_name: patches[i:i + batch]})[0]
                for i in range(0, len(patches), batch)]
@@ -155,32 +142,30 @@ class SoundTagger:
         return [self.index[n] for n in names]
 
 
-# ---------------------------------------------------------------------------
-# Finding individual bangs + reading the rhythm
-# ---------------------------------------------------------------------------
+# --- finding individual shots and reading the rhythm
 
 def find_bangs(wave, start, end, frame_ms=2, rise_db=4.0, window_db=20.0,
                look_back=0.03, echo_db=4.0, echo_window=0.5, max_tail_drop=28.0):
-    """The GUNSHOTS between `start` and `end`: (shot times in seconds,
-    number of short clicks/knocks that were NOT counted as shots).
+    """Find the actual gunshots between `start` and `end`.
 
-    1. A bang = the loudness (above 500 Hz, to ignore wind and engine rumble)
-       jumps by at least `rise_db` compared to the quietest moment in the
-       previous `look_back` seconds, and is within `window_db` of the loudest
-       bang in the stretch. Bangs closer than MIN_GAP are one bang.
-    2. ECHOES are dropped: a bang at least `echo_db` quieter than a bang in
-       the previous `echo_window` seconds. (On our real test clips every echo
-       was 5-12 dB quieter than its shot - e.g. a range's back wall echoes
-       0.15 s later - while shots in a burst stay about equally loud.)
-    3. CLICKS are dropped: a gunshot rings on - 50-250 ms later it is only
-       about 17-20 dB quieter (measured on real rifle and pistol clips). A
-       click or knock (loading, cocking, a door) dies away: 35-50 dB quieter.
-       Bangs whose sound drops more than `max_tail_drop` dB don't count.
+    Returns (shot times, number of clicks we threw out). Three passes:
+
+    1. Candidate bangs: loudness (high-passed at 500Hz to get rid of wind and
+       engine noise) jumps `rise_db` above the recent minimum and isn't too
+       far below the loudest bang in the stretch.
+    2. Echoes: anything `echo_db` quieter than a bang just before it. In our
+       test clips echoes were always 5-12dB down, while shots in a burst stay
+       about equally loud.
+    3. Clicks: a gunshot keeps ringing, 50-250ms later it's only ~17-20dB
+       down. Clicks and knocks are 35-50dB down by then. Anything that drops
+       more than `max_tail_drop` gets thrown out.
+
+    The dB numbers came from measuring real rifle and pistol recordings.
     """
     from scipy.signal import butter, sosfilt
     total = len(wave) / SAMPLE_RATE
     a = int(max(0, start) * SAMPLE_RATE)
-    b = int(min(total, end + 0.3) * SAMPLE_RATE)       # + room to hear the ring-out
+    b = int(min(total, end + 0.3) * SAMPLE_RATE)       # a bit extra to hear the ring-out
     piece = wave[a:b]
     step = int(SAMPLE_RATE * frame_ms / 1000)
     if len(piece) < step * 10:
@@ -189,7 +174,7 @@ def find_bangs(wave, start, end, frame_ms=2, rise_db=4.0, window_db=20.0,
     frames = len(piece) // step
     rms = np.sqrt(np.mean(piece[:frames * step].reshape(frames, step) ** 2, axis=1))
     loud = 20 * np.log10(rms + 1e-7)
-    last = min(frames, int((end - start) * 1000 / frame_ms) + 1)   # bangs only up to `end`
+    last = min(frames, int((end - start) * 1000 / frame_ms) + 1)   # don't look for bangs past `end`
 
     back = max(1, int(look_back * 1000 / frame_ms))
     floor = np.array([loud[max(0, i - back):i].min() if i else loud[0] for i in range(frames)])
@@ -204,14 +189,14 @@ def find_bangs(wave, start, end, frame_ms=2, rise_db=4.0, window_db=20.0,
     for i in candidates:
         if bangs and i - bangs[-1] < min_frames:
             if loud[i] > loud[bangs[-1]]:
-                bangs[-1] = i            # same bang: keep the loudest moment
+                bangs[-1] = i            # same bang, keep its loudest frame
             continue
         bangs.append(i)
 
     def peak(i):
         return loud[i:i + 5].max()
 
-    # 2. echoes: much quieter than a bang shortly before it
+    # echoes
     window = int(echo_window * 1000 / frame_ms)
     kept = []
     for i in bangs:
@@ -220,7 +205,7 @@ def find_bangs(wave, start, end, frame_ms=2, rise_db=4.0, window_db=20.0,
             continue
         kept.append(i)
 
-    # 3. clicks: the sound dies away too fast to be a gunshot
+    # clicks
     t50, t250 = int(50 / frame_ms), int(250 / frame_ms)
     shots, clicks = [], 0
     for i in kept:
@@ -233,8 +218,7 @@ def find_bangs(wave, start, end, frame_ms=2, rise_db=4.0, window_db=20.0,
 
 
 def _regular_run(gaps):
-    """The longest run of consecutive gaps that look like automatic fire
-    (each 0.05-0.14 s). Returns that run as a list."""
+    """Longest streak of gaps that are in the automatic-fire range."""
     best, run = [], []
     for gap in gaps:
         if MIN_GAP <= gap <= AUTO_MAX_GAP:
@@ -246,15 +230,11 @@ def _regular_run(gaps):
 
 
 def fire_mode(shot_times):
-    """Reads the rhythm of a group of bangs.
+    """Work out the fire mode from a group of shot times.
 
-    Returns (mode, note, details):
-      "automatic"          4+ bangs in a row 0.05-0.14 s apart, evenly spaced
-                           (3 is too easily faked by a shot + 2 echoes)
-      "semi_automatic_or_single_shots"
-                           2+ bangs, typically 0.15 s or more apart
-      "single_shot"        one bang
-      "unclear"            anything else (e.g. echoes, mixed rhythms)
+    Returns (mode, note, details). We want at least 4 evenly spaced bangs
+    before calling it automatic, because one shot plus two echoes can look
+    like three.
     """
     n = len(shot_times)
     if n == 0:
@@ -265,7 +245,7 @@ def fire_mode(shot_times):
     details = {"median_gap_seconds": round(float(np.median(gaps)), 3)}
 
     run = _regular_run(gaps)
-    if len(run) >= 3:                      # 4+ bangs in a row
+    if len(run) >= 3:                      # 3 gaps = 4 bangs
         mean = float(np.mean(run))
         unevenness = float(np.std(run) / mean)
         details.update(rounds_per_minute=int(round(60 / mean)),
@@ -286,12 +266,10 @@ def fire_mode(shot_times):
     return "unclear", "rhythm doesn't clearly fit automatic or semi-automatic", details
 
 
-# ---------------------------------------------------------------------------
-# The whole analysis
-# ---------------------------------------------------------------------------
+# --- putting it together
 
 class AudioAnalyser:
-    """Finds gunfire and explosion events in a video's sound."""
+    """Finds gunfire/explosion events in a video's audio."""
 
     version = "yamnet-onnx"
 
@@ -302,12 +280,12 @@ class AudioAnalyser:
         self.look_alike_cols = self.tagger.columns(LOOK_ALIKE_CLASSES)
 
     def analyse(self, video_path, min_score=0.25, burst_gap=1.0):
-        """{"audio_available": bool, "audio_events": [...]} for a video.
+        """Analyse one video's audio.
 
-        min_score  how sure YAMNet must be (0-1) for a stretch of sound to
-                   count as gunfire / an explosion. Lower = finds more, but
-                   more false alarms.
-        burst_gap  bangs further apart than this (seconds) are separate groups.
+        min_score is how confident YAMNet has to be before we treat a stretch
+        as gunfire/explosion. Lower finds more but cries wolf more.
+        burst_gap splits shots into separate groups when they're further
+        apart than this.
         """
         wave = load_audio(video_path)
         if wave is None or len(wave) < SAMPLE_RATE * 0.2:
@@ -318,10 +296,9 @@ class AudioAnalyser:
         gun = scores[:, self.gun_cols].max(axis=1)
         boom = scores[:, self.explosion_cols].max(axis=1)
 
-        # Stretches of sound that are gunfire OR an explosion. A gunshot also
-        # sounds a lot like an explosion (YAMNet often gives both a high
-        # score), so each stretch is judged as a whole: gunfire unless it
-        # sounds clearly MORE like an explosion than like gunfire.
+        # YAMNet tends to score gunshots high for "explosion" as well, so we
+        # look at each stretch as a whole and call it gunfire unless it's
+        # clearly more explosion-y than gun-y.
         events = []
         for first, last, _ in self._stretches(np.maximum(gun, boom), min_score):
             gun_peak = float(gun[first:last + 1].max())
@@ -339,10 +316,9 @@ class AudioAnalyser:
 
     @staticmethod
     def _stretches(score, min_score):
-        """Neighbouring patches above min_score, merged:
-        [(first patch, last patch, highest score), ...]. Patches overlap by
-        half; up to 2 quieter patches in between (about 1 s, e.g. the pause
-        between semi-automatic shots) still count as the same stretch."""
+        """Merge neighbouring patches above min_score into stretches of
+        (first, last, peak). We allow a gap of a couple of patches (~1s) so
+        the pauses between semi-auto shots don't split them up."""
         stretches = []
         for i in np.flatnonzero(score >= min_score):
             if stretches and i - stretches[-1][1] <= 3:
@@ -354,27 +330,24 @@ class AudioAnalyser:
 
     def _describe(self, kind, wave, part, start, end, peak, cols, burst_gap):
         labels = self.tagger.labels
-        strongest = part.max(axis=0)          # each class's highest score
-        # The description: the strongest real-weapon class ("Cap gun", a toy,
-        # still counts towards the score but isn't used as the description).
+        strongest = part.max(axis=0)
+        # "Cap gun" (a toy) still adds to the score but we don't want it
+        # showing up as the label
         named = [c for c in cols if labels[c] != "Cap gun"]
         sound_label = labels[named[int(np.argmax(strongest[named]))]]
         fireworks = float(strongest[self.look_alike_cols].max())
         base = {
-            "event_type": kind,                       # gunfire / explosion
-            "sound_label": sound_label,               # e.g. "Machine gun"
-            "confidence": round(peak, 2),             # YAMNet's score 0-1
+            "event_type": kind,
+            "sound_label": sound_label,
+            "confidence": round(peak, 2),
             "fireworks_score": round(fireworks, 2),
             "explosion_score": round(float(strongest[self.explosion_cols].max()), 2),
-            # True when the sound is about as much like fireworks/firecrackers
             "could_be_fireworks": fireworks >= 0.8 * peak,
         }
         if kind == "explosion":
             return [dict(base, start_seconds=round(start, 2), end_seconds=round(end, 2))]
-        # Gunfire that sounds at least as much like an explosion: flag it.
         base["could_be_explosion"] = base["explosion_score"] >= peak
 
-        # Gunfire: split the bangs into groups and read each group's rhythm.
         bangs, clicks = find_bangs(wave, start, end)
         groups, group = [], []
         for t in bangs:
@@ -384,18 +357,18 @@ class AudioAnalyser:
             group.append(t)
         if group:
             groups.append(group)
-        if not groups:                       # the model heard gunfire, but no
-            groups = [[]]                    # clear shots: still report it
+        if not groups:                       # YAMNet heard gunfire but we couldn't
+            groups = [[]]                    # pick out shots, report it anyway
         base["clicks_not_counted"] = clicks
-        # only clicks, no ringing shots: probably handling (or a door / knock)
+        # clicks but nothing that rang on, so probably handling or a door
         base["could_be_handling"] = clicks > 0 and not bangs
 
         events = []
         for g in groups:
             mode, note, details = fire_mode(g)
             if mode == "automatic" and base["could_be_explosion"]:
-                # Continuous rumble (an explosion, heavy clipping) can make
-                # evenly spaced fake "bangs": don't claim automatic fire then.
+                # A continuous rumble can produce evenly spaced fake bangs, so
+                # don't claim automatic fire if it might be an explosion
                 mode = "unclear"
                 note = ("evenly spaced bangs, but it sounds at least as much like an "
                         "explosion or rumble - check by ear")

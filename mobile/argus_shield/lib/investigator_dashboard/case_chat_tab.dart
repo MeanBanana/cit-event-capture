@@ -1,5 +1,5 @@
-// case_chat_tab.dart — the "Chat" tab of the investigator case page: a group
-// chat for the investigators assigned to the case (like a WhatsApp group).
+// The Chat tab on an investigator's case page, basically a WhatsApp group
+// for everyone assigned to the case.
 //
 //   ┌──────────────────────────────────────────────┐
 //   │            ── 15/10/2026 ──                    │
@@ -14,10 +14,9 @@
 //   │ [ Message the investigators on this case ] ➤  │
 //   └──────────────────────────────────────────────┘
 //
-// New messages from others appear by themselves (Supabase Realtime, with a
-// check every 30 seconds as a fallback). The database decides who may read
-// and post (migration 20261015100000_case_chat.sql): only investigators
-// assigned to the case; a closed case's chat is read-only.
+// New messages arrive through Realtime, and we also poll every 30 seconds in
+// case a live update gets missed. Who can read/post is up to the database
+// (20261015100000_case_chat.sql), and closed cases are read-only.
 
 import 'dart:async';
 
@@ -31,10 +30,10 @@ class CaseChatTab extends StatefulWidget {
   final int caseId;
   final SupabaseService service;
 
-  /// A closed case: messages can be read, not sent.
+  /// Closed case: you can read but not send.
   final bool readOnly;
 
-  /// How often to check for new messages in case a live update is missed.
+  /// Fallback poll interval in case a live update gets missed.
   final Duration fallbackCheck;
 
   const CaseChatTab({
@@ -61,7 +60,7 @@ class _CaseChatTabState extends State<CaseChatTab>
   void Function()? _stopWatching;
   Timer? _timer;
 
-  // keep the chat (and its live connection) when switching to another tab
+  // keep the chat and its live connection alive when switching tabs
   @override
   bool get wantKeepAlive => true;
 
@@ -108,7 +107,7 @@ class _CaseChatTabState extends State<CaseChatTab>
     }
   }
 
-  /// Adds messages newer than the last one shown (live update / check).
+  /// Add any messages newer than the last one we're showing.
   Future<void> _fetchNew() async {
     if (_fetching || _loading || !mounted) return;
     _fetching = true;
@@ -124,8 +123,8 @@ class _CaseChatTabState extends State<CaseChatTab>
     }
   }
 
-  /// Adds messages once each, in order (a message can arrive both from the
-  /// live update and from our own send).
+  /// Add messages without duplicates, in order. Our own sends can come back
+  /// through the live update as well.
   void _add(Iterable<CaseMessage> messages) {
     final known = {for (final m in _messages) m.messageId};
     _messages.addAll(messages.where((m) => known.add(m.messageId)));
@@ -199,7 +198,7 @@ class _CaseChatTabState extends State<CaseChatTab>
         ),
       );
     }
-    // newest at the bottom; reverse so it opens there and stays there
+    // reversed so it opens at the newest message and stays at the bottom
     final items = _messages.reversed.toList();
     return RefreshIndicator(
       onRefresh: _load,
@@ -213,7 +212,7 @@ class _CaseChatTabState extends State<CaseChatTab>
           final m = items[i];
           final older = i + 1 < items.length ? items[i + 1] : null;
           final newDay = older == null || !_sameDay(older.sentAt, m.sentAt);
-          // the name only above the first of several messages in a row
+          // only show the name above the first of a run of messages from the same person
           final showName = !m.isMine &&
               (newDay || older.senderId != m.senderId);
           return Column(
@@ -343,7 +342,7 @@ class _Bubble extends StatelessWidget {
           margin: EdgeInsets.only(top: showName ? 8 : 3),
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
           decoration: BoxDecoration(
-            // light mode: soft orange (mine) / soft grey (others), dark text
+            // light mode: soft orange for mine, soft grey for others, dark text
             color: mine
                 ? AppColors.accent.withAlpha(isDark(context) ? 45 : 60)
                 : isDark(context)

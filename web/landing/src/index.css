@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Lenis' own stylesheet (its package exports don't expose the .css path). */
+/* Lenis' stylesheet, imported by path because the package doesn't export it */
 html.lenis,
 html.lenis body {
   height: auto;
@@ -12,15 +12,12 @@ html.lenis body {
   pointer-events: none;
 }
 
-/* ------------------------------------------------------------------
-   Type system
-   Display: Michroma — wide, engineered caps. Used sparingly and always
-            tracked out, like lettering on an armoured van.
-   Text:    Manrope.
-   Mono:    IBM Plex Mono for the camera readouts: clocks, labels, scores.
+/* --- type
+   Michroma for display, wide engineered caps. Use it sparingly and always
+   tracked out, like the lettering on an armoured van. Manrope for body text,
+   IBM Plex Mono for the camera readouts (clocks, labels, scores).
 
-   Colours are the app's: navy night, Argus orange, alert coral.
-   ------------------------------------------------------------------ */
+   Colours come from the app: navy night, Argus orange, alert coral. */
 @theme {
   --font-display: "Michroma", "Eurostile", "Arial Black", sans-serif;
   --font-sans: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -85,7 +82,7 @@ html.lenis body {
     height: 100svh;
   }
 
-  /* Camera viewfinder corner brackets. */
+  /* viewfinder corner brackets */
   .brackets {
     background:
       linear-gradient(currentColor, currentColor) top left / 14px 1px,
@@ -99,7 +96,7 @@ html.lenis body {
     background-repeat: no-repeat;
   }
 
-  /* CRT scanlines over the "signal lost" veil. */
+  /* CRT scanlines over the "signal lost" veil */
   .scanlines {
     background: repeating-linear-gradient(to bottom, rgb(255 255 255 / 0.05) 0 1px, transparent 1px 3px);
   }

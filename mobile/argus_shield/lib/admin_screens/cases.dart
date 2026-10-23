@@ -1,24 +1,17 @@
-// cases.dart — System Administrator view of every case (the "Cases" tab).
+// The admin's Cases tab. A case groups submissions into one investigation
+// and has investigators assigned to it.
 //
-// A case groups one or more submissions into one investigation and has
-// investigators assigned to it. Here the admin can:
-//   * see all cases as cards, most recently active first (20 at a time,
-//     more load as you scroll)
-//   * search by case number ("3", "CASE-0003") or title
-//   * filter by status (Open / Under review / Closed)
-//   * create a new case
-//   * tap a case to open CaseDetailPage (submissions, investigators,
-//     status, suggestions, history)
+// Cards are most recently active first and load 20 at a time as you scroll.
+// You can search by case number ("3", "CASE-0003") or title, filter by
+// status, create a new case, or tap one to open CaseDetailPage.
 //
-// Each card also shows the case's suspects (possible = seen by the AI, not
-// yet reviewed by an investigator; confirmed = confirmed by an
-// investigator on the case) and, for cases that are not closed, the best
-// suggested pending submission with its most relevant number plate.
+// Each card shows suspect counts (possible = AI saw them, nobody's reviewed
+// yet; confirmed = an investigator on the case confirmed them), and for open
+// cases the best suggested pending submission with its most relevant plate.
 //
-// Data comes from SupabaseService.listCasesPage (the list_cases function);
-// the suggestions from getCaseCardSuggestions, fetched once per page after
-// the cards appear, so a slow or failed suggestion call never holds up or
-// breaks the list.
+// The list comes from listCasesPage. Suggestions come from
+// getCaseCardSuggestions, fetched once per page after the cards are already
+// showing, so a slow or failed call never holds up the list.
 
 import 'dart:async';
 
@@ -33,18 +26,18 @@ import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/case_detail.dart';
 import 'package:argus_shield/app_settings.dart';
 
-/// Body of the Cases tab. Like the other admin tabs, it has no Scaffold or
-/// header of its own — AdminDashboard draws those.
+/// Body of the Cases tab. AdminDashboard draws the Scaffold and header, like
+/// the other admin tabs.
 class AdminCases extends StatefulWidget {
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
   const AdminCases({super.key, this.service});
 
-  /// How long to wait after the last key press before searching.
+  /// Debounce before searching after the last key press.
   static const searchDelay = Duration(milliseconds: 400);
 
-  /// Filter chips: label → status passed to the database (null = all).
+  /// Filter chips, label -> status for the database (null is all).
   static const filters = <(String, String?)>[
     ('All', null),
     ('Open', 'open'),
@@ -63,10 +56,10 @@ class _AdminCasesState extends State<AdminCases> {
 
   String _query = '';
   String _activeQuery = '';
-  String? _status; // current filter chip (null = all)
+  String? _status; // selected filter chip, null for all
   int _generation = 0; // bump to reload from the top
 
-  /// Best suggested submission per case id, filled in page by page.
+  /// Best suggested submission per case id, filled in a page at a time.
   final Map<int, CaseCardSuggestion> _suggestions = {};
 
   @override
@@ -85,7 +78,7 @@ class _AdminCasesState extends State<AdminCases> {
     });
   }
 
-  /// Loads one page of cases, then (without waiting) their suggestions.
+  /// Load a page of cases, then kick off their suggestions without waiting.
   Future<List<CaseSummary>> _loadPage(String query, List<CaseSummary> loaded) async {
     final page = await _service.listCasesPage(
       query: query,
@@ -96,8 +89,8 @@ class _AdminCasesState extends State<AdminCases> {
     return page;
   }
 
-  /// Suggestions are extra information: if they fail, the cards simply
-  /// show without them.
+  /// Suggestions are a nice-to-have. If they fail the cards just show
+  /// without them.
   Future<void> _loadSuggestions(List<CaseSummary> page, int generation) async {
     final ids = [for (final c in page) if (!c.isClosed) c.caseId];
     if (ids.isEmpty) return;
@@ -110,7 +103,7 @@ class _AdminCasesState extends State<AdminCases> {
         }
       });
     } catch (_) {
-      // leave the cards without suggestions
+      // just leave the cards without suggestions
     }
   }
 
@@ -142,7 +135,7 @@ class _AdminCasesState extends State<AdminCases> {
     if (mounted) _reload();
   }
 
-  /// New case (no submissions yet), then open it to add some.
+  /// Make an empty case, then open it so they can add submissions.
   Future<void> _newCase() async {
     final caseId = await showAdminSheet<int>(
       context,
@@ -251,23 +244,21 @@ class _AdminCasesState extends State<AdminCases> {
   }
 }
 
-/// One case, in the same card style as a submission: reference and
-/// status, title and description, what's inside (submissions, footage,
-/// suspects, plates), who is on it, the best suggested submission, and
-/// optionally a preview of its newest submissions with a "View case"
-/// button.
+/// One case, styled like a submission card: reference and status, title and
+/// description, what's in it (submissions, footage, suspects, plates), who's
+/// on it, the best suggestion, and optionally a preview of the newest
+/// submissions with a View case button.
 class CaseCard extends StatelessWidget {
   final CaseSummary caseSummary;
   final VoidCallback? onTap;
 
-  /// The best suggested pending submission for the case (not shown for
-  /// closed cases).
+  /// Best suggested pending submission for the case. Not shown on closed cases.
   final CaseCardSuggestion? suggestion;
 
-  /// Shows the newest submissions (citizen + AI descriptions) in the card.
+  /// Show the newest submissions (citizen + AI descriptions) in the card.
   final bool showPreview;
 
-  /// When set, a "View case" button at the bottom calls it.
+  /// If set, adds a View case button at the bottom.
   final VoidCallback? onViewCase;
 
   const CaseCard({
@@ -403,9 +394,9 @@ class CaseCard extends StatelessWidget {
   }
 }
 
-/// The best suggested pending submission on a case card: which one, how
-/// strong, its most relevant plate and why it was suggested. Adding it to
-/// the case still happens on the case page ("Recommended for this case").
+/// The best suggestion on a case card: which submission, how strong a match,
+/// its most relevant plate and why. Actually adding it happens on the case
+/// page under "Recommended for this case".
 class _SuggestedSubmission extends StatelessWidget {
   final CaseCardSuggestion suggestion;
 
@@ -468,7 +459,7 @@ class _SuggestedSubmission extends StatelessWidget {
   }
 }
 
-/// One submission inside a case card's preview.
+/// A submission in a case card's preview.
 class _PreviewRow extends StatelessWidget {
   final CasePreviewItem item;
 

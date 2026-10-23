@@ -1,5 +1,4 @@
-// Tests for the temporary passwords given to new investigators
-// (lib/temp_password.dart).
+// Temporary passwords for new investigators (lib/temp_password.dart).
 
 import 'dart:math';
 

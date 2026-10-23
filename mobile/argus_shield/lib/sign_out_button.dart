@@ -1,7 +1,6 @@
-// sign_out_button.dart — the logout icon that sits next to the settings
-// icon in the app bar (citizen, admin and investigator dashboards).
-// Signs out of Supabase and goes back to the login page, clearing the
-// navigation history so Back can't return to the signed-in screens.
+// The logout icon next to Settings in the app bar on every dashboard. Signs
+// out and goes back to login, clearing the navigation stack so Back can't
+// return to a signed-in screen.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/app_settings.dart';
@@ -10,7 +9,7 @@ import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart' show errorText, showSnack;
 
 class SignOutButton extends StatelessWidget {
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
   const SignOutButton({super.key, this.service});

@@ -1,6 +1,6 @@
-// Tests for the AI section of the case page: summary, one line per person /
-// vehicle / weapon with View crops, the 3-column pictures page, the enlarged picture with its
-// Download button, and answering "Is this Person 1?".
+// The AI section of the case page: the summary, a line per person/vehicle/
+// weapon with View crops, the 3-column pictures page, the enlarged picture
+// with Download, and answering "Is this Person 1?".
 
 import 'dart:typed_data';
 
@@ -11,7 +11,7 @@ import 'package:argus_shield/admin_screens/case_evidence_section.dart';
 import 'package:argus_shield/case_evidence_source.dart';
 import 'package:argus_shield/models/case_evidence.dart';
 
-/// A 1x1 transparent PNG, so pictures "load" in tests.
+/// 1x1 transparent PNG so pictures "load" in tests.
 final _png = Uint8List.fromList(const [
   0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
   0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
@@ -185,8 +185,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('PICTURES (7)'), findsOneWidget);
-    // the grid is below the "Is this Person 1?" card: scroll to it so the
-    // list builds it
+    // the grid sits below the "Is this Person 1?" card, so scroll to it to
+    // get it built
     await tester.ensureVisible(find.text('PICTURES (7)'));
     await tester.pumpAndSettle();
     final grid = tester.widget<SliverGrid>(find.byType(SliverGrid));

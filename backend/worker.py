@@ -1,39 +1,30 @@
 """
-worker.py - the Argus AI worker. Runs on the GPU PC, takes jobs from Supabase
-and does them. Nobody connects TO this machine: it only makes outgoing
-connections to Supabase (no ngrok, no open ports).
+The AI worker. Runs on the GPU PC, pulls jobs off the queue in Supabase and
+works through them.
 
-    Citizen app ── submit_for_analysis(42) ──►  aijob 'analyse' 42
-    worker      ── claim_next_job()        ──►  gets the job
-                   download 42/media/*  →  run the pipeline (ai/main.py)
-                   upload crops + results.json (upload_results.py)
-                   ai_save_analysis(42, results.json)   → detection rows ...
-                ── finish_job()
-    Admin accepts it into case 7          ──►  aijob 'merge' 42 → 7
-    worker:  ai_load_case(7) + ai_load_submission(42)
-             → case_matcher.merge_submission() → ai_save_case(7, case)
+It only ever connects out to Supabase, nothing connects in, so there's no
+ngrok or port forwarding to deal with.
 
-Jobs (database/supabase/migrations/20261012100100_ai_pipeline_functions.sql):
-    analyse   run the pipeline on a submission's files, save the results
-    merge     combine an accepted submission into its case's people /
-              vehicles / weapons
-    rematch   place one picture again after an admin said "No, not Person 2"
-    summary   re-vote a case's people / vehicles / weapons + its AI summary
+Job kinds (defined in 20261012100100_ai_pipeline_functions.sql):
+    analyse   run the pipeline on a submission and save what it found
+    merge     fold an accepted submission into its case
+    rematch   re-place one detection after an admin said "no, that's not
+              Person 2"
+    summary   re-vote a case's entities and refresh its summary
 
-Run (from the cit-event-capture folder, with the .venv switched on):
+Usage, from the repo root with the venv active:
 
-    python backend/worker.py                 keep running, check for jobs every 5 s
-    python backend/worker.py --once          do the waiting jobs, then stop
-    python backend/worker.py --id gpu-pc-1   name shown in the app (default: PC name)
+    python backend/worker.py                 run forever, polling every 5s
+    python backend/worker.py --once          clear the queue and exit
+    python backend/worker.py --id gpu-pc-1   name to show in the app
 
-Needs backend/.env (copy .env.example):
-    SUPABASE_URL=https://<project>.supabase.co
-    SUPABASE_SERVICE_ROLE_KEY=...        (secret! only on this PC, never in the app)
-    ARGUS_WORKER_ID=gpu-pc-1            (optional)
+Needs backend/.env (see .env.example) with SUPABASE_URL and
+SUPABASE_SERVICE_ROLE_KEY. That key can do anything, so it stays on this PC
+and never goes anywhere near the app.
 
-A heartbeat goes to Supabase every 30 s, so the admin app can show "AI worker
-online". If the worker crashes or the PC turns off mid-job, the job is put
-back in the queue automatically (max 3 attempts). Log: backend/worker.log.
+We send a heartbeat every 30s so the admin app can show whether the worker
+is up. If we die mid-job the database puts the job back in the queue (up to
+3 tries). Logs go to backend/worker.log.
 """
 
 import argparse
@@ -58,17 +49,15 @@ BUCKET = "submissions"
 VERSION = "argus-worker 1.0"
 POLL_SECONDS = 5
 HEARTBEAT_SECONDS = 30
-WORK_DIR = HERE / "work"                 # downloads + crops while a job runs (git-ignored)
+WORK_DIR = HERE / "work"                 # scratch space while a job runs, git-ignored
 
 log = logging.getLogger("argus.worker")
 
 
-# ---------------------------------------------------------------------------
-# Supabase
-# ---------------------------------------------------------------------------
+# --- Supabase
 
 def make_client():
-    """Supabase client with the service key from backend/.env."""
+    """Service-role client using backend/.env."""
     from dotenv import load_dotenv
     from supabase import create_client
 
@@ -82,7 +71,7 @@ def make_client():
 
 
 def rpc(client, name, **params):
-    """Calls a database function, returns its result."""
+    """Call a database function and return its data."""
     return client.rpc(name, params).execute().data
 
 
@@ -96,9 +85,7 @@ def gpu_name():
     return "CPU only"
 
 
-# ---------------------------------------------------------------------------
-# The worker
-# ---------------------------------------------------------------------------
+# --- the worker
 
 class Worker:
     def __init__(self, client, worker_id, heartbeat_client=None, detector=None,
@@ -111,7 +98,7 @@ class Worker:
         self._detector = detector
         self._stop = threading.Event()
 
-    # --- models: loaded once, the first time they're needed ---------------
+    # Models are slow to load, so only do it once, the first time we need them
 
     @property
     def detector(self):
@@ -122,24 +109,24 @@ class Worker:
             log.info("Models ready (%s)", self._detector.model_version)
         return self._detector
 
-    # --- heartbeat ------------------------------------------------------------
+    # --- heartbeat
 
     def heartbeat(self):
         try:
             rpc(self.heartbeat_client, "ai_worker_heartbeat", p_workerid=self.worker_id,
                 p_gpu=self.gpu, p_version=VERSION)
-        except Exception as error:  # noqa: BLE001  (network hiccup: try again later)
+        except Exception as error:  # noqa: BLE001  network blip, the next beat will try again
             log.warning("Heartbeat failed: %s", error)
 
     def _heartbeat_loop(self):
         while not self._stop.wait(HEARTBEAT_SECONDS):
             self.heartbeat()
 
-    # --- main loop ------------------------------------------------------------
+    # --- main loop
 
     def run(self, once=False, poll=POLL_SECONDS):
-        """Takes and does jobs until stopped (or, with once=True, until the
-        queue is empty). Returns how many jobs were done."""
+        """Keep taking jobs until stopped, or until the queue is empty if
+        once=True. Returns the number of jobs done."""
         self._stop.clear()
         log.info("Worker %s started (%s, %s)", self.worker_id, self.gpu, VERSION)
         self.heartbeat()
@@ -151,7 +138,7 @@ class Worker:
             while not self._stop.is_set():
                 try:
                     job = self.claim()
-                except Exception as error:  # noqa: BLE001  (offline? keep trying)
+                except Exception as error:  # noqa: BLE001  probably offline, keep trying
                     log.warning("Could not reach Supabase: %s", error)
                     if once:
                         raise
@@ -182,8 +169,8 @@ class Worker:
         return rows[0] if isinstance(rows, list) and rows else None
 
     def do(self, job):
-        """Does one job and reports it finished (or failed: the database
-        retries it up to 3 times)."""
+        """Run one job and report back. If it fails the database decides
+        whether to retry (max 3 attempts)."""
         what = {"analyse": f"incident {job['incidentid']}",
                 "merge": f"incident {job['incidentid']} -> case {job['caseid']}",
                 "rematch": f"detection {job['detectionid']} in case {job['caseid']}",
@@ -207,7 +194,7 @@ class Worker:
             log.info("Job %s done in %.0f s", job["jobid"], time.time() - started)
 
     def _finish(self, job, error):
-        for attempt in range(3):                    # don't lose the result to a hiccup
+        for attempt in range(3):                    # a network blip here would lose the result
             try:
                 rpc(self.client, "finish_job", p_jobid=job["jobid"], p_error=error)
                 return
@@ -216,11 +203,11 @@ class Worker:
                 time.sleep(2 * (attempt + 1))
         log.error("Could not report job %s; the database will retry it later", job["jobid"])
 
-    # --- analyse: run the pipeline on a submission ---------------------------
+    # --- analyse
 
     def analyse(self, job):
         import main as pipeline                       # ai/main.py
-        from upload_results import upload_run         # backend/upload_results.py
+        from upload_results import upload_run
 
         incident = job["incidentid"]
         media = (self.client.table("media").select("mediaid, storagepath, mediatype")
@@ -243,7 +230,7 @@ class Worker:
                 files.append(local)
                 log.info("  downloaded %s (%.1f MB)", row["storagepath"], local.stat().st_size / 1e6)
 
-            # crops/submission <incident>/ : upload_results expects that name
+            # upload_results relies on the folder being called "submission <id>"
             crops = folder / "crops" / f"submission {incident}"
             result = pipeline.analyse_submission(self.detector, files, crops, incident)
             path, uploaded = upload_run(result, crops / "results.json", incident,
@@ -253,9 +240,9 @@ class Worker:
                         p_result=uploaded, p_summary=pipeline.submission_summary(result))
             log.info("  saved: %s", stats)
         finally:
-            shutil.rmtree(folder, ignore_errors=True)   # everything is in Supabase now
+            shutil.rmtree(folder, ignore_errors=True)   # it's all in Supabase by now
 
-    # --- case jobs: merge / rematch / summary --------------------------------
+    # --- case jobs
 
     def _load_case(self, job):
         return rpc(self.client, "ai_load_case", p_caseid=job["caseid"])
@@ -302,13 +289,11 @@ class Worker:
         self._save_case(self._load_case(job))
 
 
-# ---------------------------------------------------------------------------
-# Start
-# ---------------------------------------------------------------------------
+# --- startup
 
 def setup_logging():
     log.setLevel(logging.INFO)
-    log.propagate = False                     # Ultralytics sets up the root logger too
+    log.propagate = False                     # Ultralytics configures the root logger, don't double-log
     fmt = logging.Formatter("%(asctime)s  %(message)s", "%Y-%m-%d %H:%M:%S")
     console = logging.StreamHandler(sys.stdout)
     console.setFormatter(fmt)
@@ -330,10 +315,10 @@ def main(argv=None):
     setup_logging()
     client = make_client()
     worker_id = args.id or os.environ.get("ARGUS_WORKER_ID") or socket.gethostname()
-    # model files (yolo26s.pt ...) are found / downloaded in the ai folder
+    # the model files live in (and download to) ai/
     os.chdir(AI)
     worker = Worker(client, worker_id, heartbeat_client=make_client())
-    worker.detector                      # load the models now: problems show at once
+    worker.detector                      # load models up front so a broken setup fails right away
     worker.run(once=args.once, poll=args.poll)
 
 

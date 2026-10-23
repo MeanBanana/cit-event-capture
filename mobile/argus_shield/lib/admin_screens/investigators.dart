@@ -1,20 +1,12 @@
-// investigators.dart — System Administrator view of every investigator.
+// The admin's Investigators tab: a search bar and a list of investigator
+// cards.
 //
-// Shows a search bar (name or badge number) and a scrollable list of
-// investigator cards.
+// It opens on the 20 newest accounts, and searching (name or badge) runs in
+// the database, so it finds anyone, not just whoever's already on screen.
 //
-// Data comes from SupabaseService:
-//   * on opening: getRecentInvestigators()  -> the 20 newest accounts
-//   * while searching: searchInvestigators() -> matches by name/badge number
-// The search runs in the database (not on the phone), so it finds any
-// investigator, not only the 20 already on screen.
-//
-// "+ New investigator" opens a popup (NewInvestigatorForm) that creates the
-// account through SupabaseService.createInvestigator.
-//
-// Each card has Update (the same form, filled in: details, username, email,
-// optional new temporary password -> SupabaseService.updateInvestigator) and
-// Delete (SupabaseService.deleteInvestigator, after a confirmation).
+// "+ New investigator" opens NewInvestigatorForm to create an account. Each
+// card has Update (same form pre-filled, with an optional new temp password)
+// and Delete (after a confirmation).
 
 import 'dart:async';
 
@@ -29,19 +21,19 @@ import 'package:argus_shield/admin_screens/new_investigator_form.dart';
 import 'package:argus_shield/app_settings.dart';
 import 'package:argus_shield/saved_contact_details.dart' show localSaPhone;
 
-// Other screens (e.g. overview.dart) import InvestigatorSummary from here.
+// other screens (overview.dart etc) get InvestigatorSummary through this file
 export 'package:argus_shield/models/investigator_summary.dart';
 
-/// Body of the Investigators tab. Like the citizen pages, it has no Scaffold
-/// or header of its own — AdminDashboard draws those.
+/// Body of the Investigators tab. AdminDashboard draws the Scaffold and
+/// header, like it does for the citizen pages.
 class Investigators extends StatefulWidget {
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
   const Investigators({super.key, this.service});
 
-  /// How long to wait after the last key press before searching, so typing
-  /// "JHB-4471" sends one request instead of eight.
+  /// Debounce before searching, so typing "JHB-4471" sends one request
+  /// instead of eight.
   static const searchDelay = Duration(milliseconds: 400);
 
   @override
@@ -58,14 +50,14 @@ class _InvestigatorsState extends State<Investigators> {
   bool _loading = true;
   String? _error;
 
-  // Each request gets a number; only the newest one may update the screen,
-  // so a slow old search cannot overwrite a newer result.
+  // Every request gets a number and only the latest one is allowed to touch
+  // the screen, so a slow old search can't clobber a newer result.
   int _requestId = 0;
 
   @override
   void initState() {
     super.initState();
-    _fetch(); // _loading already starts as true
+    _fetch(); // _loading already starts out true
   }
 
   @override
@@ -75,8 +67,7 @@ class _InvestigatorsState extends State<Investigators> {
     super.dispose();
   }
 
-  /// Loads the recent investigators, or the search results when there is
-  /// search text.
+  /// Load the recent investigators, or search results if there's search text.
   Future<void> _fetch() async {
     final id = ++_requestId;
     final query = _query.trim();
@@ -99,7 +90,7 @@ class _InvestigatorsState extends State<Investigators> {
     }
   }
 
-  /// Shows the spinner and loads again (search changed, or "Try again").
+  /// Show the spinner and load again (search changed, or "Try again").
   void _reload() {
     _searchTimer?.cancel();
     setState(() {
@@ -121,9 +112,9 @@ class _InvestigatorsState extends State<Investigators> {
     _reload();
   }
 
-  /// Opens the "New investigator" popup. On success: closes it, shows the
-  /// username and temporary password to pass on, and reloads the list so
-  /// the new account appears at the top.
+  /// Open the New investigator popup. On success, close it, show the
+  /// username and temp password to pass on, and reload so the new account
+  /// shows up at the top.
   Future<void> _newInvestigator() async {
     final created = await showAdminSheet<NewInvestigatorDetails>(
       context,
@@ -148,7 +139,7 @@ class _InvestigatorsState extends State<Investigators> {
     );
     if (created == null || !mounted) return;
 
-    // Show the newest accounts again (the new one is first).
+    // back to the newest accounts, the new one will be first
     _searchController.clear();
     _query = '';
     _reload();
@@ -158,8 +149,8 @@ class _InvestigatorsState extends State<Investigators> {
         intro: '${created.firstName} ${created.surname}\'s account is ready.');
   }
 
-  /// "Update": the New investigator form, filled in. The list doesn't carry
-  /// the username, so it is fetched first.
+  /// Update: the same form, pre-filled. The list doesn't include the
+  /// username so we fetch that first.
   Future<void> _updateInvestigator(InvestigatorSummary inv) async {
     String? username;
     try {
@@ -219,7 +210,7 @@ class _InvestigatorsState extends State<Investigators> {
         intro: 'Give ${saved.firstName} ${saved.surname} their new log-in.');
   }
 
-  /// "Delete": asks first, then removes the account.
+  /// Delete: confirm, then remove the account.
   Future<void> _deleteInvestigator(InvestigatorSummary inv) async {
     final cases = inv.activeCases;
     final ok = await confirmAction(
@@ -244,7 +235,7 @@ class _InvestigatorsState extends State<Investigators> {
     }
   }
 
-  /// The log-in details to pass on (after creating, or a new password).
+  /// Shows the login details to pass on, after creating or resetting a password.
   Future<void> _showLogIn(NewInvestigatorDetails created,
       {required String title, required String intro}) async {
     final details = 'Argus Shield log-in\n'
@@ -315,9 +306,9 @@ class _InvestigatorsState extends State<Investigators> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title on its own line ("Investigators" is too long to share a
-          // line with the button on a phone), then the add button below it
-          // on the right, styled like "+ New case" on Cases.
+          // Title gets its own line because "Investigators" plus the button
+          // doesn't fit on a phone. The add button sits below it on the
+          // right, same as "+ New case" on Cases.
           Text(appSettings.t('investigators'), style: titleOnPage(context)),
           const SizedBox(height: 6),
           Align(
@@ -335,13 +326,13 @@ class _InvestigatorsState extends State<Investigators> {
           ),
           const SizedBox(height: AppSpacing.medium),
 
-          // Search bar — borders and focus colour come from the app theme.
+          // search bar, borders and focus colour come from the theme
           TextField(
             controller: _searchController,
             style: bodyOnPage(context),
             textInputAction: TextInputAction.search,
             onChanged: _onSearchChanged,
-            onSubmitted: (_) => _reload(), // search now, don't wait
+            onSubmitted: (_) => _reload(), // enter searches straight away
             decoration: InputDecoration(
               hintText: appSettings.t('searchInvestigators'),
               hintStyle: mutedOnPage(context),
@@ -363,7 +354,7 @@ class _InvestigatorsState extends State<Investigators> {
             ),
           const SizedBox(height: AppSpacing.medium),
 
-          // Only the list scrolls; the title and search bar stay in place.
+          // only the list scrolls, title and search stay put
           Expanded(child: _buildList()),
         ],
       ),
@@ -400,11 +391,11 @@ class _InvestigatorsState extends State<Investigators> {
       );
     }
 
-    // Pull down to refresh.
+    // pull to refresh
     return RefreshIndicator(
       onRefresh: _fetch,
       child: ListView.separated(
-        padding: const EdgeInsets.only(bottom: 12), // gap after the last card
+        padding: const EdgeInsets.only(bottom: 12), // a bit of space after the last card
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: _investigators.length,
         separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.medium),
@@ -421,12 +412,12 @@ class _InvestigatorsState extends State<Investigators> {
   }
 }
 
-/// One investigator's details. Styled like SubmissionCard on the citizen side
+/// One investigator. Styled like the citizen side's SubmissionCard
 /// (outlined box, Courier title, small coloured status tag).
 class InvestigatorCard extends StatelessWidget {
   final InvestigatorSummary investigator;
 
-  /// Update / Delete buttons at the bottom (admins' Investigators tab).
+  /// Show Update/Delete buttons at the bottom (the admin's tab).
   final VoidCallback? onUpdate;
   final VoidCallback? onDelete;
 
@@ -437,7 +428,7 @@ class InvestigatorCard extends StatelessWidget {
     this.onDelete,
   });
 
-  /// Database value → label and colour for the status tag.
+  /// Database value -> label and colour for the status tag.
   static (String, Color) _status(String dutyStatus) {
     switch (dutyStatus) {
       case 'on_duty':
@@ -467,7 +458,7 @@ class InvestigatorCard extends StatelessWidget {
         child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Name + duty status
+          // name and duty status
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -542,7 +533,7 @@ class InvestigatorCard extends StatelessWidget {
   }
 }
 
-/// Icon + text line used inside InvestigatorCard.
+/// An icon + text line inside InvestigatorCard.
 class _DetailRow extends StatelessWidget {
   final IconData icon;
   final String text;

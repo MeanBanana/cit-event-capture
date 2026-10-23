@@ -1,5 +1,5 @@
-// case_assignment_info.dart — one investigator assignment on a case (current
-// or past). Rows come from the list_case_assignments database function.
+// One investigator assignment on a case, current or past
+// (list_case_assignments).
 class CaseAssignmentInfo {
   final int assignmentId;
   final int? caseId;
@@ -12,7 +12,7 @@ class CaseAssignmentInfo {
   final DateTime dateAssigned;
   final DateTime? dateUnassigned;
   final String? assignedByName;
-  final bool isLead; // the case's lead investigator
+  final bool isLead;
 
   const CaseAssignmentInfo({
     required this.assignmentId,

@@ -1,17 +1,14 @@
--- =====================================================================
--- Argus Shield: every correction says which CRIME SCENE it belongs to
+-- Every correction now records which crime scene it belongs to.
 --
--- correctionlog only had detectionid, so finding a crime scene's
--- corrections meant correctionlog -> detection -> media -> crimescene.
--- Now each row carries the crime scene directly:
+-- correctionlog only had detectionid, so getting a scene's corrections meant
+-- going correctionlog -> detection -> media -> crimescene every time. Now the
+-- row carries incidentid directly.
 --
---   crimescene 1 ──< correctionlog >── 1 detection
---                         └──────────── 1 "User" (correctedby)
+--   crimescene 1 --< correctionlog >-- 1 detection
+--                         `---------- 1 "User" (correctedby)
 --
--- incidentid is filled in by the database from the detection (trigger),
--- so it can never point at a different crime scene than the detection
--- that was corrected. Existing rows are filled in here.
--- =====================================================================
+-- A trigger fills incidentid in from the detection, so it can never disagree
+-- with the detection that was corrected. Existing rows get backfilled below.
 
 ALTER TABLE public.correctionlog
   ADD COLUMN incidentid integer REFERENCES public.crimescene (incidentid);
@@ -24,11 +21,11 @@ UPDATE public.correctionlog c
 
 ALTER TABLE public.correctionlog ALTER COLUMN incidentid SET NOT NULL;
 
--- a crime scene's log, newest first
+-- a scene's log, newest first
 CREATE INDEX idx_correctionlog_incident_time
   ON public.correctionlog (incidentid, correctiontimestamp DESC);
 
--- Always the crime scene of the corrected detection (whatever was passed)
+-- always the corrected detection's scene, whatever the caller passed in
 CREATE OR REPLACE FUNCTION public.set_correctionlog_incident()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -53,11 +50,9 @@ CREATE TRIGGER set_correctionlog_incident
   FOR EACH ROW EXECUTE FUNCTION public.set_correctionlog_incident();
 
 
--- ---------------------------------------------------------------------
--- The crime scene functions read the new column directly
--- ---------------------------------------------------------------------
+-- --- the crime scene functions read the new column directly
 
--- Cards: same as 20261013100000, correction count from incidentid
+-- cards: same as 20261013100000, but the correction count uses incidentid
 CREATE OR REPLACE FUNCTION public.list_case_crime_scenes(p_caseid integer)
   RETURNS TABLE (
     incidentid        integer,
@@ -125,8 +120,8 @@ BEGIN
 END;
 $$;
 
--- Crime scene page: same as 20261013100000, the log from incidentid,
--- and each log entry says which crime scene it belongs to
+-- scene page: same as 20261013100000, but the log comes via incidentid and
+-- every entry says which scene it's from
 CREATE OR REPLACE FUNCTION public.get_crime_scene(p_incidentid integer)
   RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER

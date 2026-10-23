@@ -1,12 +1,11 @@
 """
-Tests for deleting an investigator's account and a rejected submission
-(migration 20261020130000_admin_delete_investigator_and_submission.sql), and
-for the root admin removing admins + the DEL lines in the activity log
-(migration 20261021100000_account_removal_log.sql).
-These functions are called only by Edge Functions with the service key.
+Tests for deleting an investigator account or a rejected submission
+(20261020130000_admin_delete_investigator_and_submission.sql), and for the
+root admin removing admins plus the DEL lines that leaves in the activity log
+(20261021100000_account_removal_log.sql). Only the Edge Functions call these,
+using the service key.
 
-Runs against the LOCAL Supabase database like test_ai_pipeline_db.py (every
-test is rolled back):
+Same setup as test_ai_pipeline_db.py, every test gets rolled back:
     cd database && supabase db reset
     python tests/test_admin_deletes_db.py
 """
@@ -49,7 +48,7 @@ def test_new_investigator_is_deleted_completely(db, w):
     assert out["mode"] == "deleted" and out["authid"] == w.other_investigator["authid"], out
     assert db.val('SELECT count(*) FROM public."User" WHERE userid = %s', [w.other_investigator["userid"]]) == 0
     assert db.val("SELECT count(*) FROM public.investigator WHERE userid = %s", [w.other_investigator["userid"]]) == 0
-    # the login can now be deleted (nothing points at it any more)
+    # nothing references the login any more, so it can be deleted
     db.rows("DELETE FROM auth.users WHERE id = %s", [w.other_investigator["authid"]])
 
 
@@ -66,7 +65,7 @@ def test_investigator_with_history_is_anonymised(db, w):
     assert (user["firstname"], user["surname"], user["username"], user["phonenumber"]) == \
         ("Former", "investigator", f"deleted_{inv['userid']}", None), user
     assert db.val("SELECT count(*) FROM public.investigator WHERE userid = %s", [inv["userid"]]) == 0
-    # off the case, with a history line; the chat message stays, under the new name
+    # taken off the case with a history entry; their chat messages stay but show the new name
     a = db.one("SELECT * FROM public.caseassignment WHERE assignedto = %s", [inv["userid"]])
     assert a["assignmentstatus"] == "closed" and a["dateunassigned"] is not None and not a["islead"]
     ev = db.one("SELECT * FROM public.caseevent WHERE caseid = %s AND eventtype = 'unassigned' "
@@ -75,7 +74,7 @@ def test_investigator_with_history_is_anonymised(db, w):
     rows = db.rows("SELECT * FROM public.list_case_messages(%s, NULL)", [case_id], w.admin)
     assert [r["messageid"] for r in rows] == [msg["messageid"]]
     assert "Former investigator" in str(rows[0]), rows[0]
-    # not in the investigator list any more; the username and email are free
+    # gone from the investigator list, and the username/email can be reused
     listed = db.rows("SELECT * FROM public.list_investigators()", who=w.admin)
     assert inv["userid"] not in [r["userid"] for r in listed]
     assert db.rpc("username_available", p_username=f"t_inv_{inv['authid'][:8]}") is True
@@ -96,14 +95,14 @@ def test_investigator_removal_is_in_the_activity_log(db, w):
             [inv["userid"]])
     remove(db, inv["userid"], removed_by=w.admin["userid"])
     assert activity(db, w) == ["Investigator removed: Sgt Investigator Tester (B1234) by Admin Tester"],         activity(db, w)
-    # also when anonymised; without removed_by there is no "by ..."
+    # same when anonymised; with no removed_by we just leave off the "by ..."
     _, _, case_id, _ = analysed_case(db, w)
     db.rows("UPDATE public.investigator SET badgenumber = 'B5678' WHERE userid = %s", [w.investigator["userid"]])
     db.rows("INSERT INTO public.caseassignment (assignedto, assignedby, caseid, islead) VALUES (%s, %s, %s, true)",
             [w.investigator["userid"], w.admin["userid"], case_id])
     assert remove(db, w.investigator["userid"])["mode"] == "anonymised"
     assert "Investigator removed: Investigator Tester (B5678)" in activity(db, w), activity(db, w)
-    # citizens can't read the log table
+    # citizens can't see the log table at all
     assert db.val("SELECT count(*) FROM public.accountevent", who=w.other_citizen) == 0
 
 
@@ -115,7 +114,7 @@ def test_root_admin_removes_admins(db, w):
     assert db.val('SELECT count(*) FROM public."User" WHERE userid = %s', [kp["userid"]]) == 0
     assert db.val("SELECT count(*) FROM public.admin WHERE userid = %s", [kp["userid"]]) == 0
     assert "Admin removed: Kim Pillay (Kempton Park SAPS) by Deacon Nel" in activity(db, w), activity(db, w)
-    # an admin who reviewed a submission: anonymised, the review stays theirs
+    # an admin who reviewed something gets anonymised, but the review stays on their row
     inc, _ = rejected_submission(db, w)
     out = remove_admin(db, w.admin["userid"], boss["userid"])
     assert out["mode"] == "anonymised" and out["email"] == f"deleted-{w.admin['userid']}@argus-shield.invalid", out
@@ -129,7 +128,7 @@ def test_root_admin_removes_admins(db, w):
 def test_only_the_root_admin_removes_station_admins(db, w):
     boss = root_admin(db)
     other = make_user(db, "admin", admin_station="Sandton SAPS")
-    # a station admin can't remove another one, and nobody removes the root admin
+    # station admins can't remove each other, and nobody can remove root
     db.fails(remove_admin, db, other["userid"], w.admin["userid"], contains="Only the root administrator")
     db.fails(remove_admin, db, boss["userid"], boss["userid"], contains="can't be removed")
     for target in (w.investigator, w.citizen, {"userid": 999999}):
@@ -169,7 +168,7 @@ def test_only_rejected_ones(db, w):
     one, _, case_id, _ = analysed_case(db, w)                         # accepted, in a case
     db.fails(delete_sub, db, one, contains="Only rejected")
     db.fails(delete_sub, db, 999999, contains="no longer exists")
-    # a rejected one that another submission is a duplicate of
+    # a rejected submission that another one was marked a duplicate of
     inc, _ = rejected_submission(db, w)
     dup, _ = report(db, w.citizen, files=1)
     db.rows("UPDATE public.crimescene SET reviewstatus = 'duplicate', duplicateof = %s WHERE incidentid = %s",

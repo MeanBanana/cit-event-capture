@@ -1,35 +1,31 @@
--- =====================================================================
--- Argus Shield: new rule for suggesting cases (SUPABASE_AI_PIPELINE.md s.5)
+-- New rule for suggesting cases.
 --
--- suggest_cases_for_incident, list_suggested_matches,
--- suggest_incidents_for_case and case_card_suggestions all score pairs of
--- incidents with match_incidents(). Only that function changes; same
--- arguments and result, so the app needs no change.
+-- All the suggestion functions (suggest_cases_for_incident,
+-- list_suggested_matches, suggest_incidents_for_case, case_card_suggestions)
+-- score pairs with match_incidents(), so that's the only thing changing. Same
+-- arguments and result, so nothing changes in the app.
 --
---                       before                  now
---   place (GPS)         <= 5 km      +30        <= 1 km +30, <= 300 m +40
---   place (no GPS)      same typed   +20        same typed location +20, only
---                       location                when either side has no GPS
---   time                <= 2 h +30              <= 2 h +30, <= 24 h +20,
---                       <= 24 h +10             <= 14 days +10
---   plate, AI link,     unchanged               unchanged
---   same-looking vehicle
---   shown when          score >= 30             near (<= 1 km, or same typed
---                                               place without GPS) AND <= 14
---                                               days apart - OR same / 1-char-
---                                               off plate - OR an AI link
+--                       before               now
+--   place (GPS)         <= 5km +30           <= 1km +30, <= 300m +40
+--   place (no GPS)      same text +20        same text +20, but only when one
+--                                            side has no GPS
+--   time                <= 2h +30            <= 2h +30, <= 24h +20,
+--                       <= 24h +10           <= 14 days +10
+--   plate, AI link,     unchanged            unchanged
+--   look-alike vehicle
+--   shown when          score >= 30          near (<= 1km, or same text with
+--                                            no GPS) AND <= 14 days apart, OR
+--                                            same/1-char-off plate, OR an AI link
 --
--- New extra reason (no points, as in ai/case_matcher.py _evidence()):
--- "may show Person 2 (looks 81% alike)" when a person in one submission
--- looks like a person the AI already combined into the other's case
--- (pgvector, same formula and 0.78 threshold as ai/appearance.py).
+-- There's also a new reason with no points attached (mirrors
+-- case_matcher._evidence): "may show Person 2 (looks 81% alike)" when someone
+-- in one submission looks like a person already in the other's case. Uses
+-- pgvector with the same formula and 0.78 cut-off as ai/appearance.py.
 --
--- Same plate reasons start working by themselves now that the AI worker
--- fills vehicledetail. Nothing joins a case until an admin accepts.
--- list_suggested_matches keeps its minimum score (the app asks for 60 in
--- the bulk "Suggested matches" list); the per-submission suggestions show
--- every pair the rule above lets through.
--- =====================================================================
+-- Plate reasons start working on their own now that the worker fills
+-- vehicledetail. list_suggested_matches keeps its minimum score (the app asks
+-- for 60 in the bulk list), the per-submission suggestions show everything
+-- the rule lets through. And as always nothing joins a case without an admin.
 
 CREATE OR REPLACE FUNCTION public.match_incidents(p_candidates integer[], p_targets integer[])
   RETURNS TABLE (candidateid integer, targetid integer, score integer, reasons text[])
@@ -40,7 +36,7 @@ AS $$
   inc AS (
     SELECT cs.incidentid, cs.latitude, cs.longitude, cs.locationkey,
            COALESCE(cap.t, cs.datetime) AS t,
-           cap.t IS NOT NULL AS filmed       -- time came from the footage
+           cap.t IS NOT NULL AS filmed       -- true if the time came from the footage
     FROM public.crimescene cs
     LEFT JOIN LATERAL (
       SELECT min(m.capturetimestamp) AS t
@@ -66,8 +62,8 @@ AS $$
       AND NULLIF(trim(v.colour), '') IS NOT NULL
       AND NULLIF(trim(v.make), '') IS NOT NULL
   ),
-  -- people with an appearance fingerprint; label = the case person they
-  -- were combined into ('Person 2'), when settled
+  -- people with a fingerprint. label is the case person they were merged
+  -- into ('Person 2'), once that's settled
   people AS (
     SELECT m.incidentid, d.appearance, d.colourhist,
            CASE WHEN d.matchstatus IN ('first', 'auto', 'confirmed')
@@ -124,7 +120,7 @@ AS $$
   ),
   scored AS (
     SELECT p.*,
-           -- near: GPS within 1 km, or (no GPS on one side) same typed place
+           -- near means GPS within 1km, or same typed place if one side has no GPS
            (p.km <= 1 OR (p.km IS NULL AND p.same_place)) AS near,
            CASE WHEN p.link_verified THEN 50
                 WHEN p.link_verified IS NOT NULL THEN 35 ELSE 0 END

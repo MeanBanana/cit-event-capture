@@ -1,17 +1,14 @@
--- =====================================================================
--- Argus Shield: list_investigators() for the admin Investigators screen
+-- list_investigators() for the admin Investigators screen.
 --
--- Returns investigators with their "User" details and number of active
--- case assignments, newest account first.
+-- Investigators with their "User" details and how many active assignments
+-- they have, newest account first.
 --
---   supabase.rpc('list_investigators')                          -> 20 newest
+--   supabase.rpc('list_investigators')                          20 newest
 --   supabase.rpc('list_investigators', params: {'p_search': 'jhb'})
---       -> investigators whose badge number or name contains 'jhb'
+--       investigators with 'jhb' in their badge number or name
 --
--- SECURITY INVOKER: the normal RLS rules still apply, so only admins (and
--- investigators, who may see fellow investigators) get rows back. Citizens
--- get an empty list.
--- =====================================================================
+-- SECURITY INVOKER, so RLS still applies. Admins and investigators (who can
+-- see each other) get rows, citizens get an empty list.
 
 CREATE OR REPLACE FUNCTION public.list_investigators(
   p_search text    DEFAULT NULL,
@@ -35,8 +32,7 @@ CREATE OR REPLACE FUNCTION public.list_investigators(
   SET search_path = ''
 AS $$
   WITH q AS (
-    -- the search text with LIKE wildcards (% and _) escaped, so typing
-    -- them searches for the characters themselves
+    -- escape LIKE wildcards so typing % or _ searches for the actual character
     SELECT NULLIF(
              replace(replace(replace(trim(COALESCE(p_search, '')),
                '\', '\\'), '%', '\%'), '_', '\_'),
@@ -56,7 +52,7 @@ AS $$
      OR i.badgenumber                    ILIKE '%' || q.term || '%'
      OR (u.firstname || ' ' || u.surname) ILIKE '%' || q.term || '%'
   ORDER BY u.datecreated DESC, u.userid DESC
-  LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)   -- 1 to 100 rows
+  LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)   -- clamp to 1-100 rows
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.list_investigators(text, integer) FROM PUBLIC, anon;

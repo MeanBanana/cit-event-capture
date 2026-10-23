@@ -1,6 +1,6 @@
-// The submission page's AI SUMMARY: detection rows -> the same shape as a
-// case's evidence (one line per person / vehicle / weapon with View crops,
-// which clip it is in, who held which weapon).
+// The AI SUMMARY on the submission page: detection rows turned into the same
+// shape as a case's evidence (a line per person/vehicle/weapon with View
+// crops, which clip it's in, who held which weapon).
 
 import 'dart:typed_data';
 
@@ -40,7 +40,7 @@ final _rows = <Map>[
 Map<String, dynamic> _evidence() =>
     buildSubmissionEvidence(57, _rows, {7: 1, 8: 2}, {12: 11});
 
-/// A 1x1 transparent PNG, so pictures "load" in tests.
+/// 1x1 transparent PNG so pictures "load" in tests.
 final _png = Uint8List.fromList(const [
   0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
   0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,

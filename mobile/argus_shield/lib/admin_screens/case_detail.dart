@@ -1,27 +1,22 @@
-// case_detail.dart — full page for one case (opened from the Cases tab, the
-// Submissions tab's Case view, a submission's "Open case" button, or after
-// creating a case).
+// Full page for a single case. Opened from the Cases tab, the Case view on
+// Submissions, a submission's "Open case" button, or right after creating
+// a case.
 //
-// The admin can:
-//   * change the status (Open / Under review / Closed) and edit the title
-//     and description
-//   * assign investigators, choose the lead, remove them (past
-//     assignments are kept)
-//   * see every submission in the case (30 at a time, "Load more"), each
-//     with the citizen's and the AI's descriptions
-//   * add submissions: pick pending ones, or one tap on a RECOMMENDED one
-//     (the database scores pending submissions against the case: AI links,
-//     same plate, distance, time ...)
-//   * open a submission, move it to another case, or remove it from this
-//     one. Removing never deletes it: it goes back to "Pending review" and
-//     keeps all its footage and history.
-//   * read the case history (who did what, when)
-//   * open a crime scene's page (⋮ > Crime scene & corrections): its
-//     footage, what the AI found, and the corrections made to it
-//   * read the AI summary and the people / vehicles / weapons the AI found
-//     across all the case's submissions, and open each one's pictures
-//     (case_evidence_section.dart)
-// A closed case can't get new submissions or investigators until reopened.
+// From here the admin can:
+//   - change the status and edit the title/description
+//   - assign investigators, pick the lead, remove people (past assignments
+//     are kept)
+//   - see every submission in the case, 30 at a time
+//   - add submissions, either picking pending ones or tapping a
+//     RECOMMENDED one (the database scores pending submissions against the
+//     case on AI links, plates, distance and time)
+//   - open, move or remove a submission. Removing never deletes anything,
+//     it just goes back to "Pending review" with its footage and history.
+//   - read the case history
+//   - open a crime scene (⋮ > Crime scene & corrections)
+//   - read the AI summary and browse the people/vehicles/weapons found
+//     across the case (case_evidence_section.dart)
+// Closed cases can't take new submissions or investigators until reopened.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -45,25 +40,25 @@ import 'package:argus_shield/admin_screens/submissions.dart'
 class CaseDetailPage extends StatefulWidget {
   final int caseId;
 
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
-  /// Where the AI's people / vehicles / weapons come from. The app uses
-  /// CaseEvidenceSource.standard; a test that passes a fake [service] gets
-  /// no AI section unless it passes a source here too.
+  /// Where the AI's people/vehicles/weapons come from. The app uses
+  /// CaseEvidenceSource.standard. Tests with a fake [service] don't get an AI
+  /// section unless they pass one of these too.
   final CaseEvidenceSource? evidenceSource;
 
   const CaseDetailPage(
       {super.key, required this.caseId, this.service, this.evidenceSource});
 
-  /// Status chips: label → database value.
+  /// Status chips, label -> database value.
   static const statuses = <(String, String)>[
     ('Open', 'open'),
     ('Under review', 'under_review'),
     ('Closed', 'closed'),
   ];
 
-  /// How many history lines show before "Show more".
+  /// History lines shown before "Show more".
   static const historyPageSize = 10;
 
   @override
@@ -75,14 +70,14 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
 
   CaseSummary? _case;
   List<CrimeSceneSummary> _incidents = const [];
-  bool _moreIncidents = false; // another page of submissions exists
+  bool _moreIncidents = false; // there's another page of submissions
   bool _loadingMore = false;
   List<CaseAssignmentInfo> _assignments = const [];
   List<(IncidentSuggestion, CrimeSceneSummary)> _suggestions = const [];
   List<CaseEvent> _history = const [];
   bool _moreHistory = false;
   bool _loading = true;
-  bool _busy = false; // an action is running
+  bool _busy = false; // something's running
   String? _error;
 
   @override
@@ -91,8 +86,8 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     _load();
   }
 
-  /// Loads the case, the first page of its submissions, its investigators,
-  /// suggestions and history together.
+  /// Load the case, its first page of submissions, investigators,
+  /// suggestions and history all at once.
   Future<void> _load() async {
     try {
       final results = await Future.wait([
@@ -127,7 +122,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     }
   }
 
-  /// Suggested submissions with their details. Never fails the page.
+  /// Suggested submissions with details. Never takes the page down if it fails.
   Future<List<(IncidentSuggestion, CrimeSceneSummary)>> _loadSuggestions() async {
     try {
       final found = await _service.suggestIncidentsForCase(widget.caseId);
@@ -186,7 +181,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     }
   }
 
-  /// Runs an action with a spinner, shows its message or error, reloads.
+  /// Run an action with a spinner, show its message or error, then reload.
   Future<void> _run(String doneMessage, Future<void> Function() action) async {
     setState(() => _busy = true);
     try {
@@ -199,7 +194,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     if (mounted) setState(() => _busy = false);
   }
 
-  // ---- Status and details ---------------------------------------------------
+  // --- status and details
 
   Future<void> _setStatus(String status) async {
     final c = _case;
@@ -242,7 +237,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     }
   }
 
-  // ---- Investigators --------------------------------------------------------
+  // --- investigators
 
   Future<void> _assign() async {
     final c = _case;
@@ -296,7 +291,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
         () => _service.setCaseLead(a.assignmentId));
   }
 
-  // ---- Submissions -----------------------------------------------------------
+  // --- submissions
 
   Future<void> _addIncidents() async {
     final c = _case;
@@ -306,7 +301,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
       title: 'Add to ${c.reference}',
       builder: (sheetContext) => IncidentPicker(
         service: _service,
-        review: 'pending', // only submissions waiting for review
+        review: 'pending', // only ones waiting for review
         multiSelect: true,
         confirmLabel: 'Add',
         onConfirm: (ids) async {
@@ -362,7 +357,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
     if (changed && mounted) await _load();
   }
 
-  // ---- Page ------------------------------------------------------------------
+  // --- page
 
   @override
   Widget build(BuildContext context) {
@@ -424,8 +419,8 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
           DetailLine(
               icon: Icons.lock_outline,
               text: 'Closed ${formatDateTime(c.dateClosed!)}'),
-        // Suspects: counts only. Confirming or dismissing a possible
-        // suspect is for the investigators on the case (POPIA).
+        // Counts only. Confirming or dismissing suspects is the
+        // investigators' job, not the admin's (POPIA).
         if (suspectSummary(
                 possible: c.possibleSuspects,
                 confirmed: c.confirmedSuspects) case final suspects?)
@@ -457,7 +452,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
         ),
         if (_busy) const LinearProgressIndicator(),
 
-        // ---- AI summary + people / vehicles / weapons ------------------------
+        // AI summary and people/vehicles/weapons
         if (widget.evidenceSource ??
                 (usesRealDatabase(widget.service)
                     ? CaseEvidenceSource.standard
@@ -465,7 +460,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
             case final source?)
           CaseEvidenceSection(caseId: c.caseId, source: source),
 
-        // ---- Status ----------------------------------------------------------
+        // status
         const SectionLabel('Status'),
         Wrap(
           spacing: 8,
@@ -489,7 +484,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
           ],
         ),
 
-        // ---- Investigators ---------------------------------------------------
+        // investigators
         SectionLabel(
           'Investigators',
           trailing: SmallActionButton(
@@ -531,7 +526,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
             ),
         ],
 
-        // ---- Recommended -----------------------------------------------------
+        // recommended
         if (!c.isClosed && _suggestions.isNotEmpty) ...[
           const SectionLabel('Recommended for this case'),
           Text(
@@ -556,7 +551,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
           ],
         ],
 
-        // ---- Submissions -----------------------------------------------------
+        // submissions
         SectionLabel(
           'Submissions ($total)',
           trailing: SmallActionButton(
@@ -598,7 +593,7 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
                   ),
           ),
 
-        // ---- History ---------------------------------------------------------
+        // history
         if (_history.isNotEmpty) ...[
           const SectionLabel('History'),
           for (final e in _history) _HistoryRow(event: e),
@@ -614,11 +609,11 @@ class _CaseDetailPageState extends State<CaseDetailPage> {
   }
 }
 
-/// One assigned investigator: lead star, details, remove button.
+/// An assigned investigator: lead star, details and a remove button.
 class _AssignmentRow extends StatelessWidget {
   final CaseAssignmentInfo assignment;
   final VoidCallback? onRemove;
-  final VoidCallback? onMakeLead; // null for the lead itself
+  final VoidCallback? onMakeLead; // null if they're already lead
 
   const _AssignmentRow({
     required this.assignment,
@@ -676,12 +671,12 @@ class _AssignmentRow extends StatelessWidget {
   }
 }
 
-/// ⋮ menu on a submission in the case: view, crime scene & corrections,
+/// The ⋮ menu on a submission in the case: view, crime scene & corrections,
 /// move, remove.
 class _IncidentMenu extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback onScene;
-  final VoidCallback? onMove; // null hides "Move" (duplicates, closed case)
+  final VoidCallback? onMove; // null hides Move (duplicates, closed cases)
   final VoidCallback onRemove;
 
   const _IncidentMenu({
@@ -728,7 +723,7 @@ class _IncidentMenu extends StatelessWidget {
   }
 }
 
-/// One line of the case history.
+/// One line of case history.
 class _HistoryRow extends StatelessWidget {
   final CaseEvent event;
 

@@ -1,10 +1,8 @@
 """
-Tests for the case chat (migration 20261015100000_case_chat.sql): who can
-read and post in a case's chat, the sender names, live-update paging, and
-that messages can't be changed.
+Case chat tests (20261015100000_case_chat.sql): who can read and post,
+sender names, paging for live updates, and messages being immutable.
 
-Runs against the LOCAL Supabase database like test_ai_pipeline_db.py (every
-test is rolled back):
+Same setup as test_ai_pipeline_db.py, every test gets rolled back:
     cd database && supabase db reset
     python tests/test_case_chat_db.py
 """
@@ -49,9 +47,9 @@ def test_assigned_investigators_chat():
         seen_by_bob = listing(db, bob, case)
         assert [m["body"] for m in seen_by_bob] == ["Suspect vehicle seen on R21", "On my way"]
         assert [m["is_mine"] for m in seen_by_bob] == [False, True]
-        # live updates: only what's newer than the last one the app has
+        # live updates only return messages newer than the last one the app has
         assert [m["body"] for m in listing(db, alice, case, after=m1["messageid"])] == ["On my way"]
-        # plain table reads follow the same rule (this is what Realtime uses)
+        # and plain table reads follow the same rule, since that's what Realtime uses
         assert len(db.rows("SELECT * FROM public.casemessage", who=alice)) == 2
         assert len(db.rows("SELECT * FROM public.casemessage", who=admin)) == 2   # oversight
 
@@ -75,23 +73,23 @@ def test_rules():
         db_fails(lambda: send(db, alice, case, "   "), "type a message")
         db_fails(lambda: send(db, alice, case, "x" * 2001), "2000")
         m = send(db, alice, case, "first")
-        # nobody changes or deletes messages
+        # messages can't be edited or deleted by anyone
         db_fails(lambda: db.rows("UPDATE public.casemessage SET body = 'edited'", who=alice), "permission")
         db_fails(lambda: db.rows("DELETE FROM public.casemessage", who=alice), "permission")
-        # can't post as someone else
+        # or posted in someone else's name
         db_fails(lambda: db.rows("INSERT INTO public.casemessage (caseid, senderid, body) "
                                  "VALUES (%s, %s, 'fake')", [case, bob["userid"]], alice),
                  "row-level security")
-        # unassigned: chat gone at once
+        # unassign someone and the chat disappears for them straight away
         db.rows("UPDATE public.caseassignment SET assignmentstatus = 'reassigned', dateunassigned = now() "
                 "WHERE assignedto = %s AND caseid = %s", [bob["userid"], case])
         assert db.rows("SELECT * FROM public.casemessage", who=bob) == []
         db_fails(lambda: send(db, bob, case, "still here?"), "assigned")
-        # closed case: read-only
+        # closed cases are read-only
         db.rows("UPDATE public.cases SET status = 'closed' WHERE caseid = %s", [case])
         db_fails(lambda: send(db, alice, case, "after closing"), "closed")
         assert [x["messageid"] for x in listing(db, alice, case)] == [m["messageid"]]
-        # deleting the case deletes its chat
+        # chat goes when the case is deleted
         db.rows("DELETE FROM public.cases WHERE caseid = %s", [case])
         assert db.val("SELECT count(*) FROM public.casemessage WHERE caseid = %s", [case]) == 0
 

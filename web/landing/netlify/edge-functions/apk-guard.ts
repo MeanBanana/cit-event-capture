@@ -1,14 +1,13 @@
-// apk-guard.ts — Netlify Edge Function in front of /downloads/*.
+// Netlify Edge Function sitting in front of /downloads/*.
 //
-// The website only shows the Download button on Android phones; this
-// stops anyone else fetching the APK directly by its link. It lets the
-// request through only when the browser says it is Android AND mobile
-// (User-Agent Client Hints, or the user-agent text). Everyone else gets a
-// short page explaining why, with status 403.
+// The site only shows the Download button on Android phones, and this stops
+// people grabbing the APK by its direct link from anything else. We let it
+// through only if the browser says Android AND mobile (Client Hints or the
+// UA string), everyone else gets a short 403 page explaining why.
 //
-// Runs on Netlify only (npm run dev / preview serve the file directly).
-// A user agent can be faked, so this keeps the download for its intended
-// devices; it is not a security barrier for a public app.
+// Only runs on Netlify, npm run dev/preview just serve the file. UAs are
+// trivial to fake, so this is about steering people to the right device,
+// not security. It's a public app anyway.
 
 const BLOCKED_PAGE = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">

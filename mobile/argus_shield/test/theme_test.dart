@@ -1,5 +1,5 @@
-// Renders every screen with the real Argus theme on a phone-sized screen.
-// Fails if the theme is broken or a page overflows (yellow/black stripes).
+// Renders every screen with the real theme at phone size. Fails if the theme
+// is broken or anything overflows (the yellow/black stripes).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

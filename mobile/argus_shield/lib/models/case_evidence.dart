@@ -1,22 +1,19 @@
-// case_evidence.dart — what the AI found in a case, combined over all its
-// submissions: the AI summary and one entry per person, vehicle and weapon,
-// each with all of its crops.
+// What the AI found across a whole case: the summary, and an entry per
+// person/vehicle/weapon with all their crops.
 //
-// The data has the exact shape ai/case_matcher.py's case_view() produces
-// ("python case_matcher.py view 1"). The app gets it from the database
-// function get_case_evidence (see case_evidence_source.dart).
+// Same shape as case_matcher.case_view() (try `python case_matcher.py view 1`).
+// The app gets it from get_case_evidence, see case_evidence_source.dart.
 
-/// One picture of a person / vehicle / weapon.
+/// One picture of a person/vehicle/weapon.
 class EvidenceCrop {
-  /// Where the picture is: a bucket path in the 'submissions' bucket
-  /// (real data) or an asset path (the sample).
+  /// A path in the submissions bucket, or an asset path for the sample data.
   final String path;
 
   /// person | face | vehicle | plate | weapon
   final String type;
   final int? submission;
   final String fileName;
-  final double seenSeconds; // when in the clip it was first seen
+  final double seenSeconds; // when they first show up in the clip
   final DateTime? captureTime;
 
   const EvidenceCrop({
@@ -37,21 +34,21 @@ class EvidenceCrop {
         captureTime: _date(m['capture_time']),
       );
 
-  /// "Submission 5 · face · 12.4 s"
+  /// e.g. "Submission 5 · face · 12.4 s"
   String get caption => [
         if (submission != null) 'Submission $submission',
         type,
         if (seenSeconds > 0) '${seenSeconds.toStringAsFixed(1)} s',
       ].join(' · ');
 
-  /// File name for downloading, e.g. "argus_s5_face_clip1.png".
+  /// Download file name, e.g. "argus_s5_face_clip1.png".
   String get downloadName {
     final base = path.split('/').last.split('\\').last;
     return 'argus_s${submission ?? 0}_$base';
   }
 }
 
-/// "Is this Person 2?" — a possible match the admin has to confirm.
+/// "Is this Person 2?", a possible match waiting on the admin.
 class MatchQuestion {
   final String memberKey; // e.g. "s5/f1/person/3"
   final int? submission;
@@ -82,7 +79,7 @@ class MatchQuestion {
       );
 }
 
-/// A detail that changed because a later submission showed more, e.g. a
+/// A detail that changed because a later submission showed more, like a
 /// plate nobody could read before.
 class EvidenceUpdate {
   final String field;
@@ -100,7 +97,7 @@ class EvidenceUpdate {
         submission: (m['submission'] as num?)?.toInt(),
       );
 
-  /// "plate: unknown → ND123456 (from submission 5)"
+  /// e.g. "plate: unknown → ND123456 (from submission 5)"
   String get text {
     final label = field.replaceAll('_', ' ');
     return '$label: ${oldValue ?? 'unknown'} → ${newValue ?? 'unknown'}'
@@ -108,25 +105,25 @@ class EvidenceUpdate {
   }
 }
 
-/// Person 1, Vehicle 2, Weapon 1 ...
+/// Person 1, Vehicle 2, Weapon 1 etc.
 class EvidenceEntity {
   final String entityId;
 
-  /// The detection this entry is (submission evidence only: one entry per
-  /// detection). Null on a case, where an entry combines several.
+  /// The detection behind this entry. Only set for submission evidence (one
+  /// entry per detection), null on a case where an entry merges several.
   final int? detectionId;
   final String kind; // person | vehicle | weapon
   final String label;
   final String description; // "top black, bottom blue · face seen"
   final Map<String, dynamic> attributes;
-  final String? cover; // path of the clearest picture
+  final String? cover; // path of the best picture
   final int submissionCount;
   final List<EvidenceCrop> crops;
   final List<MatchQuestion> questions;
   final List<EvidenceUpdate> updated;
 
-  /// Which clip of the submission (only on the submission page, where each
-  /// clip's people are listed separately).
+  /// Which clip it's from. Only on the submission page, where each clip's
+  /// people are listed separately.
   final int? clip;
 
   const EvidenceEntity({
@@ -168,12 +165,12 @@ class EvidenceEntity {
         clip: (m['clip'] as num?)?.toInt(),
       );
 
-  /// The one-line description in the AI summary, worded like the pipeline's
+  /// One-line description for the AI summary, worded like the pipeline's
   /// console output:
   ///   person   "top white / bottom black · face visible (picture captured)"
   ///   vehicle  "white Toyota car · plate ND123456"
   ///   weapon   "long gun · held by Person 1"
-  /// Falls back to [description] when there are no details.
+  /// Falls back to [description] if there aren't any details.
   String get summaryLine {
     String? text(String key) {
       final v = attributes[key];
@@ -206,8 +203,8 @@ class EvidenceEntity {
     }
   }
 
-  /// The details as label → value lines for the crops page, e.g.
-  /// ("Top", "black (82%)"). Unknown values are left out.
+  /// Details as label/value lines for the crops page, e.g. ("Top", "black
+  /// (82%)"). Unknown values are skipped.
   List<(String, String)> get detailLines {
     String pct(String key) {
       final v = attributes[key];
@@ -246,7 +243,7 @@ class EvidenceEntity {
   }
 }
 
-/// Everything for the case screen's AI section.
+/// Everything for the AI section of the case screen.
 class CaseEvidence {
   final int caseId;
   final String aiSummary;
@@ -255,7 +252,7 @@ class CaseEvidence {
   final List<EvidenceEntity> vehicles;
   final List<EvidenceEntity> weapons;
 
-  /// True for the bundled sample (shown with a "sample data" note).
+  /// True for the bundled sample, which gets a "sample data" note.
   final bool isSample;
 
   const CaseEvidence({
@@ -287,8 +284,8 @@ class CaseEvidence {
   }
 }
 
-/// A clothing value as it reads: "black", "no clothing" (the AI stores
-/// "none" for bare skin, e.g. no shirt), "unsure" (not seen / can't tell).
+/// How a clothing value reads: "black", "no clothing" (the AI stores "none"
+/// for bare skin) or "unsure" (not seen, or couldn't tell).
 String clothingWord(String? value) {
   if (value == null || value.isEmpty) return 'unsure';
   return value == 'none' ? 'no clothing' : value;

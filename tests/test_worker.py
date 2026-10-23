@@ -1,36 +1,27 @@
 """
-End-to-end test of backend/worker.py against the LOCAL Supabase database:
-the real worker code, the real AI pipeline (ai/main.py) and the real
-case_matcher, with the team's migrations deciding everything.
+End-to-end test for backend/worker.py. Uses the real worker, the real AI
+pipeline and the real case matcher against your local Supabase database.
 
-What it does, like the app would:
-  1. a citizen reports incident A (2 files) and submits it for analysis
-  2. the worker analyses it: downloads the files, runs the pipeline, uploads
-     the crops, saves the detections (ai_save_analysis)
-  3. the same for incident B, filmed 200 m away 20 minutes later
-  4. an admin creates a case from A and adds B -> the worker merges both
-  5. get_case_evidence() shows the combined people / vehicles / weapons and
-     every picture exists in the bucket
-  6. if there is an "Is this ...?" question, the admin says No -> rematch
-     -> never asked again
+Roughly what happens:
+  1. a citizen reports incident A (2 files) and submits it
+  2. the worker analyses it and saves the detections
+  3. same again for incident B, "filmed" 200m away 20 minutes later
+  4. an admin makes a case from A and adds B, and the worker merges them
+  5. we check get_case_evidence() and that every crop is in the bucket
+  6. if there's an "Is this ...?" question we answer No and make sure it
+     never comes back
 
-Runs WITHOUT the Supabase API: a small stand-in client (PgClient below) does
-the same calls (rpc / table / storage) straight in the database as the
-service_role, and keeps "bucket" files in a temporary folder. So only the
-database is needed:
+We don't go through the Supabase API. PgClient below fakes the bits of
+supabase-py the worker uses and talks to Postgres directly as service_role,
+with "bucket" files in a temp folder. So you only need the database:
 
-    cd database
-    supabase start
-    supabase db reset
-    cd ..
+    cd database && supabase start && supabase db reset && cd ..
     pip install "psycopg[binary]"
-    python tests/test_worker.py                        (uses ai/gunVid.mp4 etc. if present)
-    python tests/test_worker.py clip1.mp4 photo.jpg    (your own files: first half = A, second = B)
+    python tests/test_worker.py                       # uses the clips in ai/ if they're there
+    python tests/test_worker.py clip1.mp4 photo.jpg   # or your own: first half is A, second half B
 
-Everything it creates is deleted again at the end.
-
-Database URL (default = `supabase start`):
-    ARGUS_TEST_DB   postgresql://postgres:postgres@127.0.0.1:54322/postgres
+Cleans up after itself. Point ARGUS_TEST_DB elsewhere if your database isn't
+on the default `supabase start` URL.
 """
 
 import json
@@ -56,9 +47,7 @@ DB_URL = os.environ.get("ARGUS_TEST_DB", "postgresql://postgres:postgres@127.0.0
 SANDTON = (-26.1076, 28.0567)
 
 
-# ---------------------------------------------------------------------------
-# Stand-in for the supabase-py client (only what the worker uses)
-# ---------------------------------------------------------------------------
+# --- fake supabase-py client (just the parts the worker touches)
 
 class _Result:
     def __init__(self, data):
@@ -135,9 +124,8 @@ class _Storage:
 
 
 class PgClient:
-    """client.rpc / client.table / client.storage like supabase-py with the
-    service key, done directly in Postgres (one transaction per call, as
-    PostgREST does)."""
+    """Mimics supabase-py's rpc/table/storage with the service key, but goes
+    straight to Postgres. One transaction per call, same as PostgREST."""
 
     def __init__(self, db_url, storage_folder):
         self.db_url = db_url
@@ -176,9 +164,7 @@ class PgClient:
         return rows[0]["r"] if rows else None
 
 
-# ---------------------------------------------------------------------------
-# The app's side (as postgres, or as a signed-in user)
-# ---------------------------------------------------------------------------
+# --- the app's side of things
 
 def sql(query, params=None, who=None):
     with psycopg.connect(DB_URL, autocommit=False) as conn:
@@ -205,7 +191,7 @@ def make_user(role, tag):
 
 
 def report(citizen, files, bucket, lat, lon):
-    """Citizen reports an incident and uploads the files, as the app does."""
+    """Report an incident and upload files the way the citizen app does."""
     inc = sql("INSERT INTO public.crimescene (location, datetime, reportedby, latitude, longitude, gpssource) "
               "VALUES ('Rivonia Rd, Sandton', now(), %s, %s, %s, 'phone') RETURNING incidentid",
               [citizen["userid"], lat, lon], who=citizen)[0]["incidentid"]
@@ -221,7 +207,7 @@ def report(citizen, files, bucket, lat, lon):
 
 
 def with_gps(src, dst, lat, lon, when):
-    """Copy of a video with GPS + recording time written in (like a phone does)."""
+    """Copy a video and stamp GPS + recording time into it, like a phone would."""
     import imageio_ffmpeg
     loc = f"{lat:+08.4f}{lon:+09.4f}/"
     subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-y", "-i", str(src), "-t", "6",
@@ -237,9 +223,7 @@ def check(condition, message):
     print(f"  OK  {message}")
 
 
-# ---------------------------------------------------------------------------
-# The test
-# ---------------------------------------------------------------------------
+# --- the test itself
 
 def main():
     try:
@@ -260,7 +244,7 @@ def main():
     users, incidents, case_id = [], [], None
     started = time.time()
     try:
-        # incident A and B: the same files, B "filmed" 200 m away 20 min later
+        # A and B use the same footage, B is just "filmed" 200m away 20 min later
         t0 = datetime(2026, 10, 12, 8, 0, tzinfo=timezone.utc)
         def files_for(tag, lat, lon, when):
             out = []
@@ -282,7 +266,7 @@ def main():
         check(len(sql("SELECT * FROM public.aijob WHERE incidentid = ANY(%s) AND kind = 'analyse' "
                       "AND status = 'queued'", [[inc_a, inc_b]])) == 2, "submit queued 2 analyse jobs")
 
-        # --- the worker -------------------------------------------------------
+        # --- worker
         import logging
         from worker import Worker, log
         log.setLevel(logging.INFO)
@@ -313,7 +297,7 @@ def main():
             if any(f.suffix.lower() in (".mp4", ".mov", ".m4v") for f in given):
                 check(cs["gpssource"] == "file", f"incident {inc}: GPS taken from the video file")
 
-        # --- the admin builds the case ----------------------------------------
+        # --- admin builds the case
         case_id = sql("SELECT public.create_case(%s, NULL, %s) AS id",
                       ["Worker test case", [inc_a]], who=admin)[0]["id"]
         sug = sql("SELECT * FROM public.suggest_cases_for_incident(%s)", [inc_b], who=admin)
@@ -334,7 +318,7 @@ def main():
         crops = [c["path"] for e in entities for c in e["crops"]]
         check(all((bucket / p).exists() for p in crops), f"all {len(crops)} case crops exist in the bucket")
 
-        # --- the admin answers a question with No ------------------------------
+        # --- admin says No to a suggestion
         questions = [q for e in entities for q in e["questions"]]
         if questions:
             q = questions[0]
@@ -359,7 +343,7 @@ def main():
               "worker heartbeat recorded")
         print(f"\nAll worker checks passed in {time.time() - started:.0f} s")
     finally:
-        # tidy up everything this test made (best effort)
+        # clean up whatever we made, best effort
         def tidy(query, params):
             try:
                 sql(query, params)

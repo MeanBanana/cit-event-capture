@@ -1,22 +1,20 @@
-// investigator_summary.dart — one investigator as the admin screens need it.
+// One investigator as the admin screens see it.
 
-/// Field names follow the database: public."User" (firstname, surname,
-/// email, phonenumber) joined with public.investigator (rank, badgenumber,
-/// station, unit, dutystatus). Rows come from the list_investigators
-/// database function (see SupabaseService.getRecentInvestigators).
+/// Fields come from "User" joined with investigator, via the
+/// list_investigators function (see SupabaseService.getRecentInvestigators).
 class InvestigatorSummary {
   final int userId;
   final String firstName;
   final String surname;
-  final String? rank; // e.g. 'Sgt.' — nullable in the database
+  final String? rank; // e.g. 'Sgt.', can be null
   final String badgeNumber; // e.g. 'JHB-4471'
   final String station; // e.g. 'Kempton Park SAPS'
-  final String? unit; // e.g. 'CIT Task Force' — nullable in the database
+  final String? unit; // e.g. 'CIT Task Force', can be null
   final String dutyStatus; // 'on_duty' | 'available' | 'off_duty'
   final String email;
   final String? phoneNumber;
-  final int activeCases; // count of active rows in caseassignment
-  final DateTime? dateCreated; // when the account was created
+  final int activeCases; // active caseassignment rows
+  final DateTime? dateCreated; // when the account was made
 
   const InvestigatorSummary({
     required this.userId,
@@ -33,8 +31,7 @@ class InvestigatorSummary {
     this.dateCreated,
   });
 
-  /// Builds one from a row returned by list_investigators
-  /// (keys are the database column names).
+  /// Build one from a list_investigators row (keys are the column names).
   factory InvestigatorSummary.fromMap(Map<String, dynamic> row) {
     return InvestigatorSummary(
       userId: (row['userid'] as num).toInt(),
@@ -56,6 +53,6 @@ class InvestigatorSummary {
 
   String get fullName => '$firstName $surname';
 
-  /// "Sgt. Thabo Mokoena", or just the name when no rank is stored.
+  /// "Sgt. Thabo Mokoena", or just the name if there's no rank.
   String get displayName => rank == null ? fullName : '$rank $fullName';
 }

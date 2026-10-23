@@ -7,9 +7,9 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Release signing key: android/key.properties (NOT in git, see .gitignore)
-// pointing at the keystore file. Without it, release builds are signed with
-// the debug key, so `flutter run --release` still works on every laptop.
+// Release signing: android/key.properties points at the keystore and is
+// git-ignored. If it isn't there, release builds fall back to the debug key so
+// `flutter run --release` still works on anyone's laptop.
 // See mobile/argus_shield/RELEASE_APK.md.
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
@@ -55,8 +55,8 @@ android {
 
     buildTypes {
         release {
-            // The team's own key when android/key.properties exists (the APK
-            // on the website), otherwise the debug key.
+            // our own key if android/key.properties exists (that's what the
+            // website's APK is signed with), the debug key otherwise
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {

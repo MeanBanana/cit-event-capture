@@ -1,14 +1,14 @@
 /**
- * Every word on the page. The attack scenes are illustrations made for this
- * site; the statistics are sourced in `sources` and shown in the footer.
+ * All the copy on the page lives here. The attack scenes are illustrations
+ * we made for the site, and the stats are sourced in `sources` (footer).
  */
 
 export const brand = {
   name: 'Argus Shield',
   wordmark: 'ARGUS SHIELD',
-  /** The root admin's address — the contact form drafts mail to it. */
+  /** Root admin's address. The contact form drafts an email to it. */
   email: 'carel.vonronge@gmail.com',
-  /** The root admin's web console (served from web/admin-console). */
+  /** Root admin's web console (built from web/admin-console). */
   adminHref: '/admin/',
 };
 
@@ -41,12 +41,12 @@ export const log = [
   {tag: '05:50', title: 'Argus sees', body: 'Every person, vehicle, weapon and plate in the footage — waiting for the investigator before the scene is even taped off.', image: '/media/cards/s4.webp'},
 ];
 
-/** Steps from a citizen's phone to an investigator's case file, in drawing order. */
+/** Steps from a citizen's phone to an investigator's case file, in the order they get drawn. */
 export const pipeline = {
   eyebrow: 'How it works',
   heading: 'From a shaky video to a case file — drawn as you scroll.',
   counterLabel: 'Frames analysed',
-  /** One minute of footage at 30 frames a second. */
+  /** A minute of footage at 30fps. */
   frames: 1800,
   legs: [
     {step: 'Capture', title: 'Any phone at the scene', body: 'Film live or upload from the gallery. Location and time are added on their own — the witness just points and shoots.'},
@@ -92,8 +92,8 @@ export const roles = {
   ],
 };
 
-/** The Android app download (Download.tsx). The APK file itself goes in
- *  public/downloads/ (see README: "Putting a new APK on the website"). */
+/** Android app download (Download.tsx). The APK itself goes in
+ *  public/downloads/, the README explains how to swap in a new one. */
 export const download = {
   eyebrow: 'Get the app',
   heading: 'Argus Shield on your phone.',

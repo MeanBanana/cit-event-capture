@@ -1,27 +1,24 @@
 """
-plate_reader.py - finds the number plate on a vehicle and reads its
-characters, then combines the readings from many frames into one answer.
+Finds and reads number plates, then combines reads from lots of frames into
+one answer.
 
-Uses FastALPR (MIT licence, https://github.com/ankandrew/fast-alpr):
-  * a small YOLOv9 model that finds plates in a picture, and
-  * fast-plate-ocr's "global" model, which reads the characters and gives a
-    confidence for EACH character (trained on plates from 65+ countries).
-The model files download by themselves the first time (a few MB).
+Built on FastALPR (MIT, https://github.com/ankandrew/fast-alpr), which gives
+us a small YOLOv9 plate finder plus fast-plate-ocr's "global" reader. The
+reader gives a confidence per character, which turns out to be really
+useful. Models download themselves on first use.
 
-Why combine frames? One frame of a moving car is often blurry or at an
-angle, and the reader gets a character or two wrong. Over many frames the
-true plate is read most often, so we vote - like make and colour.
+A single frame of a moving car is usually a bit blurry or angled and the
+reader gets a character or two wrong, so we vote across frames like we do
+for make and colour.
 
-Safety first: a wrong plate can send investigators after an innocent
-driver, so blurry/unsure readings are thrown away, and a plate is only
-reported when several frames agree. Otherwise the answer is "no plate".
+We're deliberately strict here. A wrong plate could put an innocent driver
+in the frame, so unclear reads get thrown away and we only report a plate
+when several frames agree.
 
-South Africa is not in the reader's list of training countries, but SA
-plates use the same letters, digits and similar fonts, and it reads them
-when the plate is clear enough. To help, readings that match common South
-African plate formats get extra weight, and classic look-alike mistakes
-(O/0, I/1, B/8, S/5, Z/2, G/6) are fixed when that turns a reading into a
-valid SA plate.
+SA isn't one of the reader's training countries, but our plates use the same
+characters and similar fonts so it copes fine on clear plates. We give reads
+that match an SA format a bit more weight, and fix the usual look-alike
+mistakes (O/0, I/1, B/8 etc) when that turns a read into a valid SA plate.
 """
 
 import re
@@ -30,13 +27,11 @@ from itertools import combinations
 import cv2
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# South African plate formats (common ones; not every special/old format)
-# Written without spaces or dashes: "CA 123-456" -> "CA123456".
-# ---------------------------------------------------------------------------
+# Common SA plate formats, written without spaces/dashes. Not exhaustive,
+# there are plenty of old and special formats this won't match.
 SA_FORMATS = [
-    ("Gauteng",       r"^[A-Z]{2}\d{2}[A-Z]{2}GP$"),   # AB12CDGP (current)
-    ("Gauteng",       r"^[A-Z]{3}\d{3}GP$"),           # ABC123GP (older)
+    ("Gauteng",       r"^[A-Z]{2}\d{2}[A-Z]{2}GP$"),   # AB12CDGP, current style
+    ("Gauteng",       r"^[A-Z]{3}\d{3}GP$"),           # ABC123GP, older style
     ("Western Cape",  r"^C[A-Z]{1,2}\d{1,6}$"),        # CA123456, CY12345, CFM1234
     ("KwaZulu-Natal", r"^N[A-Z]{1,2}\d{1,6}$"),        # ND123456, NPN12345
     ("KwaZulu-Natal", r"^[A-Z]{3}\d{3}ZN$"),
@@ -50,17 +45,17 @@ SA_FORMATS = [
 ]
 _SA_PATTERNS = [(name, re.compile(p)) for name, p in SA_FORMATS]
 
-# Pairs the reader often confuses (they look alike on a blurry plate).
+# characters the OCR mixes up on blurry plates
 LOOK_ALIKES = [("0", "O"), ("1", "I"), ("8", "B"), ("5", "S"), ("2", "Z"), ("6", "G")]
 
 
 def normalise(text):
-    """'ca 123-456' -> 'CA123456' (capitals, letters and digits only)."""
+    """'ca 123-456' -> 'CA123456'"""
     return re.sub(r"[^A-Z0-9]", "", (text or "").upper())
 
 
 def sa_format(plate):
-    """Which SA format the plate matches (e.g. 'Gauteng'), or None."""
+    """Name of the SA format the plate matches, e.g. 'Gauteng'."""
     for name, pattern in _SA_PATTERNS:
         if pattern.match(plate):
             return name
@@ -68,9 +63,9 @@ def sa_format(plate):
 
 
 def fix_look_alikes(plate, max_changes=2):
-    """If the plate isn't a valid SA plate but swapping up to `max_changes`
-    look-alike characters makes it one, return the fixed plate.
-    E.g. 'CA12345O' -> 'CA123450'. Otherwise return it unchanged."""
+    """Try swapping up to `max_changes` look-alike characters to get a valid
+    SA plate, e.g. 'CA12345O' -> 'CA123450'. Returns the original if nothing
+    works."""
     if sa_format(plate):
         return plate
     swaps = {}
@@ -89,7 +84,7 @@ def fix_look_alikes(plate, max_changes=2):
 
 
 def _edit_distance(a, b):
-    """How many single-character changes turn a into b (Levenshtein)."""
+    """Levenshtein distance."""
     previous = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):
         current = [i]
@@ -100,31 +95,26 @@ def _edit_distance(a, b):
     return previous[-1]
 
 
-# ---------------------------------------------------------------------------
-# Reading one picture
-# ---------------------------------------------------------------------------
+# --- reading a single image
 
 class PlateReader:
-    """Finds and reads number plates in a picture of a vehicle."""
+    """Finds and reads plates in a crop of a vehicle."""
 
     def __init__(self,
                  detector_model="yolo-v9-t-384-license-plate-end2end",
                  ocr_model="cct-s-v2-global-model"):
-        from fast_alpr import ALPR      # imported here so it stays optional
+        from fast_alpr import ALPR      # lazy import, fast-alpr is optional
         self.alpr = ALPR(detector_model=detector_model, ocr_model=ocr_model)
         self.version = f"fastalpr-{ocr_model}"
 
     def read(self, bgr_vehicle_crop, min_plate_conf=0.4,
              min_mean_char_conf=0.75, min_char_conf=0.4):
-        """Plates in the picture that were read CLEARLY. Each is a dict:
-            text        e.g. 'CA123456' (look-alikes fixed if that makes it SA)
-            raw_text    what the reader actually said
-            char_conf   average confidence over the characters (0-1)
-            plate_conf  how sure the finder was that it's a plate (0-1)
-            width       plate width in pixels (bigger = more readable)
-            image       the plate picture (for saving / checking by eye)
-        Unclear readings are left out: any character under min_char_conf, an
-        average under min_mean_char_conf, or not 4-10 characters long.
+        """Return the plates we could read clearly.
+
+        Each read is a dict with text (look-alikes already fixed), raw_text,
+        char_conf, plate_conf, width and the plate image. We drop anything
+        that isn't 4-10 characters, or where any single character or the
+        average falls below the confidence thresholds.
         """
         reads = []
         for result in self.alpr.predict(bgr_vehicle_crop):
@@ -152,22 +142,20 @@ class PlateReader:
         return reads
 
 
-# ---------------------------------------------------------------------------
-# Combining many frames for one vehicle
-# ---------------------------------------------------------------------------
+# --- combining reads for one vehicle
 
 class PlateVotes:
-    """Collects one vehicle's plate readings and picks the answer."""
+    """All the plate reads for one vehicle, and the logic to pick a winner."""
 
     def __init__(self):
-        self.weights = {}        # plate text -> total weight
+        self.weights = {}        # plate text -> summed weight
         self.reads = 0
-        self.best_image = None   # clearest plate picture
+        self.best_image = None
         self._best_weight = -1.0
 
     def add(self, read):
-        # Clear, confident, big readings count more. Readings that fit a
-        # South African format count 30% more.
+        # Clear, confident, bigger reads count more, and SA-shaped plates
+        # get a 30% bump
         size_factor = min(1.0, read["width"] / 100)
         weight = read["char_conf"] * read["plate_conf"] * max(size_factor, 0.2)
         if sa_format(read["text"]):
@@ -178,19 +166,19 @@ class PlateVotes:
             self._best_weight, self.best_image = weight, read["image"]
 
     def result(self, min_reads=2, min_share=0.4):
-        """{plate, plate_confidence, plate_reads, plate_format, plate_top3}.
+        """Pick the plate.
 
-        Readings one character apart are treated as the same plate (the
-        weaker one is a misread). The plate is only given if it was read
-        clearly in at least `min_reads` frames and has at least `min_share`
-        of the evidence; otherwise plate is None and the guesses stay in
-        plate_top3 for an investigator to look at.
+        Reads that are one character apart get lumped together, since the
+        weaker one is almost certainly a misread. We only report a plate if
+        it was read in at least `min_reads` frames and has `min_share` of
+        the weight. Otherwise plate is None, but plate_top3 still has the
+        guesses so an investigator can have a look.
         """
         if not self.weights:
             return {"plate": None, "plate_confidence": 0.0, "plate_reads": 0,
                     "plate_format": None, "plate_top3": {}}
 
-        # Merge near-identical readings into the strongest one.
+        # fold near-duplicates into the strongest read
         merged = {}
         for text, weight in sorted(self.weights.items(), key=lambda kv: -kv[1]):
             home = next((m for m in merged
@@ -206,15 +194,15 @@ class PlateVotes:
 
         reported = best if (self.reads >= min_reads and share >= min_share) else None
         return {
-            "plate": reported,                 # None = no clear, agreed plate
+            "plate": reported,
             "plate_confidence": share,
-            "plate_reads": self.reads,         # frames with a clear reading
-            "plate_format": sa_format(best) if reported else None,  # e.g. "Gauteng"
+            "plate_reads": self.reads,
+            "plate_format": sa_format(best) if reported else None,
             "plate_top3": top3,
         }
 
     def save_best_image(self, path, scale=3):
-        """Saves the clearest plate picture, enlarged so it's easy to check."""
+        """Save the best plate crop, blown up 3x so it's easy to check by eye."""
         if self.best_image is None or self.best_image.size == 0:
             return None
         big = cv2.resize(self.best_image, None, fx=scale, fy=scale,

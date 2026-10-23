@@ -1,4 +1,4 @@
-// crime_scene_card.dart — one crime scene of a case, as a small card:
+// A small card for one crime scene in a case:
 //
 //   INC-0042                                   [ANALYSED]
 //   ─────────────────────────────────────────────────────
@@ -6,16 +6,15 @@
 //   ≡  Two men with a rifle stopped the van at the robot ...
 //   [👤 2 suspects] [🚗 1 vehicle] [⚠ 1 weapon]
 //
-// Tapping it opens the crime scene page (crime_scene_page.dart) with the
-// footage, everything the AI found and the corrections. Used on the
-// investigator's case page and the admin's.
+// Tapping it opens crime_scene_page.dart. Used on both the investigator's and
+// the admin's case page.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/models/crime_scene.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 
-/// Label, colour and icon for where the AI is with a crime scene.
+/// Label, colour and icon for the AI status of a scene.
 (String, Color, IconData) analysisStyle(AnalysisStatus status,
     {int filesFailed = 0}) {
   return switch (status) {
@@ -29,7 +28,7 @@ import 'package:argus_shield/admin_screens/admin_ui.dart';
   };
 }
 
-/// One sentence about where the AI is, or null when it is simply done.
+/// A sentence about the AI status, or null if it's simply done.
 String? analysisMessage(AnalysisStatus status,
     {int files = 0, int filesFailed = 0}) {
   return switch (status) {
@@ -48,7 +47,7 @@ String? analysisMessage(AnalysisStatus status,
   };
 }
 
-/// The status tag shown on cards and at the top of the crime scene page.
+/// Status tag for the cards and the top of the crime scene page.
 class AnalysisTag extends StatelessWidget {
   final AnalysisStatus status;
   final int filesFailed;
@@ -66,7 +65,7 @@ class CaseSceneCard extends StatelessWidget {
   final CrimeSceneCardInfo scene;
   final VoidCallback? onTap;
 
-  /// Optional ⋮ menu (the admin's case page: move / remove).
+  /// Optional ⋮ menu (move/remove on the admin's case page).
   final Widget? menu;
 
   const CaseSceneCard({
@@ -82,12 +81,10 @@ class CaseSceneCard extends StatelessWidget {
     final description = s.description?.trim() ?? '';
     final counted = s.analysis == AnalysisStatus.done;
 
-    // Same parts as the admin's submission cards (submissions.dart
-    // CrimeSceneCard): AdminCard, Courier reference + status tag, divider,
-    // icon lines and fact chips - with fewer lines, so it stays compact.
-    // Grey outline like the admin's submission cards: they only turn gold
-    // for submissions still pending review, and every crime scene in a case
-    // has been accepted.
+    // Built from the same parts as the admin's submission cards (AdminCard,
+    // Courier reference and tag, divider, icon lines, chips) but with fewer
+    // lines to keep it compact. Grey outline too: those only go gold while a
+    // submission is pending review, and everything in a case is accepted.
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: AdminCard(

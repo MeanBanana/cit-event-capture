@@ -3,7 +3,7 @@ import {contact, roles} from '../content';
 import {useReveals} from '../hooks/useReveals';
 import {scrollToHash} from '../lib/scroll';
 
-/** In-page links pre-select the role in the contact form; /admin/ is a real page. */
+/** In-page links preselect the role in the contact form. /admin/ is an actual page. */
 const follow = (e: MouseEvent<HTMLAnchorElement>, href: string, role: string) => {
   if (!href.startsWith('#')) return;
   e.preventDefault();
@@ -12,7 +12,7 @@ const follow = (e: MouseEvent<HTMLAnchorElement>, href: string, role: string) =>
   scrollToHash(href);
 };
 
-/** The three people Argus serves. Each card carries scan rings — one per feature group. */
+/** The three kinds of people Argus is for. Each card gets one scan ring per feature group. */
 export function Roles() {
   const ref = useReveals<HTMLElement>();
   return (

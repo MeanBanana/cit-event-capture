@@ -1,21 +1,16 @@
--- =====================================================================
--- Argus Shield: submissions list for the admin screens
+-- Submissions list for the admin screens.
 --
--- 1. crimescene.datereported: when the incident was REPORTED (datetime is
---    when it HAPPENED). Filled in by the database, so "most recent
---    submissions" can't be faked by the app.
--- 2. list_submissions(): newest reports first, with reporter name and
---    media count; optional search by incident number or location.
--- =====================================================================
+-- Adds crimescene.datereported, i.e. when it was reported (datetime is when
+-- it happened). The database fills it in so the app can't fake "most recent".
+-- And list_submissions(), newest first, with the reporter's name, a media
+-- count and optional search.
 
 
--- ---------------------------------------------------------------------
--- 1. datereported
--- ---------------------------------------------------------------------
+-- --- 1. datereported
 ALTER TABLE public.crimescene ADD COLUMN datereported timestamptz;
 
--- Existing rows: we don't know when they were reported, so use when the
--- incident happened (never later than now) as the best guess.
+-- We don't know when existing rows were reported, so use when it happened
+-- (capped at now) as a best guess.
 UPDATE public.crimescene SET datereported = LEAST(datetime, now());
 
 ALTER TABLE public.crimescene
@@ -24,8 +19,8 @@ ALTER TABLE public.crimescene
 
 CREATE INDEX idx_crimescene_datereported ON public.crimescene (datereported DESC);
 
--- App users can't choose or change it: set on insert, kept on update.
--- (The service key, e.g. for imports, may still set it.)
+-- The app can't set or change it: filled on insert, kept on update. The
+-- service key can still set it, e.g. for imports.
 CREATE OR REPLACE FUNCTION public.set_crimescene_datereported()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -48,17 +43,15 @@ CREATE TRIGGER set_crimescene_datereported
   FOR EACH ROW EXECUTE FUNCTION public.set_crimescene_datereported();
 
 
--- ---------------------------------------------------------------------
--- 2. list_submissions
---   supabase.rpc('list_submissions')                            -> 20 newest
+-- --- 2. list_submissions
+--   supabase.rpc('list_submissions')                       20 newest
 --   supabase.rpc('list_submissions', params: {'p_search': ...})
---       'INC-0042', 'inc 42', '#42' or '42' -> incident 42
---       any text -> locations containing it (any case)
---       ('42' finds incident 42 AND locations containing "42")
+-- 'INC-0042', 'inc 42', '#42' and '42' all find incident 42. Any other text
+-- matches locations (case-insensitive), and '42' also matches locations with
+-- "42" in them.
 --
--- SECURITY INVOKER: normal RLS applies - admins see every submission,
--- citizens only their own, investigators only their assigned cases.
--- ---------------------------------------------------------------------
+-- SECURITY INVOKER, so RLS decides: admins see everything, citizens their
+-- own, investigators their assigned cases.
 CREATE OR REPLACE FUNCTION public.list_submissions(
   p_search text    DEFAULT NULL,
   p_limit  integer DEFAULT 20
@@ -83,9 +76,9 @@ AS $$
     SELECT NULLIF(trim(COALESCE(p_search, '')), '') AS raw
   ), t AS (
     SELECT raw,
-           -- LIKE wildcards escaped so % and _ are searched for literally
+           -- escape LIKE wildcards so % and _ are searched for literally
            replace(replace(replace(raw, '\', '\\'), '%', '\%'), '_', '\_') AS term,
-           -- an incident number, with or without the INC- prefix
+           -- incident number, with or without the INC- prefix
            CASE WHEN raw ~* '^(inc)?[\s#-]*[0-9]{1,9}$'
                 THEN substring(raw FROM '[0-9]+')::integer END AS num
     FROM q
@@ -103,7 +96,7 @@ AS $$
      OR cs.incidentid = t.num
      OR cs.location ILIKE '%' || t.term || '%'
   ORDER BY cs.datereported DESC, cs.incidentid DESC
-  LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)   -- 1 to 100 rows
+  LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)   -- clamp to 1-100 rows
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.list_submissions(text, integer) FROM PUBLIC, anon;

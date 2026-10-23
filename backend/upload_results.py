@@ -1,45 +1,27 @@
 """
-upload_results.py - upload one AI pipeline run to Supabase Storage.
+Uploads one pipeline run (results.json plus its crops) to Supabase Storage.
 
-Run it after ai/main.py, with the report (incident) the files came from and
-the media id of each file, in the same order the files were given to main.py:
+The worker calls upload_run() directly. You can also run it by hand after
+ai/main.py, passing the incident and the media id of each file in the same
+order you gave them to main.py:
 
-    cd ai
-    python main.py clip1.mp4 clip2.mp4
-    cd ..
     python backend/upload_results.py "ai/crops/submission 3/results.json" --incident 42 --media 17 18
 
-(ai/output_detections.json, the copy of the latest results.json, works too.)
+We keep results as a JSON file rather than table rows because one submission
+can easily have hundreds of detections. It all lands in the incident's
+folder in the private 'submissions' bucket:
 
-The results stay a JSON file (a submission can give hundreds of detections,
-far too many to keep as table rows). Everything goes into the incident's
-folder in the private 'submissions' bucket, next to the citizen's footage:
+    42/media/<file>                          the citizen's upload
+    42/ai/20261008T170155/results.json       this run
+    42/ai/20261008T170155/1_clip1/*.png      its crops
 
-    42/media/<file>                                    citizen's upload
-    42/ai/20261008T170155/results.json                 this run
-    42/ai/20261008T170155/1_clip1/vehicle_3.png ...    its pictures
-    42/ai/20261008T170155/2_clip2/...
+Only crops that results.json actually refers to get uploaded, and the paths
+inside it are rewritten to bucket paths. Each run gets its own timestamped
+folder so re-runs never overwrite old results. Citizens can't read the ai/
+folder, admins and assigned investigators can (see the
+20261009090000_submissions_bucket.sql migration).
 
-Only pictures that results.json mentions are uploaded, and the paths inside
-the uploaded results.json are rewritten to their place in the bucket. A
-re-run gets a new folder, so earlier results are never overwritten. Last,
-each media row's airesultpath points at the new results.json and its
-processingstatus becomes 'completed' (or 'failed' if that file could not be
-analysed).
-
-Citizens can't read the ai/ folder; admins and investigators assigned to
-the case can (migration 20261009090000_submissions_bucket.sql).
-
-Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in backend/.env (copy
-.env.example). The service key can read and write everything: keep it on the
-machine that runs the pipeline, never in the mobile or web app.
-
-Reading a result back (app or script, signed in as admin / assigned
-investigator):
-    path = media_row["airesultpath"]
-    data = json.loads(supabase.storage.from_("submissions").download(path))
-    pic = data["files"][0]["detections"][0]["crop_path"]
-    url = supabase.storage.from_("submissions").create_signed_url(pic, 3600)["signedURL"]
+Needs the service key in backend/.env, which must never end up in an app.
 """
 
 import argparse
@@ -56,11 +38,11 @@ PICTURE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg
 
 
 class UploadError(Exception):
-    """Bad input (wrong media ids, missing pictures folder, ...)."""
+    """Something wrong with the input, e.g. mismatched media ids."""
 
 
 def get_client():
-    """Supabase client with the service key (from backend/.env or the environment)."""
+    """Service-role client from backend/.env or the environment."""
     from dotenv import load_dotenv
     from supabase import create_client
 
@@ -74,19 +56,19 @@ def get_client():
 
 
 def processed_time(result):
-    """When the run happened, with the time zone (main.py writes local time
-    without one; this script runs on the same machine, so local is right)."""
+    """processed_at as an aware datetime. main.py writes local time with no
+    zone, and since we run on the same machine, local is correct."""
     t = datetime.fromisoformat(result["processed_at"])
     return t if t.tzinfo else t.astimezone()
 
 
 def run_folder(incident_id, result):
-    """'42/ai/20261008T170155' - where this run goes in the bucket."""
+    """e.g. '42/ai/20261008T170155'"""
     return f"{int(incident_id)}/ai/{processed_time(result).strftime('%Y%m%dT%H%M%S')}"
 
 
 def submission_dir(result, json_path):
-    """The local 'crops/submission N' folder that holds the run's pictures."""
+    """Find the local 'submission N' folder with the crops in it."""
     name = f"submission {result['submission']}"
     json_path = Path(json_path)
     for folder in (json_path.parent, json_path.parent / "crops" / name):
@@ -96,12 +78,12 @@ def submission_dir(result, json_path):
 
 
 def _picture(value, sub_dir):
-    """Path in results.json (e.g. 'crops\\submission 1\\1_clip\\vehicle_2.png',
-    written on Windows or Linux) -> (local file, path inside the run folder),
-    or None if it isn't a picture of this submission."""
+    """Map a path from results.json to (local file, path within the run
+    folder). Paths may have been written on Windows or Linux. Returns None if
+    it isn't one of this submission's pictures."""
     if not isinstance(value, str) or not value:
         return None
-    parts = PureWindowsPath(value).parts            # understands both \ and /
+    parts = PureWindowsPath(value).parts            # handles both \ and /
     if sub_dir.name not in parts:
         return None
     inside = parts[parts.index(sub_dir.name) + 1:]
@@ -112,15 +94,15 @@ def _picture(value, sub_dir):
 
 
 def _picture_fields(result):
-    """Every dict in results.json that can hold picture paths."""
+    """All the dicts in results.json that might hold crop paths."""
     for f in result.get("files", []):
         yield f
         yield from f.get("detections", [])
 
 
 def prepare(result, json_path, incident_id, media_ids):
-    """The results.json to upload (paths rewritten for the bucket, media ids
-    added) and the pictures to upload as (bucket path, local file)."""
+    """Build the results.json to upload (bucket paths, media ids filled in)
+    plus the list of (bucket path, local file) pictures to send."""
     files = result.get("files", [])
     if len(media_ids) != len(files):
         raise UploadError(f"results.json has {len(files)} file(s) but {len(media_ids)} "
@@ -136,7 +118,7 @@ def prepare(result, json_path, incident_id, media_ids):
             return None
         bucket_path = f"{folder}/{found[1]}"
         pictures[bucket_path] = found[0]
-        return bucket_path                      # ready for create_signed_url()
+        return bucket_path
 
     for obj in _picture_fields(out):
         for key, value in obj.items():
@@ -144,12 +126,12 @@ def prepare(result, json_path, incident_id, media_ids):
                 bucket_path = to_bucket(value)
                 if bucket_path:
                     obj[key] = bucket_path
-            elif key.endswith("_paths") and isinstance(value, list):   # extra_crop_paths
+            elif key.endswith("_paths") and isinstance(value, list):   # e.g. extra_crop_paths
                 obj[key] = [to_bucket(v) or v for v in value]
 
     for f, media_id in zip(out["files"], media_ids):
         f["mediaid"] = int(media_id)
-        f["source_path"] = PureWindowsPath(f.get("source_path", "")).name  # no local folders
+        f["source_path"] = PureWindowsPath(f.get("source_path", "")).name  # don't leak local folder names
         if f.get("crops_folder"):
             f["crops_folder"] = f"{folder}/{PureWindowsPath(f['crops_folder']).name}"
     out["incidentid"] = int(incident_id)
@@ -159,8 +141,8 @@ def prepare(result, json_path, incident_id, media_ids):
 
 
 def check_media(client, incident_id, media_ids):
-    """Every media id must belong to that incident (stops results landing on
-    the wrong report)."""
+    """Make sure every media id really belongs to this incident, so results
+    can't end up attached to the wrong report."""
     rows = (client.table("media").select("mediaid, incidentid")
             .in_("mediaid", [int(m) for m in media_ids]).execute().data)
     found = {r["mediaid"]: r["incidentid"] for r in rows}
@@ -170,15 +152,14 @@ def check_media(client, incident_id, media_ids):
 
 
 def upload_results(result, json_path, incident_id, media_ids, client=None):
-    """Upload one run (results.json + its pictures) and point the media rows
-    at it. Returns the results.json path in the bucket."""
+    """Upload a run and point the media rows at it. Returns the bucket path
+    of results.json."""
     return upload_run(result, json_path, incident_id, media_ids, client)[0]
 
 
 def upload_run(result, json_path, incident_id, media_ids, client=None):
-    """Same as upload_results, but returns (bucket path of results.json,
-    the uploaded results.json as a dict) - the worker saves that dict in
-    the database with ai_save_analysis()."""
+    """Like upload_results, but also returns the uploaded results dict. The
+    worker needs that to pass to ai_save_analysis()."""
     client = client or get_client()
     check_media(client, incident_id, media_ids)
     out, folder, pictures = prepare(result, json_path, incident_id, media_ids)
@@ -188,7 +169,7 @@ def upload_run(result, json_path, incident_id, media_ids, client=None):
         bucket.upload(bucket_path, local.read_bytes(),
                       {"content-type": PICTURE_TYPES[local.suffix.lower()], "upsert": "true"})
 
-    # results.json goes last: it only exists once all its pictures are there
+    # upload results.json last, so if it exists its pictures definitely do too
     json_bucket_path = f"{folder}/{RESULT_NAME}"
     bucket.upload(json_bucket_path, json.dumps(out, indent=2).encode("utf-8"),
                   {"content-type": "application/json", "upsert": "true"})

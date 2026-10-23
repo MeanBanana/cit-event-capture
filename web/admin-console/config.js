@@ -1,6 +1,6 @@
-// The Supabase project the console talks to. The publishable (anon) key is
-// meant to be public (the mobile app ships it too): what anyone can do with
-// it is limited by the database's rules. NEVER put the service_role key here.
+// Which Supabase project to talk to. The publishable key is fine to have in
+// public (the app ships it too), the database rules decide what it can do.
+// The service_role key must never go in here.
 window.ARGUS_CONFIG = {
   supabaseUrl: "https://tnydrlxptqegzhbvwpcq.supabase.co",
   supabaseKey: "sb_publishable_qyDg3_F69Cy2rpoWDvR-7A_Z3AXR8h3",

@@ -1,23 +1,15 @@
-// delete-submission — Supabase Edge Function
+// delete-submission: the Delete button on a rejected submission in the admin
+// app (SupabaseService.deleteSubmission). Body is { incidentid }.
 //
-// Called by the admin app's Delete button on a REJECTED submission
-// (SupabaseService.deleteSubmission). Body: { incidentid }.
+// The database function delete_rejected_submission does the row side and
+// refuses anything that isn't rejected (so not pending, accepted or a
+// duplicate). Then we wipe <incidentid>/ out of the submissions bucket.
 //
-//   1. Checks the caller is a logged-in admin.
-//   2. Database function delete_rejected_submission: only rejected
-//      submissions (not pending, accepted or duplicates); removes it, its
-//      files' rows and everything the AI found in them.
-//   3. Deletes its files (footage + AI pictures) under <incidentid>/ in the
-//      private 'submissions' bucket.
+// It has to be an Edge Function because the bucket doesn't allow deletes
+// from the app at all (footage is evidence), so we need the service key.
 //
-// Why here and not in the app: the bucket doesn't let anyone delete files
-// from the app (footage is evidence), so this uses the service key, which
-// stays on Supabase's servers.
-//
-// Deploy (from the database/ folder):
-//   supabase functions deploy delete-submission
-// verify_jwt is off in config.toml because this function checks the caller
-// itself (logged in AND an admin), like create-investigator.
+// Deploy from database/:  supabase functions deploy delete-submission
+// verify_jwt is off in config.toml, we check the caller is an admin ourselves.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -53,7 +45,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ---- 1. Must be a logged-in admin. -----------------------------------------
+  // 1. caller has to be a logged-in admin
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return fail(401, "Please log in again.");
   const { data: auth, error: authError } = await admin.auth.getUser(token);
@@ -77,12 +69,12 @@ Deno.serve(async (req) => {
   }
   if (!Number.isInteger(incidentid) || incidentid <= 0) return fail(400, "Which submission?");
 
-  // ---- 2. The database rows (the function checks it is rejected). ----------
+  // 2. delete the rows (the db function makes sure it's actually rejected)
   const { error: dbError } = await admin.rpc("delete_rejected_submission", {
     p_incidentid: incidentid,
   });
   if (dbError) {
-    // our own checks have messages meant for the admin
+    // these come from our own checks and are already worded for the admin
     if (dbError.code === "P0002" || dbError.code === "P0001") {
       return fail(409, dbError.message);
     }
@@ -90,7 +82,7 @@ Deno.serve(async (req) => {
     return fail(500, "The submission could not be deleted. Try again.");
   }
 
-  // ---- 3. Its files: everything under <incidentid>/ ------------------------
+  // 3. delete everything under <incidentid>/ in the bucket
   const paths: string[] = [];
   const walk = async (folder: string) => {
     for (let offset = 0; ; offset += 1000) {
@@ -101,7 +93,7 @@ Deno.serve(async (req) => {
       if (error) throw error;
       for (const item of data ?? []) {
         const path = `${folder}/${item.name}`;
-        if (item.id === null) await walk(path); // a folder
+        if (item.id === null) await walk(path); // folders have no id
         else paths.push(path);
       }
       if (!data || data.length < 1000) return;
@@ -117,8 +109,8 @@ Deno.serve(async (req) => {
       removed += Math.min(100, paths.length - i);
     }
   } catch (error) {
-    // The submission is already gone; leftover files are cleaned up by
-    // backend/cleanup_storage.py (folders of submissions that no longer exist).
+    // The rows are already gone at this point. Any files left behind get
+    // picked up later by backend/cleanup_storage.py.
     console.error("Could not delete all files", error);
     return reply(200, {
       incidentid,

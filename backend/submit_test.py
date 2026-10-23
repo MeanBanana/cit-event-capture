@@ -1,20 +1,14 @@
 """
-submit_test.py - send test footage to Supabase as a new submission, the way
-the citizen app will, so the AI worker picks it up. For testing the worker
-before the app's real upload is finished.
+Pushes test footage into Supabase as a new submission, the same way the
+citizen app does, so you can test the worker without the app.
 
-    python backend/submit_test.py clip.mp4 photo.jpg                     (1-5 files = 1 submission)
+    python backend/submit_test.py clip.mp4 photo.jpg
     python backend/submit_test.py clip.mp4 --location "N1 Midrand" --lat -25.99 --lon 28.13
     python backend/submit_test.py clip.mp4 --reporter someone@example.com
 
-What it does (with the service key from backend/.env):
-  1. creates the incident (crimescene), reported by --reporter (an existing
-     user's email; default: the first admin)
-  2. uploads each file to  submissions/<incidentid>/media/<random>.<ext>
-  3. adds the media rows
-  4. queues the analysis (an 'analyse' job) - like submit_for_analysis()
-Then the worker (python backend/worker.py) analyses it within seconds.
-The submission shows up in the admin app's Submissions tab like any other.
+Creates the crimescene row (reported by --reporter, or the first admin if
+you don't say), uploads the files, adds the media rows and queues an
+'analyse' job. If the worker is running it should pick it up within seconds.
 """
 
 import argparse
@@ -89,7 +83,8 @@ def main(argv=None):
         }).execute()
         print(f"  uploaded {f.name} -> {BUCKET}/{path}")
 
-    # what submit_for_analysis() does (that function is for the app's users)
+    # Same as submit_for_analysis(), which we can't call here because it
+    # expects to run as a signed-in app user
     client.table("crimescene").update({"aisummarystatus": "processing"}).eq("incidentid", incident).execute()
     job = client.table("aijob").insert({"kind": "analyse", "incidentid": incident}).execute().data[0]
     print(f"Analysis queued (job {job['jobid']}). Is the worker running? python backend/worker.py")

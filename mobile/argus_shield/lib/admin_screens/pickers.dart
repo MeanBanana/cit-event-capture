@@ -1,9 +1,7 @@
-// pickers.dart — the slide-up panels the admin uses to choose things:
-//   CasePicker          an open case (accept into it / move to it)
-//   IncidentPicker      one submission (duplicate of) or several (add to case)
-//   InvestigatorPicker  an investigator to assign to a case
-//   NewCaseForm         title + description for a new case
-// Open them inside showAdminSheet().
+// The slide-up panels the admin uses to pick things: CasePicker (an open case
+// to accept into or move to), IncidentPicker (one submission, or several),
+// InvestigatorPicker (someone to assign) and NewCaseForm (title and
+// description). Open them with showAdminSheet().
 
 import 'dart:async';
 
@@ -15,11 +13,11 @@ import 'package:argus_shield/models/crime_scene_summary.dart';
 import 'package:argus_shield/models/investigator_summary.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 
-/// Wait after the last key press before searching.
+/// Debounce before searching after the last key press.
 const pickerSearchDelay = Duration(milliseconds: 400);
 
-/// Opens a panel from the bottom of the screen with a title bar and a close
-/// button. [builder] fills the rest. Returns whatever the panel pops with.
+/// Opens a bottom panel with a title bar and close button. [builder] fills
+/// in the rest. Returns whatever the panel pops with.
 Future<T?> showAdminSheet<T>(
   BuildContext context, {
   required String title,
@@ -70,7 +68,7 @@ Future<T?> showAdminSheet<T>(
   );
 }
 
-/// Search field used at the top of every picker.
+/// Search box at the top of every picker.
 class _PickerSearchField extends StatelessWidget {
   final String hint;
   final ValueChanged<String> onChanged;
@@ -92,7 +90,7 @@ class _PickerSearchField extends StatelessWidget {
   }
 }
 
-/// Loading / error / empty handling shared by the pickers.
+/// Shared loading / error / empty handling for the pickers.
 Widget _pickerBody({
   required bool loading,
   required String? error,
@@ -113,21 +111,19 @@ Widget _pickerBody({
   return list();
 }
 
-// ===========================================================================
-// CasePicker
-// ===========================================================================
+// --- CasePicker
 
-/// Lists open / under-review cases (most recently active first) with a
-/// search box. Tapping one calls [onSelected].
+/// Open and under-review cases, most recently active first, with a search
+/// box. Tapping one calls [onSelected].
 class CasePicker extends StatefulWidget {
   final SupabaseService service;
   final ValueChanged<CaseSummary> onSelected;
 
-  /// Hidden from the list, e.g. the case the incident is already in.
+  /// Left out of the list, e.g. the case the incident's already in.
   final int? excludeCaseId;
 
-  /// When set, a "Case not listed? Create a new case" button is shown at
-  /// the bottom and calls this.
+  /// If set, adds a "Case not listed? Create a new case" button at the
+  /// bottom that calls this.
   final VoidCallback? onNotListed;
 
   const CasePicker({
@@ -250,20 +246,18 @@ class _CasePickerState extends State<CasePicker> {
   }
 }
 
-// ===========================================================================
-// IncidentPicker
-// ===========================================================================
+// --- IncidentPicker
 
-/// Lists submissions with a search box (incident number or location).
-///  * single choice: tapping one calls [onSelected]
-///  * [multiSelect]: tick several, then the button calls [onConfirm]
+/// Submissions with a search box (incident number or location). Tap one to
+/// call [onSelected], or with [multiSelect] tick several and the button
+/// calls [onConfirm].
 class IncidentPicker extends StatefulWidget {
   final SupabaseService service;
 
-  /// Only submissions with this review status (e.g. 'pending'); null = all.
+  /// Only show this review status (e.g. 'pending'). Null for all.
   final String? review;
 
-  /// Incident ids to leave out (e.g. the incident itself).
+  /// Incident ids to leave out, e.g. the incident itself.
   final Set<int> exclude;
 
   final bool multiSelect;
@@ -417,17 +411,15 @@ class _IncidentPickerState extends State<IncidentPicker> {
   }
 }
 
-// ===========================================================================
-// InvestigatorPicker
-// ===========================================================================
+// --- InvestigatorPicker
 
-/// Lists investigators (newest first) with a search box (name or badge).
-/// Tapping one calls [onSelected].
+/// Investigators, newest first, with a search box (name or badge). Tapping
+/// one calls [onSelected].
 class InvestigatorPicker extends StatefulWidget {
   final SupabaseService service;
   final ValueChanged<InvestigatorSummary> onSelected;
 
-  /// User ids to leave out (e.g. already assigned).
+  /// User ids to leave out, e.g. people already assigned.
   final Set<int> exclude;
 
   const InvestigatorPicker({
@@ -539,12 +531,10 @@ class _InvestigatorPickerState extends State<InvestigatorPicker> {
   }
 }
 
-// ===========================================================================
-// NewCaseForm
-// ===========================================================================
+// --- NewCaseForm
 
-/// Title + description for a new case. [onCreate] does the saving; if it
-/// throws, the error is shown and the form stays open.
+/// Title and description for a new case. [onCreate] does the saving, and if
+/// it throws the error is shown and the form stays open.
 class NewCaseForm extends StatefulWidget {
   final String initialTitle;
   final String initialDescription;

@@ -15,24 +15,23 @@ import 'models/my_submission.dart';
 import 'models/crime_scene.dart';
 import 'models/case_message.dart';
 
-/// Sort order for submission lists (by date reported).
+/// Sort order for submission lists, by date reported.
 enum SubmissionOrder { newest, oldest }
 
-/// All Supabase calls for accounts (register, login, logout).
+/// Every Supabase call the app makes goes through here.
 ///
-/// How accounts work (see database/README.md):
-///  * Registering calls supabase.auth.signUp with the form fields in `data`.
-///    A database trigger then creates the "User" row and the "citizen" row.
-///    The app must NEVER insert into "User" or "citizen" itself - the database
-///    blocks it, so nobody can give themselves a role such as admin.
-///  * Logging in: the user types a username, we look up their email with
-///    email_for_username, then sign in with email + password.
+/// A quick note on accounts (database/README.md has the long version):
+/// registering just calls auth.signUp with the form fields in `data`, and a
+/// database trigger creates the "User" and citizen rows. The app never
+/// inserts into those tables itself, and the database would refuse anyway,
+/// otherwise anyone could make themselves an admin. Login takes a username,
+/// looks up the email with email_for_username and signs in with that.
 class SupabaseService {
-  // A getter (not a field) so this class can be created before Supabase is
-  // initialised, e.g. in widget tests.
+  // Getter rather than a field so we can construct this before Supabase is
+  // initialised, which the widget tests rely on.
   SupabaseClient get supabase => Supabase.instance.client;
 
-  // ---------------------------------------------------------------- REGISTER
+  // --- register
   Future<Map<String, dynamic>> registerUser({
     required String firstname,
     required String surname,
@@ -43,7 +42,7 @@ class SupabaseService {
     required String password,
   }) async {
     try {
-      // 1. Check the username first so the user gets a clear message
+      // check the username first so we can give a clear message
       final available = await supabase.rpc(
         'username_available',
         params: {'p_username': username.trim()},
@@ -52,7 +51,7 @@ class SupabaseService {
         return {"success": false, "message": "That username is already taken."};
       }
 
-      // 2. Create the account.
+      // create the account
       final authResponse = await supabase.auth.signUp(
         email: email.trim(),
         password: password,
@@ -60,7 +59,7 @@ class SupabaseService {
           'username': username.trim(),
           'firstname': firstname.trim(),
           'surname': surname.trim(),
-          'phonenumber': '+27${phone.trim()}', // form collects the 9 digits after +27
+          'phonenumber': '+27${phone.trim()}', // the form only collects the 9 digits after +27
           'residence': residence.trim(),
         },
       );
@@ -69,14 +68,14 @@ class SupabaseService {
       if (user == null) {
         return {"success": false, "message": "Sign up failed."};
       }
-      // With "Confirm email" turned on, Supabase does not return an error for an
-      // email that is already registered - it returns a user with no identities.
+      // With "Confirm email" on, Supabase doesn't error for an email that's
+      // already registered, it hands back a user with no identities instead.
       if (user.identities != null && user.identities!.isEmpty) {
         return {"success": false, "message": "An account with this email already exists."};
       }
 
-      // signUp logs the new user in straight away (when "Confirm email" is off).
-      // Sign out so they log in themselves on the login page.
+      // With "Confirm email" off, signUp logs them straight in. Sign out so
+      // they log in themselves from the login page.
       if (authResponse.session != null) {
         await supabase.auth.signOut();
       }
@@ -92,7 +91,7 @@ class SupabaseService {
         return {"success": false, "message": "An account with this email already exists."};
       }
       if (e.message.contains('Database error saving new user')) {
-        // The sign-up trigger rejected the data (username taken or invalid)
+        // the sign-up trigger rejected it (username taken or invalid)
         return {
           "success": false,
           "message": "Username is invalid or already taken. Use 3-30 letters, numbers, _ or .",
@@ -112,19 +111,16 @@ class SupabaseService {
     }
   }
 
-  // ------------------------------------------------------------------- LOGIN
-  /// On success the result also contains "profile":
-  /// {userid, username, firstname, surname, email, phonenumber, role} where
-  /// role is 'citizen', 'investigator' or 'admin', and "mustChangePassword":
-  /// true for a new admin/investigator still on their temporary password
-  /// (must_change_password in the login's app_metadata, set by the
-  /// create-admin / create-investigator Edge Functions).
+  // --- login
+  /// On success the result includes "profile" (userid, username, firstname,
+  /// surname, email, phonenumber, role) and "mustChangePassword", which is
+  /// true for a new admin/investigator still on their temporary password.
   Future<Map<String, dynamic>> loginUser({
     required String username,
     required String password,
   }) async {
-    // Same message for a wrong username or a wrong password, so the login
-    // screen does not reveal which usernames exist (security).
+    // Same message for a wrong username and a wrong password, so the login
+    // screen can't be used to find out which usernames exist.
     const badLogin = "Username or password is incorrect. Please check again.";
     try {
       final email = await supabase.rpc(
@@ -132,7 +128,7 @@ class SupabaseService {
         params: {'p_username': username.trim()},
       );
       if (email is! String) {
-        // no account with this username
+        // no account with that username
         return {"success": false, "message": badLogin};
       }
 
@@ -178,28 +174,23 @@ class SupabaseService {
     }
   }
 
-  // ------------------------------------------------------------------ LOGOUT
+  // --- logout
   Future<void> logout() => supabase.auth.signOut();
 
-  // ---------------------------------------------------------- RESET PASSWORD
-  // How resetting a forgotten password works:
-  //  1. sendPasswordReset asks Supabase to email a reset link. The link opens
-  //     this app through the deep link below (set up in AndroidManifest.xml
-  //     and ios/Runner/Info.plist, and listed under Authentication > URL
-  //     Configuration > Redirect URLs in the Supabase dashboard).
-  //  2. supabase_flutter reads the link, signs the user in for this one
-  //     purpose and fires AuthChangeEvent.passwordRecovery. main.dart listens
-  //     for it and opens ResetPasswordPage.
-  //  3. ResetPasswordPage calls updatePassword, then logs out so the user
-  //     logs in again with the new password.
-  // The link only works on the phone that asked for it (PKCE flow).
+  // --- reset password
+  // sendPasswordReset gets Supabase to email a link. The link opens the app
+  // via the deep link below (set up in AndroidManifest.xml, Info.plist, and
+  // the dashboard's Redirect URLs). supabase_flutter picks it up, signs the
+  // user in just for this and fires AuthChangeEvent.passwordRecovery, which
+  // main.dart listens for to open ResetPasswordPage. That page calls
+  // updatePassword and logs out so they sign in with the new one.
+  // Because it's PKCE, the link only works on the phone that asked for it.
 
-  /// Where the reset link in the email sends the user.
+  /// Where the reset email's link sends people.
   static const passwordResetRedirect = 'argusshield://reset-password';
 
-  /// Emails a password reset link. Supabase gives the same answer whether or
-  /// not the email belongs to an account, so the message does not reveal
-  /// which emails are registered.
+  /// Email a password reset link. Supabase answers the same whether or not
+  /// the email exists, so this doesn't leak which emails are registered.
   Future<Map<String, dynamic>> sendPasswordReset(String email) async {
     try {
       await supabase.auth.resetPasswordForEmail(
@@ -233,9 +224,9 @@ class SupabaseService {
     }
   }
 
-  /// Sets a new password for the signed-in user: after a reset link, or at
-  /// the first log-in with a temporary password (the database then clears
-  /// must_change_password).
+  /// Set a new password for whoever's signed in, either after a reset link
+  /// or on first login with a temporary password (the database clears
+  /// must_change_password when this happens).
   Future<Map<String, dynamic>> updatePassword(String newPassword) async {
     try {
       await supabase.auth.updateUser(UserAttributes(password: newPassword));
@@ -272,19 +263,15 @@ class SupabaseService {
     }
   }
 
-  // ------------------------------------------------------- CITIZEN PROFILE
-  // Database rules (RLS) let a citizen read and update only their own
-  // "User" and citizen rows, and a trigger stops them changing their own
-  // role or email there. So:
-  //   * phone number  -> "User".phonenumber   (plain update)
-  //   * residence     -> citizen.residence    (plain update)
-  //   * email         -> Supabase Auth, which emails a confirmation link.
-  //     Once confirmed, the on_auth_user_email_changed trigger copies the
-  //     new address into "User".email.
-  //   * first name / surname are not changed here at all.
+  // --- citizen profile
+  // RLS only lets a citizen read and update their own "User" and citizen
+  // rows, and a trigger stops them changing their role or email there. So
+  // phone and residence are plain updates, email goes through Auth (which
+  // sends a confirmation link, and on_auth_user_email_changed copies it into
+  // "User".email once confirmed), and names can't be changed here at all.
 
-  /// The logged-in citizen's profile. Throws if nobody is logged in or the
-  /// rows can't be read, so the screen can show an error with a Retry button.
+  /// The logged-in citizen's profile. Throws if nobody's logged in or the
+  /// rows can't be read, so the screen can show an error and a Retry button.
   Future<CitizenProfile> getMyCitizenProfile() async {
     final authUser = supabase.auth.currentUser;
     if (authUser == null) {
@@ -297,7 +284,7 @@ class SupabaseService {
         .eq('authid', authUser.id)
         .single();
 
-    // maybeSingle: an older account might not have a citizen row yet.
+    // maybeSingle because older accounts might not have a citizen row yet
     final citizen = await supabase
         .from('citizen')
         .select('residence')
@@ -307,27 +294,26 @@ class SupabaseService {
     return CitizenProfile.fromMaps(user, citizen);
   }
 
-  /// Saves the citizen's changes. Pass only what changed; null = unchanged.
+  /// Save the citizen's changes. Only pass what changed, null means leave it.
+  /// [phone] is the 9 digits after +27, same as the register form.
   ///
-  /// [phone] is the 9 digits after +27 (like the register form).
-  ///
-  /// Returns {success, message, emailPending, emailChangedNow}.
-  /// emailPending is true when a confirmation email was sent - the new
-  /// address only applies after the citizen clicks the link in it.
-  /// emailChangedNow is true when the project doesn't ask for confirmation.
+  /// Returns {success, message, emailPending, emailChangedNow}. emailPending
+  /// means a confirmation email went out and the new address only kicks in
+  /// once they click it. emailChangedNow means the project doesn't require
+  /// confirmation.
   Future<Map<String, dynamic>> updateMyCitizenProfile({
     required int userId,
     String? email,
     String? phone,
     String? residence,
   }) async {
-    // Lets the error message say which parts were already saved.
+    // so the error message can mention what already got saved
     final saved = <String>[];
     try {
       if (phone != null) {
-        // .select() returns the updated rows. If RLS blocked the update,
-        // Postgres doesn't raise an error - it just updates 0 rows - so we
-        // check for that instead of assuming it worked.
+        // .select() gives back the updated rows. If RLS blocks an update
+        // Postgres doesn't error, it just updates nothing, so we have to
+        // check the row count rather than assume it worked.
         final rows = await supabase
             .from('User')
             .update({'phonenumber': '+27${phone.trim()}'})
@@ -359,9 +345,9 @@ class SupabaseService {
       if (email != null) {
         final response =
             await supabase.auth.updateUser(UserAttributes(email: email.trim()));
-        // With "Secure email change" on (the default), Supabase holds the
-        // new address in newEmail until the link is clicked. With it off,
-        // the email changes straight away.
+        // With "Secure email change" on (the default) Supabase parks the new
+        // address in newEmail until the link is clicked. With it off, the
+        // email changes immediately.
         emailPending = response.user?.newEmail != null;
         emailChangedNow = !emailPending;
         if (emailChangedNow) saved.add('email');
@@ -403,25 +389,24 @@ class SupabaseService {
     }
   }
 
-  /// "Your phone number was saved, but `reason`" when something already
-  /// went through before the failure.
+  /// "Your phone number was saved, but `reason`", for when part of it had
+  /// already gone through before the failure.
   String _partly(List<String> saved, String reason) => saved.isEmpty
       ? reason
       : "Your ${saved.join(' and ')} ${saved.length == 1 ? 'was' : 'were'} saved, but: $reason";
 
-  // ----------------------------------------------------------- INVESTIGATORS
-  // Both methods call the list_investigators database function, which joins
-  // "User" + investigator, counts active case assignments and sorts newest
-  // account first. Database rules decide who gets rows back (admins see all
-  // investigators). Errors are thrown, so the screen can show a message.
+  // --- investigators
+  // Both of these use the list_investigators function (joins "User" and
+  // investigator, counts active assignments, newest first). The database
+  // decides who gets rows. Errors are thrown so the screen can show them.
 
-  /// The [limit] most recently created investigators, newest first.
+  /// The [limit] newest investigators.
   Future<List<InvestigatorSummary>> getRecentInvestigators({int limit = 20}) =>
       _listInvestigators(limit: limit);
 
-  /// Investigators whose badge number or name contains [query], ignoring
-  /// case (e.g. "jhb" finds "JHB-4471", "thabo m" finds "Thabo Mokoena").
-  /// An empty [query] returns the most recent investigators.
+  /// Investigators whose badge number or name contains [query], case
+  /// insensitive ("jhb" finds "JHB-4471", "thabo m" finds "Thabo Mokoena").
+  /// Empty [query] gives the newest ones.
   Future<List<InvestigatorSummary>> searchInvestigators(
     String query, {
     int limit = 20,
@@ -445,18 +430,16 @@ class SupabaseService {
         .toList();
   }
 
-  /// Creates an investigator account (admin only) with the temporary
-  /// [password] the admin chose.
+  /// Create an investigator account (admins only) with the temporary
+  /// [password] the admin picked.
   ///
-  /// Calls the create-investigator Edge Function, which holds the service
-  /// key: only it may create a login with the 'investigator' role. The
-  /// database trigger then makes the "User" + investigator rows. The login
-  /// is marked must_change_password, so the investigator chooses their own
-  /// password at their first log-in.
+  /// Goes through the create-investigator Edge Function, since only the
+  /// service key can create a login with the investigator role. The login is
+  /// flagged must_change_password so they pick their own on first login.
   ///
-  /// [phone] is the 9 digits after +27 (optional). Throws FunctionException
-  /// on failure; its details['error'] is a message for the admin (see
-  /// errorText in admin_ui.dart), e.g. "That badge number is already in use."
+  /// [phone] is optional, 9 digits after +27. Throws FunctionException on
+  /// failure, and details['error'] holds a message meant for the admin (see
+  /// errorText in admin_ui.dart).
   Future<void> createInvestigator({
     required String firstName,
     required String surname,
@@ -486,8 +469,8 @@ class SupabaseService {
     );
   }
 
-  /// The log-in username of [userId] (the investigator list doesn't carry
-  /// it; the Update form needs it). Admins can read every "User" row.
+  /// Login username for [userId]. The investigator list doesn't include it
+  /// but the Update form needs it. Admins can read any "User" row.
   Future<String?> getUsername(int userId) async {
     final row = await supabase
         .from('User')
@@ -497,11 +480,10 @@ class SupabaseService {
     return row?['username'] as String?;
   }
 
-  /// Changes an investigator's details and log-in through the
-  /// manage-investigator Edge Function (changing someone's email or
-  /// password needs the service key). [password] is optional: a new
-  /// TEMPORARY password they must change at their next log-in.
-  /// Throws FunctionException like [createInvestigator].
+  /// Update an investigator's details and login via manage-investigator
+  /// (changing someone's email or password needs the service key).
+  /// [password] is optional, and if given it's a temporary one they'll have
+  /// to change next login. Throws FunctionException like [createInvestigator].
   Future<void> updateInvestigator({
     required int userId,
     required String firstName,
@@ -534,10 +516,9 @@ class SupabaseService {
     );
   }
 
-  /// Deletes an investigator's account (manage-investigator Edge Function).
-  /// Returns 'deleted' (nothing they did is on record) or 'anonymised'
-  /// (their case work stays on record as "Former investigator"; the login is
-  /// blocked for good).
+  /// Remove an investigator's account (manage-investigator). Returns
+  /// 'deleted' if they'd never done anything, or 'anonymised' if their case
+  /// work has to stay on record as "Former investigator" (login gets banned).
   Future<String> deleteInvestigator(int userId) async {
     final response = await supabase.functions.invoke(
       'manage-investigator',
@@ -547,9 +528,9 @@ class SupabaseService {
     return data is Map && data['mode'] is String ? data['mode'] as String : 'deleted';
   }
 
-  /// Permanently deletes a REJECTED submission, its footage and everything
-  /// the AI found in it (delete-submission Edge Function). Returns a warning
-  /// when some files could not be removed, otherwise null.
+  /// Permanently delete a rejected submission, its footage and everything
+  /// the AI found (delete-submission). Returns a warning if some files
+  /// couldn't be removed, otherwise null.
   Future<String?> deleteSubmission(int incidentId) async {
     final response = await supabase.functions.invoke(
       'delete-submission',
@@ -559,17 +540,14 @@ class SupabaseService {
     return data is Map && data['warning'] is String ? data['warning'] as String : null;
   }
 
-  // ------------------------------------------------------------ ADMIN STATS
-  /// The four SYSTEM STATUS numbers for the admin Overview tab, counted by
-  /// the admin_overview_stats database function.
+  // --- admin stats
+  /// The four System status numbers on the admin Overview.
   Future<SystemStats> getAdminStats() async {
     final rows = await supabase.rpc('admin_overview_stats') as List;
     return SystemStats.fromMap(rows.first as Map<String, dynamic>);
   }
 
-  /// The [limit] newest events for RECENT ACTIVITY on the admin Overview
-  /// (new submissions, cases created/closed, assignments, new investigators,
-  /// confirmed suspects, corrections), from the recent_activity function.
+  /// The [limit] newest Recent activity items for the admin Overview.
   Future<List<ActivityItem>> getRecentActivity({int limit = 5}) async {
     final rows = await supabase.rpc(
       'recent_activity',
@@ -580,28 +558,27 @@ class SupabaseService {
         .toList();
   }
 
-  // ------------------------------------------------------------- SUBMISSIONS
-  // All of these call the list_submissions database function: incidents
-  // (crimescene) with reporter name, media count, review details, the AI
-  // summary and what the AI saw. Database rules decide what comes back
-  // (admins see every submission).
+  // --- submissions
+  // All of these go through list_submissions, which returns incidents with
+  // the reporter, media count, review details, AI summary and what the AI
+  // saw. The database decides what you get back.
   //
-  // [review] filters on the admin's decision: null = all, or 'pending',
-  // 'accepted', 'rejected', 'duplicate'.
+  // [review] filters by the admin's decision: null for everything, or
+  // 'pending', 'accepted', 'rejected', 'duplicate'.
 
-  /// How many rows one page of a list loads.
+  /// Rows per page.
   static const int pageSize = 30;
 
   /// One page of submissions, for lists that load more as you scroll.
   ///
-  /// Pass the last submission you already have as [after] to get the next
-  /// page (null = first page). A page shorter than [limit] is the last one.
-  /// The database pages with this cursor instead of skipping rows, so page
-  /// 100 is as fast as page 1.
+  /// Pass the last submission you've got as [after] for the next page (null
+  /// for the first). A page shorter than [limit] means you've hit the end.
+  /// The database uses a cursor rather than OFFSET, so page 100 is as quick
+  /// as page 1.
   ///
-  /// Filters (all optional): [search] (incident number like "42" /
-  /// "INC-0042", or text in the location), [review], [caseId], [locationKey]
-  /// (a group from listLocationGroups) and [ids] (only these incidents).
+  /// Optional filters: [search] (incident number like "42"/"INC-0042", or
+  /// location text), [review], [caseId], [locationKey] (from
+  /// listLocationGroups) and [ids].
   Future<List<CrimeSceneSummary>> listSubmissionsPage({
     String? search,
     String? review,
@@ -629,23 +606,22 @@ class SupabaseService {
         .toList();
   }
 
-  /// One submission, or null if it doesn't exist (or may not be seen).
+  /// One submission, or null if it doesn't exist or you can't see it.
   Future<CrimeSceneSummary?> getSubmission(int incidentId) async {
     final rows = await listSubmissionsPage(ids: [incidentId], limit: 1);
     return rows.isEmpty ? null : rows.first;
   }
 
-  /// The [limit] most recently reported incidents, newest first (used by
-  /// the Overview).
+  /// The [limit] most recent incidents. Used by the Overview.
   Future<List<CrimeSceneSummary>> getRecentSubmissions({
     int limit = 20,
     String? review,
   }) =>
       listSubmissionsPage(limit: limit, review: review);
 
-  /// Incidents matching [query]: an incident number ("42", "INC-0042",
-  /// "inc 42") or text in the location (any case). An empty [query] returns
-  /// the most recent submissions. Used by the pickers.
+  /// Incidents matching [query], either an incident number ("42",
+  /// "INC-0042", "inc 42") or location text. Empty gives the most recent.
+  /// The pickers use this.
   Future<List<CrimeSceneSummary>> searchSubmissions(
     String query, {
     int limit = 20,
@@ -653,11 +629,11 @@ class SupabaseService {
   }) =>
       listSubmissionsPage(search: query, limit: limit, review: review);
 
-  /// The first 100 incidents in a case (accepted ones and their duplicates).
+  /// First 100 incidents in a case (accepted ones plus their duplicates).
   Future<List<CrimeSceneSummary>> getCaseIncidents(int caseId) =>
       listSubmissionsPage(caseId: caseId, limit: 100);
 
-  /// The clips / photos of a submission with what the AI saw in each.
+  /// A submission's clips/photos and what the AI saw in each.
   Future<List<MediaItem>> getIncidentMedia(int incidentId) async {
     final rows = await supabase
         .rpc('list_incident_media', params: {'p_incidentid': incidentId}) as List;
@@ -666,12 +642,12 @@ class SupabaseService {
         .toList();
   }
 
-  // ------------------------------------------------- CRIME SCENES + CORRECTIONS
-  // A case groups several crime scenes. Admins and investigators assigned
-  // to the case may see them (the database checks).
+  // --- crime scenes and corrections
+  // A case is made up of crime scenes. Admins and assigned investigators can
+  // see them, the database checks that.
 
-  /// One card per crime scene in the case: description, location, how many
-  /// suspects / vehicles / weapons, and where the AI is with its footage.
+  /// A card per crime scene in the case: description, location, suspect/
+  /// vehicle/weapon counts and how far the AI has got with its footage.
   Future<List<CrimeSceneCardInfo>> listCaseCrimeScenes(int caseId) async {
     final rows = await supabase
         .rpc('list_case_crime_scenes', params: {'p_caseid': caseId}) as List;
@@ -680,8 +656,8 @@ class SupabaseService {
         .toList();
   }
 
-  /// One crime scene in full: its files, what the AI found (with each
-  /// correctable field) and the corrections log. Null if it doesn't exist.
+  /// One crime scene in full: files, detections (with their correctable
+  /// fields) and the corrections log. Null if it doesn't exist.
   Future<CrimeSceneDetail?> getCrimeScene(int incidentId) async {
     final data = await supabase
         .rpc('get_crime_scene', params: {'p_incidentid': incidentId});
@@ -689,10 +665,10 @@ class SupabaseService {
     return CrimeSceneDetail.fromMap(Map<String, dynamic>.from(data as Map));
   }
 
-  /// Corrects one field of what the AI found ('plate', 'make', 'colour',
-  /// 'weapon_type', 'dismissed' ...). [value] null / '' = none. Logged in
-  /// correctionlog with [note]. Fails while the AI is still analysing the
-  /// footage, or when the case is closed (investigators).
+  /// Correct one field of a detection ('plate', 'make', 'colour',
+  /// 'weapon_type', 'dismissed', ...). null or '' for [value] means none.
+  /// Gets logged with [note]. Fails while the AI is still on the footage, and
+  /// for investigators once the case is closed.
   Future<void> correctDetection(int detectionId, String field, String? value,
       {String? note}) async {
     final text = note?.trim() ?? '';
@@ -704,32 +680,31 @@ class SupabaseService {
     });
   }
 
-  // -------------------------------------------------------------- AI WORKER
+  // --- AI worker
 
-  /// Starts the AI analysis of a submission. Call it ONCE, after the LAST
-  /// file of the submission (1-5 files) is uploaded and its media row
-  /// inserted. Only the citizen who reported it (or an admin) may; calling
-  /// again while it is waiting or running does nothing. Returns the job id.
-  /// The submission then shows "AI processing" until the worker is done
-  /// (crimescene.aisummarystatus: processing -> ready / failed).
+  /// Kick off the AI analysis. Call it once, after the last file (of 1-5) is
+  /// uploaded and its media row exists. Only the reporting citizen or an
+  /// admin can, and calling it again while it's queued or running does
+  /// nothing. Returns the job id. The submission shows "AI processing" until
+  /// aisummarystatus goes to ready or failed.
   Future<int> submitForAnalysis(int incidentId) async {
     final jobId = await supabase
         .rpc('submit_for_analysis', params: {'p_incidentid': incidentId});
     return (jobId as num).toInt();
   }
 
-  /// Admins: is an AI worker running? {online, workers: [{workerid, gpu,
-  /// version, lastseen, seconds_ago, online}], queued, running, failed_24h}
+  /// For admins: is a worker up? Returns {online, workers, queued, running,
+  /// failed_24h}, where workers has gpu/version/last seen for each one.
   Future<Map<String, dynamic>> getAiWorkerStatus() async {
     final status = await supabase.rpc('ai_worker_status');
     return Map<String, dynamic>.from(status as Map);
   }
 
-  // --------------------------------------------------------------- GROUPING
+  // --- grouping
 
-  /// Submissions grouped by location, most recently reported first.
-  /// [search] filters on the location text; [offset] = groups already
-  /// loaded (groups are few, so plain offset paging is fine here).
+  /// Submissions grouped by location, most recent first. [search] filters
+  /// the location text. [offset] is how many groups you already have. There
+  /// aren't many groups so plain offset paging is fine here.
   Future<List<LocationGroup>> listLocationGroups({
     String? search,
     String? review,
@@ -748,8 +723,8 @@ class SupabaseService {
         .toList();
   }
 
-  /// Groups of submissions joined by AI cross-reference links (the same
-  /// vehicle or suspect in different reports). Groups with something still
+  /// Submissions linked together by AI cross-reference links (same vehicle
+  /// or suspect turning up in different reports). Groups with something
   /// pending come first.
   Future<List<LinkedGroup>> listLinkedGroups({
     int offset = 0,
@@ -762,9 +737,9 @@ class SupabaseService {
         .toList();
   }
 
-  // ------------------------------------------------------------ SUGGESTIONS
+  // --- suggestions
 
-  /// Pending submissions that probably belong in the case, best first.
+  /// Pending submissions that probably belong in this case, best first.
   Future<List<IncidentSuggestion>> suggestIncidentsForCase(int caseId,
       {int limit = 5}) async {
     final rows = await supabase.rpc('suggest_incidents_for_case',
@@ -774,9 +749,9 @@ class SupabaseService {
         .toList();
   }
 
-  /// Pending submissions that most likely belong in an existing open case
-  /// (score >= [minScore]), each with its best case, strongest first. For
-  /// the "Suggested matches" review list.
+  /// Pending submissions that very likely belong in an open case (score >=
+  /// [minScore]), each with its best case, strongest first. Feeds the
+  /// "Suggested matches" list.
   Future<List<SuggestedMatch>> listSuggestedMatches(
       {int minScore = 60, int limit = 50}) async {
     final rows = await supabase.rpc('list_suggested_matches',
@@ -786,9 +761,8 @@ class SupabaseService {
         .toList();
   }
 
-  /// Accepts the matches the admin ticked, in one transaction. Ones that
-  /// were reviewed by someone else meanwhile are skipped. Returns how many
-  /// submissions were added to cases.
+  /// Accept the ticked matches in one transaction. Anything someone else
+  /// reviewed in the meantime gets skipped. Returns how many were added.
   Future<int> acceptSuggestedMatches(List<SuggestedMatch> matches) async {
     final added = await supabase.rpc('accept_suggested_matches', params: {
       'p_incidentids': [for (final m in matches) m.incidentId],
@@ -797,7 +771,7 @@ class SupabaseService {
     return (added as num).toInt();
   }
 
-  /// Open cases the submission probably belongs to, best first.
+  /// Open cases this submission probably belongs to, best first.
   Future<List<CaseSuggestion>> suggestCasesForIncident(int incidentId,
       {int limit = 3}) async {
     final rows = await supabase.rpc('suggest_cases_for_incident',
@@ -807,9 +781,9 @@ class SupabaseService {
         .toList();
   }
 
-  /// For a page of case cards: each case's best suggested pending
-  /// submission with its most relevant number plate (closed cases and
-  /// cases with no suggestion are left out). At most 50 cases per call.
+  /// For a page of case cards, each case's best suggested pending submission
+  /// and its most relevant plate. Closed cases and cases with no suggestion
+  /// are left out. Max 50 cases per call.
   Future<List<CaseCardSuggestion>> getCaseCardSuggestions(
       List<int> caseIds) async {
     if (caseIds.isEmpty) return const [];
@@ -820,34 +794,34 @@ class SupabaseService {
         .toList();
   }
 
-  // ------------------------------------------------------- REVIEW (admin only)
-  // Each calls one database function that checks the caller is an admin and
-  // makes all of its changes at once. On failure they throw; the message of
-  // a PostgrestException explains why (e.g. "Case 5 is closed ...").
+  // --- review (admins only)
+  // Each one is a single database function that checks you're an admin and
+  // does everything in one go. They throw on failure, and the
+  // PostgrestException message says why (e.g. "Case 5 is closed ...").
 
-  /// Rejects a submission. It stays on record but is not used.
+  /// Reject a submission. It stays on record but isn't used.
   Future<void> rejectSubmission(int incidentId, {String? note}) async {
     await supabase.rpc('reject_submission',
         params: {'p_incidentid': incidentId, 'p_note': note});
   }
 
-  /// Marks [incidentId] as a duplicate of [originalId]; it joins the
-  /// original's case, if it has one.
+  /// Mark [incidentId] as a duplicate of [originalId]. It joins the
+  /// original's case if there is one.
   Future<void> markDuplicate(int incidentId, int originalId) async {
     await supabase.rpc('mark_duplicate',
         params: {'p_incidentid': incidentId, 'p_originalid': originalId});
   }
 
-  /// Undoes a review: back to 'pending' and out of its case. Also used for
-  /// "Remove from case".
+  /// Undo a review, putting it back to pending and out of its case. "Remove
+  /// from case" uses this too.
   Future<void> reopenSubmission(int incidentId) async {
     await supabase.rpc('reopen_submission', params: {'p_incidentid': incidentId});
   }
 
-  // ------------------------------------------------------------ CASES (admin)
+  // --- cases (admins)
 
-  /// Creates a case, optionally with incidents in it (they are accepted).
-  /// Returns the new case id.
+  /// Create a case, optionally with some incidents in it already (they get
+  /// accepted). Returns the new case id.
   Future<int> createCase({
     required String title,
     String? description,
@@ -861,15 +835,15 @@ class SupabaseService {
     return (id as num).toInt();
   }
 
-  /// Adds (or moves) incidents into an existing case that is not closed.
+  /// Add (or move) incidents into an existing case that isn't closed.
   Future<void> addIncidentsToCase(int caseId, List<int> incidentIds) async {
     await supabase.rpc('add_incidents_to_case',
         params: {'p_caseid': caseId, 'p_incidentids': incidentIds});
   }
 
-  /// Cases, most recently active first. [status]: null = all, 'active'
+  /// Cases, most recently active first. [status] is null for all, 'active'
   /// (open + under review), 'open', 'under_review' or 'closed'. [query]
-  /// matches a case number ("3", "CASE-0003") or text in the title.
+  /// matches a case number ("3", "CASE-0003") or title text.
   Future<List<CaseSummary>> listCases({
     String? query,
     String? status,
@@ -877,8 +851,8 @@ class SupabaseService {
   }) =>
       listCasesPage(query: query, status: status, limit: limit);
 
-  /// One page of cases for lists that load more as you scroll: pass the
-  /// last case you already have as [after] (null = first page).
+  /// One page of cases for scroll-to-load lists. Pass the last case you have
+  /// as [after], or null for the first page.
   Future<List<CaseSummary>> listCasesPage({
     String? query,
     String? status,
@@ -900,7 +874,7 @@ class SupabaseService {
         .toList();
   }
 
-  /// One case, or null if it doesn't exist (or may not be seen).
+  /// One case, or null if it doesn't exist or you can't see it.
   Future<CaseSummary?> getCase(int caseId) async {
     final rows = await supabase.rpc('list_cases', params: {'p_caseid': caseId})
         as List;
@@ -909,11 +883,11 @@ class SupabaseService {
         : CaseSummary.fromMap(rows.first as Map<String, dynamic>);
   }
 
-  /// Changes a case's title, description and/or status. Only the values
-  /// passed are changed. Closing sets the closed date automatically.
+  /// Change a case's title, description and/or status. Only what you pass
+  /// gets changed, and closing fills in the closed date automatically.
   ///
-  /// The status goes through the set_case_status database function: admins
-  /// may set any status, assigned investigators only open <-> under review.
+  /// Status goes through set_case_status: admins can set anything, assigned
+  /// investigators can only switch between open and under review.
   Future<void> updateCase(
     int caseId, {
     String? title,
@@ -934,7 +908,7 @@ class SupabaseService {
     }
   }
 
-  /// A case's history, newest first, 30 at a time: pass the last event you
+  /// A case's history, newest first, 30 at a time. Pass the last event you
   /// have as [before] for the next page.
   Future<List<CaseEvent>> getCaseEvents(int caseId,
       {CaseEvent? before, int limit = 30}) async {
@@ -948,7 +922,7 @@ class SupabaseService {
         .toList();
   }
 
-  /// Investigators on a case: active first, then past assignments.
+  /// Investigators on a case, active ones first and then past assignments.
   Future<List<CaseAssignmentInfo>> getCaseAssignments(int caseId) async {
     final rows = await supabase
         .rpc('list_case_assignments', params: {'p_caseid': caseId}) as List;
@@ -957,44 +931,41 @@ class SupabaseService {
         .toList();
   }
 
-  /// Assigns an investigator ([userId]) to a case. Does nothing if they are
-  /// already assigned. The first investigator on a case becomes its lead.
-  /// Returns the assignment id.
+  /// Assign an investigator to a case. No-op if they're already on it. The
+  /// first one on a case becomes lead. Returns the assignment id.
   Future<int> assignInvestigator(int caseId, int userId) async {
     final id = await supabase.rpc('assign_investigator',
         params: {'p_caseid': caseId, 'p_userid': userId});
     return (id as num).toInt();
   }
 
-  /// Makes an active assignment the case's lead investigator (the old lead
-  /// stays on the case).
+  /// Make an active assignment the lead. The old lead stays on the case.
   Future<void> setCaseLead(int assignmentId) async {
     await supabase.rpc('set_case_lead', params: {'p_assignmentid': assignmentId});
   }
 
-  /// Ends an assignment (kept as history).
+  /// End an assignment. The row stays as history.
   Future<void> unassignInvestigator(int assignmentId) async {
     await supabase.rpc('unassign_investigator',
         params: {'p_assignmentid': assignmentId});
   }
 
-  // ------------------------------------------------- CITIZEN SUBMISSIONS
-  //
-  // How a citizen's report reaches the AI worker (all as the signed-in
-  // citizen; the database rules only let them touch their OWN incident):
-  //   1. createIncident        -> crimescene row (reportedby = them)
-  //   2. uploadIncidentFile    -> submissions/<id>/media/<random>.<ext>
-  //                               + media row, once per file (1-5)
-  //   3. submitForAnalysis     -> queues the AI worker's 'analyse' job
+  // --- citizen submissions
+  // How a citizen's report gets to the AI worker, all done as the signed-in
+  // citizen (RLS only lets them touch their own incident):
+  //   createIncident      the crimescene row
+  //   uploadIncidentFile  the file to submissions/<id>/media/ plus a media
+  //                       row, once per file
+  //   submitForAnalysis   queues the 'analyse' job
 
-  /// The bucket for footage and AI results (migration 20261009090000).
+  /// Bucket for footage and AI results.
   static const submissionsBucket = 'submissions';
 
-  /// The bucket's upload limit per file (config.toml [storage]).
+  /// Per-file upload limit, has to match config.toml [storage].
   static const maxFileBytes = 50 * 1024 * 1024;
 
-  /// Creates the citizen's incident; returns its id. [latitude]/[longitude]
-  /// = the phone's GPS (null if the citizen didn't share it).
+  /// Create the citizen's incident and return its id. [latitude]/[longitude]
+  /// is the phone's GPS, null if they didn't share it.
   Future<int> createIncident({
     required int reporterId,
     required String location,
@@ -1020,8 +991,8 @@ class SupabaseService {
     return (row['incidentid'] as num).toInt();
   }
 
-  /// Uploads one file of an incident and records it. Returns its path in
-  /// the bucket. [mediaType] = 'image' or 'video'.
+  /// Upload one file for an incident and record it. Returns its bucket path.
+  /// [mediaType] is 'image' or 'video'.
   Future<String> uploadIncidentFile({
     required int incidentId,
     required int uploaderId,
@@ -1032,7 +1003,7 @@ class SupabaseService {
   }) async {
     final dot = fileName.lastIndexOf('.');
     final ext = dot < 0 ? '' : fileName.substring(dot).toLowerCase();
-    // random name: the citizen's file names can contain anything
+    // random name, since the citizen's own file names could be anything
     final random = Random.secure();
     final name = List.generate(16, (_) => random.nextInt(16).toRadixString(16)).join();
     final path = '$incidentId/media/$name$ext';
@@ -1079,13 +1050,13 @@ class SupabaseService {
     ];
   }
 
-  // ------------------------------------------------------------- CASE CHAT
-  // A group chat per case for its assigned investigators (Chat tab of the
-  // investigator case page). The database decides who may read / post:
-  // migration 20261015100000_case_chat.sql.
+  // --- case chat
+  // A group chat per case for its assigned investigators (Chat tab on the
+  // investigator's case page). The database decides who can read and post,
+  // see 20261015100000_case_chat.sql.
 
-  /// The case's chat, oldest first (the newest 200). With [afterId]: only
-  /// the messages newer than that one (for live updates).
+  /// The case chat, oldest first (newest 200). With [afterId], only messages
+  /// after that one, for live updates.
   Future<List<CaseMessage>> getCaseMessages(int caseId,
       {int? afterId, int limit = 200}) async {
     final rows = await supabase.rpc('list_case_messages', params: {
@@ -1098,15 +1069,15 @@ class SupabaseService {
         .toList();
   }
 
-  /// Posts [body] to the case's chat; returns the new message.
+  /// Post [body] to the case chat and get the new message back.
   Future<CaseMessage> sendCaseMessage(int caseId, String body) async {
     final rows = await supabase.rpc('send_case_message',
         params: {'p_caseid': caseId, 'p_body': body}) as List;
     return CaseMessage.fromMap(rows.single as Map<String, dynamic>);
   }
 
-  /// Calls [onNewMessage] whenever someone posts in the case's chat
-  /// (Supabase Realtime). Returns a function that stops watching.
+  /// Calls [onNewMessage] whenever someone posts (via Realtime). Returns a
+  /// function that stops listening.
   void Function() watchCaseMessages(int caseId, void Function() onNewMessage) {
     final channel = supabase
         .channel('case-chat-')

@@ -1,15 +1,13 @@
-// app_theme.dart — the one place for Argus Shield's colours, fonts, text
-// styles and spacing. Values come from the Figma designs for the login and
-// register pages.
+// Colours, fonts, text styles and spacing for the whole app, taken from the
+// Figma login/register designs.
 //
-// Pages should use these instead of hard-coding values:
-//   color: AppColors.accent     not  Colors.orangeAccent
-//   style: AppText.fieldLabel   not  TextStyle(fontFamily: ..., fontSize: ...)
-// Change a value here and every screen follows.
+// Use these instead of hard-coding things on a page (AppColors.accent, not
+// Colors.orangeAccent; AppText.fieldLabel, not a hand-made TextStyle), so a
+// change here shows up everywhere.
 //
-// buildArgusTheme() turns the same values into the app-wide ThemeData, so
-// plain widgets (TextFormField, ElevatedButton, TextButton, TabBar, SnackBar,
-// Checkbox, progress spinners) pick up the Argus look without extra styling.
+// buildArgusTheme() turns the same values into ThemeData, so plain widgets
+// like TextFormField, buttons, TabBar, SnackBar and spinners get the look
+// without any extra styling.
 
 import 'package:flutter/material.dart';
 
@@ -20,42 +18,42 @@ class AppColors {
   /// Page background.
   static const Color background = Color(0xFF192536);
 
-  /// App bar / header background.
+  /// App bar / header.
   static const Color header = Color(0xFF11192A);
 
-  /// Buttons, links, focused fields, active tab, icons (Colors.orangeAccent).
+  /// Buttons, links, focused fields, active tab, icons.
   static const Color accent = Color(0xFFFFAB40);
 
-  /// Errors, failed actions and urgent actions such as recording live.
+  /// Errors, failures and urgent stuff like recording live.
   static const Color danger = Color(0xFFF35C68);
 
-  /// Successful actions (Colors.green).
+  /// Success.
   static const Color success = Color(0xFF4CAF50);
 
-  /// Outline of text fields and boxes when not focused.
+  /// Unfocused text field and box outlines.
   static const Color fieldBorder = Color(0xFF79747E);
 
   static const Color textPrimary = Colors.white;
   static const Color textMuted = Colors.white70;
   static const Color textHint = Colors.white54;
 
-  /// Grey for secondary text, hints and icons on the admin and investigator
-  /// screens. Readable on the navy cards (dark mode) AND the white cards
-  /// (light mode), unlike white70 / white54 which vanish on white.
+  /// Grey for secondary text, hints and icons on the admin/investigator
+  /// screens. Unlike white70/white54 it's still readable on the white cards
+  /// in light mode.
   static const Color neutral = Color(0xFF8A94A6);
 
   /// The small "Secure Access" line under the login button.
   static const Color footer = Colors.black;
 }
 
-/// Font families (declared in pubspec.yaml).
+/// Font families, declared in pubspec.yaml.
 class AppFonts {
   AppFonts._();
 
   /// Titles and field labels.
   static const String heading = 'CourierPrime';
 
-  /// Everything else: body text, buttons, links.
+  /// Everything else.
   static const String body = 'Inter';
 }
 
@@ -71,42 +69,42 @@ class AppText {
     color: AppColors.textPrimary,
   );
 
-  /// "CIT Intelligence System" under the app bar title.
+  /// "CIT Intelligence System" under the title.
   static const TextStyle appSubtitle = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 10,
     color: AppColors.textPrimary,
   );
 
-  /// Big page heading on full-screen pages ("Login", "Register as citizen").
-  /// No colour here: it follows light or dark mode.
+  /// Big heading on full-screen pages ("Login", "Register as citizen"). No
+  /// colour set, so it follows light/dark mode.
   static const TextStyle pageTitle = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 50,
     fontWeight: FontWeight.bold,
   );
 
-  /// Heading of a section or tab ("Submit footage", "My profile").
+  /// Section or tab heading ("Submit footage", "My profile").
   static const TextStyle sectionTitle = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 28,
     fontWeight: FontWeight.bold,
   );
 
-  /// Label above a text field ("Username", "Password").
+  /// Label above a text field.
   static const TextStyle fieldLabel = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 20,
     fontWeight: FontWeight.bold,
   );
 
-  /// Label next to a checkbox ("Terms and conditions").
+  /// Label next to a checkbox.
   static const TextStyle checkboxLabel = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 20,
   );
 
-  /// Heading inside a card (a submission's reference number).
+  /// Heading inside a card, e.g. a submission's reference.
   static const TextStyle cardTitle = TextStyle(
     fontFamily: AppFonts.heading,
     fontSize: 18,
@@ -125,7 +123,7 @@ class AppText {
     height: 1.3,
   );
 
-  /// Small bold tag: role badge, submission status.
+  /// Small bold tag, like a role badge or submission status.
   static const TextStyle caption = TextStyle(
     fontFamily: AppFonts.body,
     fontSize: 12,
@@ -149,7 +147,7 @@ class AppText {
     color: AppColors.textPrimary,
   );
 
-  /// Smaller buttons that sit inside a page ("Record Live Footage").
+  /// Smaller in-page buttons ("Record Live Footage").
   static const TextStyle buttonSmall = TextStyle(
     fontFamily: AppFonts.body,
     fontSize: 16,
@@ -168,12 +166,12 @@ class AppText {
 class AppSpacing {
   AppSpacing._();
 
-  /// Padding around the content of every page.
+  /// Padding around every page's content.
   static const EdgeInsets page = EdgeInsets.all(30);
 
-  /// Padding for the admin dashboard tabs (Overview, Cases, Investigators,
-  /// Submissions): a thin margin so the cards use almost the full screen.
-  /// No bottom padding, so lists scroll right to the bottom edge.
+  /// Padding for the admin dashboard tabs. Thin side margins so the cards
+  /// use nearly the whole screen, and no bottom padding so lists scroll all
+  /// the way to the edge.
   static const EdgeInsets tab = EdgeInsets.fromLTRB(12, 12, 12, 0);
 
   static const double small = 10;
@@ -185,7 +183,7 @@ class AppSpacing {
   static const double buttonMaxWidth = 400;
 }
 
-/// The app-wide theme. Pass it to every MaterialApp: `theme: buildArgusTheme()`.
+/// The app-wide dark theme. Every MaterialApp gets `theme: buildArgusTheme()`.
 ThemeData buildArgusTheme() {
   const colorScheme = ColorScheme.dark(
     primary: AppColors.accent,
@@ -203,7 +201,7 @@ ThemeData buildArgusTheme() {
     scaffoldBackgroundColor: AppColors.background,
     fontFamily: AppFonts.body,
 
-    // Text fields: outlined, orange when focused, coral when invalid.
+    // text fields: outlined, orange when focused, coral when invalid
     inputDecorationTheme: const InputDecorationThemeData(
       border: OutlineInputBorder(
         borderSide: BorderSide(color: AppColors.fieldBorder),
@@ -226,7 +224,7 @@ ThemeData buildArgusTheme() {
       errorMaxLines: 3,
     ),
 
-    // Main buttons: square orange block with white bold text.
+    // main buttons: square orange block, white bold text
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.accent,
@@ -239,7 +237,7 @@ ThemeData buildArgusTheme() {
       ),
     ),
 
-    // Links.
+    // links
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.accent,
@@ -286,7 +284,7 @@ ThemeData buildArgusTheme() {
   );
 }
 
-/// Light theme version of the Argus look.
+/// Light version of the same look.
 ThemeData buildArgusLightTheme() {
   const colorScheme = ColorScheme.light(
     primary: AppColors.accent,
@@ -303,8 +301,8 @@ ThemeData buildArgusLightTheme() {
     colorScheme: colorScheme,
     scaffoldBackgroundColor: Colors.white,
     fontFamily: AppFonts.body,
-    // Colours only: sizes and weights stay the Material defaults, exactly as
-    // in dark mode, so no text changes size when the mode is switched.
+    // Only colours change. Sizes and weights are left as the Material
+    // defaults like in dark mode, so nothing jumps in size when you switch.
     textTheme: const TextTheme(
       bodyLarge: TextStyle(color: Colors.black87),
       bodyMedium: TextStyle(color: Colors.black87),
@@ -330,8 +328,8 @@ ThemeData buildArgusLightTheme() {
       textColor: Colors.black87,
       iconColor: Colors.black54,
     ),
-    // Same as dark mode (size 30 bold "Access System" etc.) — before, light
-    // mode had no textStyle here, so main buttons shrank to 14.
+    // Same as dark mode. Light mode used to have no textStyle here and the
+    // main buttons shrank to 14.
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.accent,
@@ -344,7 +342,7 @@ ThemeData buildArgusLightTheme() {
       ),
     ),
 
-    // Links ("Forgot password?", "Register as citizen"): same size as dark.
+    // links, same size as dark mode
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.accent,
@@ -352,7 +350,7 @@ ThemeData buildArgusLightTheme() {
       ),
     ),
 
-    // Text fields: same borders and text sizes as dark mode.
+    // text fields, same borders and sizes as dark mode
     inputDecorationTheme: const InputDecorationThemeData(
       border: OutlineInputBorder(
         borderSide: BorderSide(color: AppColors.fieldBorder),
@@ -410,9 +408,8 @@ ThemeData buildArgusLightTheme() {
   );
 }
 
-/// Writing inside a card (cards, person rows, chat bubbles).
-/// Dark mode: white on the navy card. Light mode: near-black on the white
-/// card (cardColor), so it stays readable in both.
+/// Text inside a card (cards, person rows, chat bubbles). White on navy in
+/// dark mode, near-black on white in light mode.
 class NavyText extends StatelessWidget {
   final Widget child;
 
@@ -431,23 +428,23 @@ class NavyText extends StatelessWidget {
 bool isDark(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark;
 
-/// Background of a card / list item / panel. Navy in dark mode, white in
-/// light mode. Use this instead of AppColors.header for anything that is
-/// not the app bar.
+/// Background for cards, list items and panels. Navy in dark mode, white in
+/// light. Use this rather than AppColors.header for anything that isn't the
+/// app bar.
 Color cardColor(BuildContext context) =>
     isDark(context) ? AppColors.header : Colors.white;
 
-/// A box inside a card (picture placeholders, text field fill, other
-/// people's chat bubbles). Dark: the page navy. Light: a soft grey.
+/// A box inside a card (image placeholders, field fill, other people's chat
+/// bubbles). Page navy in dark mode, soft grey in light.
 Color panelColor(BuildContext context) =>
     isDark(context) ? AppColors.background : const Color(0xFFF1F3F6);
 
-/// The page background (bottom sheets, the strip behind the system bar).
+/// Page background, for bottom sheets and the strip behind the system bar.
 Color pageColor(BuildContext context) =>
     isDark(context) ? AppColors.background : Colors.white;
 
-/// Ink for text that sits on the page background (not inside a dark card).
-/// Dark mode stays white. Light mode switches to near-black so it stays readable.
+/// Text colour for things sitting on the page background rather than in a
+/// card. White in dark mode, near-black in light mode.
 Color pageInk(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
         ? AppColors.textPrimary

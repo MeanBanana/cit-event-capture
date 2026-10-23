@@ -1,10 +1,10 @@
-// media_viewer_page.dart — one submitted video or photo, full screen:
-// photos with pinch-to-zoom, videos with play / pause and a scrub bar, and a
-// Download button that saves the original file to the phone's gallery.
+// Full-screen view of one submitted video or photo. Photos get pinch to zoom,
+// videos get play/pause and a scrub bar, and there's a Download button that
+// saves the original to the gallery.
 //
-// The file comes from the private 'submissions' bucket with the signed-in
-// admin's / investigator's session (the bucket's rules decide who may).
-// Videos stream from a signed link that is valid for one hour.
+// The file comes from the private bucket using the user's own session, so
+// the bucket rules decide who can see it. Videos stream from a signed link
+// that lasts an hour.
 
 import 'dart:io';
 
@@ -19,16 +19,16 @@ import 'package:argus_shield/case_evidence_source.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 
 class MediaViewerPage extends StatefulWidget {
-  /// Path in the 'submissions' bucket, e.g. "57/media/3f9c....mp4".
+  /// Bucket path, e.g. "57/media/3f9c....mp4".
   final String storagePath;
 
-  /// 'video' | 'image'
+  /// 'video' or 'image'
   final String mediaType;
 
-  /// Shown at the top, e.g. "INC-0057 · Clip 2".
+  /// Title at the top, e.g. "INC-0057 · Clip 2".
   final String title;
 
-  /// Shown in the top bar ('Admin' / 'Investigator').
+  /// For the top bar, 'Admin' or 'Investigator'.
   final String roleLabel;
 
   const MediaViewerPage({
@@ -71,7 +71,7 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
         return;
       }
       controller.addListener(() {
-        if (mounted) setState(() {}); // play / pause icon, position
+        if (mounted) setState(() {}); // update the play/pause icon and position
       });
       setState(() => _video = controller);
       await controller.play();
@@ -94,7 +94,7 @@ class _MediaViewerPageState extends State<MediaViewerPage> {
       final bytes = await _source.bytes(widget.storagePath);
       final fileName = 'argus_${widget.storagePath.replaceAll('/', '_')}';
       if (_isVideo) {
-        // Gal saves videos from a file
+        // Gal can only save videos from a file
         final file = File('${Directory.systemTemp.path}/$fileName');
         await file.writeAsBytes(bytes, flush: true);
         await Gal.putVideo(file.path);

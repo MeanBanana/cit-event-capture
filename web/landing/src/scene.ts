@@ -1,9 +1,9 @@
 /**
- * Where every person, vehicle, weapon and number plate sits in the hero's
- * layers, as fractions of the layer image (x, y, w, h from the top left).
- * Written by the layer renderer alongside the images in public/layers/,
- * so the AI boxes in the hero stay locked to what they label.
- * mx / my: a weapon's muzzle (for the shot flashes); dir: which way it fires.
+ * Where every person, vehicle, weapon and plate sits in the hero layers, as
+ * fractions of the layer image (x, y, w, h from top left). The layer renderer
+ * spits these out alongside the images in public/layers/, which is how the
+ * AI boxes stay locked onto the right things.
+ * mx/my is a weapon's muzzle (for the flashes), dir is which way it fires.
  */
 
 export type LayerName = 'sky' | 'van' | 'ambush' | 'frame' | 'phone' | 'ground';

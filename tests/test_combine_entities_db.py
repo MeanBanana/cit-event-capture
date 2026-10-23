@@ -1,10 +1,9 @@
 """
-Tests for combining a case's people / vehicles / weapons by hand
-(migration 20261020120000_combine_case_entities.sql): "Person 2 is the same
-as Person 1" on the View crops screen.
+Tests for manually combining a case's people/vehicles/weapons
+(20261020120000_combine_case_entities.sql), i.e. telling it "Person 2 is
+actually Person 1" from the View crops screen.
 
-Runs against the LOCAL Supabase database like test_ai_pipeline_db.py (every
-test is rolled back):
+Same setup as test_ai_pipeline_db.py, every test gets rolled back:
     cd database && supabase db reset
     python tests/test_combine_entities_db.py
 """
@@ -21,9 +20,9 @@ from test_ai_pipeline_db import (  # noqa: E402
 
 
 def two_people(db, w):
-    """Submission 1: Person 1 (A) with Weapon 1 + Vehicle 1.
-    Submission 2: someone who looks different (B) with a gun and another car:
-    the AI makes them Person 2, Weapon 2, Vehicle 2."""
+    """Two submissions: the first has Person 1 with Weapon 1 and Vehicle 1,
+    the second has someone who looks different with another gun and car, so
+    the AI files them as Person 2, Weapon 2 and Vehicle 2."""
     one, _, case_id, _ = analysed_case(db, w)
     two, media2 = report(db, w.citizen, files=1, lat=SANDTON[0], lon=SANDTON[1])
     db.rpc("submit_for_analysis", who=w.citizen, p_incidentid=two)
@@ -53,23 +52,23 @@ def test_combine_people_moves_pictures_and_guns(db, w):
     merged = entity(view, "Person 1")
     assert len(merged["crops"]) == len(p1["crops"]) + len(p2["crops"])
     assert merged["submission_count"] == 2
-    # the moved pictures are an admin decision now
+    # after a manual combine, those pictures count as an admin decision
     statuses = db.rows("SELECT d.matchstatus, d.matchreasons FROM public.detection d "
                        "JOIN public.media m USING (mediaid) WHERE m.incidentid = %s "
                        "AND d.detectiontype = 'person'", [two])
     assert statuses == [{"matchstatus": "confirmed", "matchreasons": ["combined with Person 2 by hand"]}]
-    # Weapon 2 was held by Person 2 -> now by Person 1
+    # Weapon 2 belonged to Person 2, so it moves to Person 1 now
     held = db.rows("SELECT w.number, h.number AS holder FROM public.caseentity w "
                    "JOIN public.caseentity h ON h.entityid = w.heldbyentityid "
                    "WHERE w.caseid = %s AND w.kind = 'weapon' ORDER BY w.number", [case_id])
     assert held == [{"number": 1, "holder": 1}, {"number": 2, "holder": 1}], held
-    # re-vote queued, summary outdated, history written
+    # re-vote gets queued, summary marked stale, history written
     assert [j["kind"] for j in jobs(db, caseid=case_id, status="queued")] == ["summary"]
     assert db.val("SELECT aisummarystatus FROM public.cases WHERE caseid = %s", [case_id]) == "outdated"
     ev = db.one("SELECT * FROM public.caseevent WHERE caseid = %s ORDER BY eventid DESC LIMIT 1", [case_id])
     assert (ev["eventtype"], ev["detail"], ev["actor"]) == \
         ("ai_entities_combined", "Person 2 is the same as Person 1", w.admin["userid"])
-    # the worker re-votes and never splits them again
+    # the worker re-votes and doesn't split them back apart
     run_case_jobs(db)
     view = evidence(db, case_id, w.admin)
     assert view["counts"]["people"] == 1 and entity(view, "Person 1")["submission_count"] == 2
@@ -78,9 +77,9 @@ def test_combine_people_moves_pictures_and_guns(db, w):
 
 def test_stale_worker_save_does_not_split_them(db, w):
     case_id, _, _ = two_people(db, w)
-    stale = db.rpc("ai_load_case", p_caseid=case_id)       # worker loaded before ...
+    stale = db.rpc("ai_load_case", p_caseid=case_id)       # worker loads the case before the combine...
     combine(db, w.admin, case_id, "p2", "p1")
-    save_case(db, stale)                                    # ... and saves after
+    save_case(db, stale)                                    # ...and saves it after
     view = evidence(db, case_id, w.admin)
     assert view["counts"]["people"] == 1, view["counts"]
     assert entity(view, "Person 1")["submission_count"] == 2
@@ -91,7 +90,7 @@ def test_combine_vehicles_and_weapons(db, w):
     before = evidence(db, case_id, w.admin)
     v_crops = len(entity(before, "Vehicle 1")["crops"]) + len(entity(before, "Vehicle 2")["crops"])
     combine(db, w.admin, case_id, "v2", "v1")
-    combine(db, w.admin, case_id, "w1", "w2")             # either direction
+    combine(db, w.admin, case_id, "w1", "w2")             # works either way round
     view = evidence(db, case_id, w.admin)
     assert view["counts"] == {"people": 2, "vehicles": 1, "weapons": 1}, view["counts"]
     assert len(entity(view, "Vehicle 1")["crops"]) == v_crops
@@ -120,14 +119,14 @@ def test_rules(db, w):
     case_id, _, _ = two_people(db, w)
     db.fails(combine, db, w.citizen, case_id, "p2", "p1", contains="Only admins and investigators")
     db.fails(combine, db, w.investigator, case_id, "p2", "p1", contains="Only admins and investigators")
-    # an investigator assigned to the case can
+    # assigned investigators are allowed to as well
     db.rows("INSERT INTO public.caseassignment (assignedto, assignedby, caseid) VALUES (%s, %s, %s)",
             [w.investigator["userid"], w.admin["userid"], case_id])
     db.fails(combine, db, w.investigator, case_id, "p2", "v1", contains="same kind")
     db.fails(combine, db, w.investigator, case_id, "p2", "p2", contains="different one")
     db.fails(combine, db, w.investigator, case_id, "p9", "p1", contains="not found")
     combine(db, w.investigator, case_id, "p2", "p1")
-    db.fails(combine, db, w.investigator, case_id, "p2", "p1", contains="not found")   # already gone
+    db.fails(combine, db, w.investigator, case_id, "p2", "p1", contains="not found")   # p2 doesn't exist any more
     db.rpc("set_case_status", who=w.admin, p_caseid=case_id, p_status="closed")
     db.fails(combine, db, w.admin, case_id, "v2", "v1", contains="closed")
 

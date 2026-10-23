@@ -1,11 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Download button on case pictures (gal): only needed up to Android 9 -->
+    <!-- gal needs this for the Download button, but only up to Android 9 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
-    <!-- Upload page: the phone's location for a report (geolocator) -->
+    <!-- phone location for a report on the Upload page (geolocator) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <!-- Upload page: sending footage to Supabase -->
+    <!-- uploading footage to Supabase -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:requestLegacyExternalStorage="true"
@@ -33,16 +33,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Password reset: the link in the reset email
-                 (argusshield://reset-password) opens this app. -->
+            <!-- password reset links (argusshield://reset-password) open the app -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="argusshield" android:host="reset-password"/>
             </intent-filter>
-            <!-- supabase_flutter handles the link itself; stop Flutter from
-                 also treating it as a page route. -->
+            <!-- supabase_flutter deals with the link, so don't let Flutter
+                 treat it as a route as well -->
             <meta-data
               android:name="flutter_deeplinking_enabled"
               android:value="false"/>

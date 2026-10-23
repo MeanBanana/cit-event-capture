@@ -1,7 +1,6 @@
-// Tests for reviewing submissions: the Status view, Reject, Accept (new
-// case / existing case / suggested case / "not listed" -> create and open)
-// and the submission details page (Duplicate).
-// Uses AdminFakeService, which keeps everything in memory.
+// Reviewing submissions: the Status view, Reject, Accept (new case, existing
+// case, suggested case, "not listed" -> create and open) and Duplicate from
+// the details page. Runs against AdminFakeService.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

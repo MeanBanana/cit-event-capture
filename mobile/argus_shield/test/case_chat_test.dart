@@ -1,7 +1,6 @@
-// Tests for the investigator case chat (Chat tab): showing the messages
-// (others' with their name on the left, mine on the right), sending, live
-// updates from other investigators, a closed case being read-only, and the
-// tab fitting on a phone next to the other three.
+// Investigator case chat: messages render (others on the left with names,
+// mine on the right), sending works, live updates come in, closed cases are
+// read-only, and the tab fits on a phone next to the other three.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,12 +1,12 @@
-// citizen_store.dart — shared data and operations for the citizen tabs.
+// Shared state for the citizen tabs.
 //
-// One CitizenStore is created by CitizenHome and passed to every tab, so
-// they all see the same data. It's a ChangeNotifier: after a change it calls
-// notifyListeners() and any ListenableBuilder watching it rebuilds.
+// CitizenHome makes one CitizenStore and hands it to every tab so they're all
+// looking at the same data. It's a ChangeNotifier, so anything wrapped in a
+// ListenableBuilder rebuilds when it calls notifyListeners().
 //
-//   * Profile     loaded from / saved to Supabase through SupabaseService.
-//   * Submissions sent to Supabase (incident + footage), then analysed by
-//                 the AI worker; the Submissions tab lists them from there.
+// The profile is loaded from and saved to Supabase via SupabaseService.
+// Reports go to Supabase (incident + footage), the AI worker picks them up,
+// and the Submissions tab lists them from there.
 
 import 'dart:collection';
 import 'package:flutter/foundation.dart';
@@ -15,22 +15,22 @@ import '../saved_contact_details.dart';
 import '../models/citizen_profile.dart';
 import '../models/my_submission.dart';
 
-// Files that import citizen_store.dart can keep using these models.
+// re-exported so files importing citizen_store.dart still get these models
 export '../models/citizen_profile.dart';
 export '../models/my_submission.dart';
 
-/// One video or photo the citizen picked or recorded (not uploaded yet).
+/// A video or photo the citizen picked or recorded, not uploaded yet.
 class FootageFile {
-  /// Display name reported by the picker, e.g. "VID_20261012_191502.mp4".
+  /// Name from the picker, e.g. "VID_20261012_191502.mp4".
   final String name;
 
-  /// Size in bytes (checked against the 50 MB upload limit).
+  /// Size in bytes, checked against the 50 MB upload limit.
   final int size;
 
-  /// Reads the file when it is sent (not before: videos are big).
+  /// Reads the file only when it's actually being sent, videos are big.
   final Future<Uint8List> Function() readBytes;
 
-  /// The picker's MIME type, if it gave one.
+  /// MIME type from the picker, if it gave us one.
   final String? mimeType;
 
   const FootageFile({
@@ -57,26 +57,26 @@ class FootageFile {
     return dot < 0 ? '' : name.substring(dot).toLowerCase();
   }
 
-  /// 'image' or 'video' (what the media table and the AI need).
+  /// 'image' or 'video', which is what the media table and the AI expect.
   String get mediaType => _imageTypes.containsKey(_ext) ||
           (mimeType?.startsWith('image/') ?? false)
       ? 'image'
       : 'video';
 
-  /// The upload's content type; the bucket only accepts these types.
+  /// Content type for the upload. The bucket only accepts these.
   String get contentType =>
       _imageTypes[_ext] ?? _videoTypes[_ext] ??
       (mimeType != null && (mimeType!.startsWith('image/') || mimeType!.startsWith('video/'))
           ? mimeType!
           : (mediaType == 'image' ? 'image/jpeg' : 'video/mp4'));
 
-  /// "12.4 MB"
+  /// e.g. "12.4 MB"
   String get sizeLabel => size >= 1024 * 1024
       ? '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'
       : '${(size / 1024).ceil()} KB';
 }
 
-/// How far a report has got, for the progress bar on the Upload page.
+/// Progress of a report being sent, for the Upload page's progress bar.
 class SendProgress {
   final String message;
   final double fraction; // 0..1
@@ -84,10 +84,10 @@ class SendProgress {
   const SendProgress(this.message, this.fraction);
 }
 
-/// Sending stopped part-way (no connection, file refused ...). The incident
-/// may already exist: pass [incidentId] and [uploaded] back to
-/// CitizenStore.sendReport to carry on where it stopped, without making a
-/// second incident or uploading a file twice.
+/// Sending stopped part way (lost connection, file rejected...). The
+/// incident might already exist, so pass [incidentId] and [uploaded] back to
+/// CitizenStore.sendReport to pick up where it left off without making a
+/// second incident or uploading the same file twice.
 class SendReportFailed implements Exception {
   final String message;
   final int? incidentId;
@@ -99,19 +99,18 @@ class SendReportFailed implements Exception {
   String toString() => message;
 }
 
-/// Holds the citizen's data and the operations the tabs use.
+/// The citizen's data and everything the tabs can do with it.
 class CitizenStore extends ChangeNotifier {
-  /// [service] and [savedContacts] are optional so tests can pass in fakes.
+  /// [service] and [savedContacts] are only optional so tests can swap in fakes.
   CitizenStore({SupabaseService? service, SavedContactStore? savedContacts})
       : _service = service ?? SupabaseService(),
         _savedContacts = savedContacts ?? SavedContactStore();
 
   final SupabaseService _service;
 
-  /// The email/phone remembered on this phone for the Forgot password form.
+  /// Email/phone remembered on this phone for the Forgot password form.
   final SavedContactStore _savedContacts;
 
-  // Underscore names are private to this Dart file/library.
   List<MySubmission> _submissions = const [];
   bool _submissionsLoading = false;
   String? _submissionsError;
@@ -121,37 +120,37 @@ class CitizenStore extends ChangeNotifier {
   String? _profileError;
   bool _disposed = false;
 
-  /// The citizen's reports from Supabase, newest first (read-only view).
+  /// The citizen's reports, newest first.
   UnmodifiableListView<MySubmission> get submissions =>
       UnmodifiableListView(_submissions);
 
-  /// True while the reports are being fetched.
+  /// True while reports are loading.
   bool get submissionsLoading => _submissionsLoading;
 
-  /// A message to show if loading the reports failed, otherwise null.
+  /// Error to show if loading reports failed, otherwise null.
   String? get submissionsError => _submissionsError;
 
   /// Null until loadProfile() succeeds.
   CitizenProfile? get profile => _profile;
 
-  /// True while the profile is being fetched.
+  /// True while the profile is loading.
   bool get profileLoading => _profileLoading;
 
-  /// A message to show if the last load failed, otherwise null.
+  /// Error to show if the last load failed, otherwise null.
   String? get profileError => _profileError;
 
-  // ---------------------------------------------------------------- PROFILE
+  // --- profile
 
-  /// Fetches the logged-in citizen's profile from Supabase.
+  /// Load the logged-in citizen's profile.
   ///
-  /// Safe to call more than once: a second call while one is running is
-  /// ignored. Errors are caught and stored in [profileError] rather than
-  /// thrown, so the Profile tab can show them with a Retry button.
+  /// Calling it again while a load is running does nothing. Errors end up in
+  /// [profileError] instead of being thrown, so the Profile tab can show them
+  /// with a Retry button.
   Future<void> loadProfile() async {
     if (_profileLoading) return;
     _profileLoading = true;
-    // Only notify when clearing an old error (a Retry tap). On the very first
-    // load nothing is listening yet, and notifying during a build would throw.
+    // Only notify when we're clearing an old error (i.e. Retry). On the first
+    // load nobody is listening yet, and notifying mid-build throws.
     if (_profileError != null) {
       _profileError = null;
       _notify();
@@ -160,7 +159,7 @@ class CitizenStore extends ChangeNotifier {
     try {
       final profile = await _service.getMyCitizenProfile();
       _profile = profile;
-      // Keep the copy on this phone in step with the database.
+      // keep the copy saved on the phone in sync with the database
       _savedContacts.save(email: profile.email, phone: profile.phoneNumber);
     } catch (e) {
       debugPrint('loadProfile failed: $e');
@@ -172,13 +171,13 @@ class CitizenStore extends ChangeNotifier {
     }
   }
 
-  /// Validates the form values and sends only the changed ones to Supabase.
+  /// Validate the form and send only what changed.
   ///
-  /// [phone] is the 9 digits after +27. Throws ArgumentError for invalid
-  /// input. Returns {success, message}; on success [profile] is updated.
+  /// [phone] is the 9 digits after +27. Throws ArgumentError for bad input,
+  /// returns {success, message}, and updates [profile] on success.
   ///
-  /// If Supabase asks for email confirmation, the email in [profile] stays
-  /// the old one until the citizen opens the link (the next load shows it).
+  /// If Supabase wants the email confirmed, [profile] keeps the old email
+  /// until they click the link (the next load picks up the new one).
   Future<Map<String, dynamic>> saveProfile({
     required String email,
     required String phone,
@@ -193,7 +192,7 @@ class CitizenStore extends ChangeNotifier {
     final newPhone = phone.trim();
     final newResidence = residence.trim();
 
-    // Store-level validation protects the data even if a caller bypasses the form.
+    // validate here as well, in case something calls this without going through the form
     final error =
         (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(newEmail)
                 ? 'Enter a valid email address'
@@ -219,17 +218,16 @@ class CitizenStore extends ChangeNotifier {
       residence: residenceChanged ? newResidence : null,
     );
 
-    // Update the local copy with whatever was saved. Even when the result is
-    // a failure, the phone/residence may already have gone through (the
-    // message says so), so reload to show exactly what the database has.
+    // Even a failed save might have gotten the phone/residence through first
+    // (the message says so), so reload to show exactly what's in the database.
     if (result["success"] == true) {
       _profile = current.copyWith(
         email: result["emailChangedNow"] == true ? newEmail : null,
         phoneNumber: phoneChanged ? '+27$newPhone' : null,
         residence: residenceChanged ? newResidence : null,
       );
-      // Update the copy on this phone too. A pending email isn't saved until
-      // it's confirmed (the next profile load picks it up).
+      // Update the phone's copy too. A pending email doesn't count until it's
+      // confirmed, the next profile load will pick it up.
       _savedContacts.save(email: _profile!.email, phone: _profile!.phoneNumber);
       _notify();
     } else if (phoneChanged || residenceChanged) {
@@ -238,12 +236,12 @@ class CitizenStore extends ChangeNotifier {
     return result;
   }
 
-  // ------------------------------------------------------------ SUBMISSIONS
+  // --- submissions
 
-  /// Most files in one report (the AI worker treats them as one submission).
+  /// Max files per report. The AI worker treats them as one submission.
   static const maxFiles = 5;
 
-  /// Fetches the citizen's own reports. Errors go to [submissionsError].
+  /// Load the citizen's own reports. Errors go into [submissionsError].
   Future<void> loadSubmissions() async {
     if (_submissionsLoading) return;
     _submissionsLoading = true;
@@ -262,13 +260,13 @@ class CitizenStore extends ChangeNotifier {
     }
   }
 
-  /// Sends a report to Supabase: creates the incident, uploads every file,
-  /// then starts the AI analysis. Returns the incident id.
+  /// Send a report: create the incident, upload each file, then start the
+  /// AI analysis. Returns the incident id.
   ///
-  /// [latitude]/[longitude] = the phone's GPS, only if the citizen agreed.
-  /// Throws ArgumentError for invalid input (nothing sent) and
-  /// [SendReportFailed] if it stopped part-way - pass its incidentId and
-  /// uploaded count back as [resumeIncidentId] / [alreadyUploaded] to retry.
+  /// [latitude]/[longitude] is the phone's GPS, only if the citizen agreed to
+  /// share it. Throws ArgumentError for bad input (nothing gets sent), and
+  /// [SendReportFailed] if it stopped part way. To retry, pass its incidentId
+  /// and uploaded count back in as [resumeIncidentId] / [alreadyUploaded].
   Future<int> sendReport({
     required String location,
     required String description,
@@ -279,7 +277,7 @@ class CitizenStore extends ChangeNotifier {
     int alreadyUploaded = 0,
     void Function(SendProgress progress)? onProgress,
   }) async {
-    // Store-level validation protects the data even if a caller bypasses the form.
+    // validate here as well, in case something calls this without going through the form
     final error = (location.trim().isEmpty ? 'Enter the incident location' : null) ??
         (description.trim().isEmpty ? 'Enter a description' : null) ??
         (files.isEmpty ? 'Please select or record footage first.' : null) ??
@@ -329,8 +327,8 @@ class CitizenStore extends ChangeNotifier {
       await _service.submitForAnalysis(id);
       progress('Sent', 1);
 
-      // Show it in the Submissions tab straight away (not awaited: the
-      // report is already sent even if this refresh fails).
+      // Refresh the Submissions tab right away. Not awaited, the report is
+      // already sent even if this refresh fails.
       loadSubmissions();
       return id;
     } catch (e) {
@@ -346,8 +344,8 @@ class CitizenStore extends ChangeNotifier {
     }
   }
 
-  /// The profile (its userId is the reporter / uploader id), loading it
-  /// first if needed. Waits for a load that is already running.
+  /// The profile (we need its userId as the reporter), loading it first if
+  /// needed or waiting on a load that's already running.
   Future<CitizenProfile> _ensureProfile() async {
     while (_profileLoading) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -360,11 +358,11 @@ class CitizenStore extends ChangeNotifier {
     return profile;
   }
 
-  // ---------------------------------------------------------------- HELPERS
+  // --- helpers
 
-  /// notifyListeners, unless the store has been disposed. A save or load can
-  /// finish after the citizen has logged out and CitizenHome has disposed
-  /// the store; notifying then would throw.
+  /// notifyListeners, but only if we haven't been disposed. A save or load
+  /// can finish after the citizen logged out and CitizenHome threw the store
+  /// away, and notifying then would throw.
   void _notify() {
     if (!_disposed) notifyListeners();
   }

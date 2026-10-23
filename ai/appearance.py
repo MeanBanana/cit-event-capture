@@ -1,33 +1,25 @@
 """
-appearance.py - a "fingerprint" of how a person or vehicle LOOKS, so the case
-system can suggest "this person in submission 5 is probably Person 2".
+Appearance fingerprints, so the case system can say things like "this person
+in submission 5 looks like Person 2".
 
-Two crops of the same person are never the same pixels, so pictures can't be
-compared directly. Instead each tracked person / vehicle gets:
-  * embedding    512 numbers from a small image model (YOLO26s-cls, the
-                 classification version of the detector we already use). Similar
-                 looking people give similar numbers.
-  * colour_hist  96 numbers: the colours of the top half and the bottom half
-                 of the body (clothing), from up to 6 of the clearest views.
-similarity(a, b) combines them: 0.7 x embedding + 0.3 x colours (cosine,
-roughly 0-1). Measured on our test clips (people):
-    same person (two different moments of one track)   0.85 - 0.95
-    different people                                    typically ~0.6, highest 0.79
-so the case matcher uses: >= 0.88 and the clothing agrees -> same person;
-0.78 - 0.88 -> "Is this Person 2?" for the admin; below -> a different person.
-That calibration is from a handful of clips - treat matches as suggestions.
+You can't compare crops pixel by pixel, so each person/vehicle gets:
+  - embedding: 512 numbers from yolo26s-cls. Similar-looking things end up
+    with similar numbers.
+  - colour_hist: 96 numbers describing the colours of the top and bottom
+    half (basically their clothes).
 
-Vehicles get the same fingerprint, but for cars it does NOT tell two white
-hatchbacks apart (same-model cars scored as high as the same car), so the
-matcher links vehicles by plate, make and colour and only uses this as a
-tie-breaker.
+similarity() mixes the two 70/30. On our test clips the same person scored
+0.85-0.95 and different people mostly around 0.6 (worst case 0.79), which is
+where the 0.88 / 0.78 cut-offs below come from. That's only a handful of
+clips though, so treat a match as a hint, not a fact.
 
-Privacy (POPIA): this describes clothing and overall look, like a witness
-would ("black top, blue jeans"). It is NOT face recognition: no face data is
-used or stored, and a match is only ever a suggestion an admin confirms.
+For cars this is pretty useless: two white hatchbacks of the same model
+score as high as the same car twice. The matcher goes by plate/make/colour
+for vehicles and only uses this to break ties.
 
-The model file (yolo26s-cls.pt, 13 MB) downloads automatically the first time,
-like yolo26s.pt.
+On POPIA: this is "black top, blue jeans", the kind of thing a witness would
+say. It's not face recognition, no face data goes in, and an admin always has
+to confirm a match.
 """
 
 import cv2
@@ -38,12 +30,12 @@ EMBED_SIZE = 224
 MAX_VIEWS = 6
 WEIGHT_EMBEDDING, WEIGHT_COLOURS = 0.7, 0.3
 
-PERSON_SAME, PERSON_MAYBE = 0.88, 0.78       # see the top of this file
+PERSON_SAME, PERSON_MAYBE = 0.88, 0.78       # see the docstring up top
 
 
 def _square(crop):
-    """Pad to a square (grey border) so the model sees the whole person
-    instead of a centre cut of a tall box."""
+    """Pad to a square with grey so a tall person doesn't get their head and
+    feet cropped off by the model's centre crop."""
     h, w = crop.shape[:2]
     side = max(h, w)
     out = np.full((side, side, 3), 114, np.uint8)
@@ -53,8 +45,8 @@ def _square(crop):
 
 
 def colour_hist(crops):
-    """96 numbers: hue x saturation of the top and bottom half (clothing),
-    averaged over the views and normalised."""
+    """Hue/saturation histograms for the top and bottom half, averaged over
+    all the crops."""
     hists = []
     for crop in crops:
         h, w = crop.shape[:2]
@@ -75,7 +67,7 @@ def colour_hist(crops):
 
 
 class AppearanceModel:
-    """Loads the image model once; describe() makes a fingerprint."""
+    """Wraps the embedding model so we only load it once."""
 
     def __init__(self, model=MODEL):
         from ultralytics import YOLO
@@ -83,9 +75,8 @@ class AppearanceModel:
         self.version = f"{model.rsplit('.', 1)[0]}+hsv"
 
     def describe(self, crops):
-        """Fingerprint of one tracked object from a few of its crops (BGR).
-        Returns {"embedding": [...512], "colour_hist": [...96], "views": n,
-        "model": ...} or None if there is nothing usable."""
+        """Build a fingerprint from a few BGR crops of one object.
+        Returns None if none of the crops are usable."""
         crops = [c for c in crops if c is not None and c.size and min(c.shape[:2]) >= 16]
         crops = crops[:MAX_VIEWS]
         if not crops:
@@ -112,7 +103,7 @@ def _cosine(a, b):
 
 
 def similarity(a, b):
-    """How alike two fingerprints are (about 0-1), or None if one is missing."""
+    """Roughly 0-1. None if either side has no fingerprint."""
     if not a or not b:
         return None
     emb = _cosine(a.get("embedding"), b.get("embedding"))

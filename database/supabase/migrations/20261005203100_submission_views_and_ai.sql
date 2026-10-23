@@ -1,45 +1,26 @@
--- =====================================================================
--- Argus Shield: AI descriptions, GPS, paging, grouping and suggestions
+-- AI descriptions, GPS, paging, grouping and match suggestions.
 --
--- 1. AI fields (written ONLY by the AI pipeline with the service key)
---      media.aidescription        what the AI saw in that one clip/photo
---      crimescene.aisummary       short combined summary of all its clips
---      crimescene.aisummarystatus none | processing | ready | outdated | failed
---      crimescene.aisummaryat     when the summary was written
---    Adding footage to an incident whose summary is 'ready' marks it
---    'outdated' until the pipeline writes a new one.
--- 2. crimescene.latitude / longitude (from the phone's GPS) and
---    crimescene.locationkey, the location text in a standard form so
---    "N1, Midrand" and "n1 midrand" group together.
--- 3. list_submissions: pages of 30 ("load more" cursor instead of a cap),
---    newest or oldest first, location / id filters, AI summary and
---    "chips" (vehicles, people, weapons, number plates).
--- 4. list_location_groups, list_linked_groups (incidents linked by
---    crossreferencelink), list_cases with paging + a preview of each
---    case's submissions.
--- 5. When did it happen? The footage's own capture time (from the file's
---    metadata, media.capturetimestamp) beats the time the citizen typed:
---    incident_time() = earliest capture time, else crimescene.datetime.
---    list_submissions flags a submission when the two disagree by more
---    than 3 hours, so the admin checks it.
--- 6. Suggestions: which pending submissions probably belong in a case,
---    and which cases a submission probably belongs to. Each comes with a
---    score and the reasons ("same plate ND123456", "1.2 km apart" ...).
---    list_suggested_matches + accept_suggested_matches: the admin reviews
---    all likely matches in one list and accepts the ticked ones in one
---    tap. Nothing joins a case without an admin accepting it.
---
--- Contents
---   1. Columns and indexes      4. list_submissions
---   2. Protect the AI fields    5. Grouping
---   3. Shared helpers           6. Suggestions (+ one-tap review)
---                               7. Privileges
--- =====================================================================
+-- What's in here:
+--   - AI fields that only the pipeline (service key) writes:
+--     media.aidescription, and crimescene.aisummary / aisummarystatus
+--     (none, processing, ready, outdated, failed) / aisummaryat. New footage
+--     on an incident with a 'ready' summary flips it to 'outdated'.
+--   - crimescene.latitude/longitude from the phone, and locationkey, a
+--     normalised version of the location text so "N1, Midrand" and
+--     "n1 midrand" end up in the same group.
+--   - list_submissions with proper paging (30 at a time, cursor based),
+--     filters, the AI summary and the little vehicle/people/weapon/plate chips.
+--   - location groups, linked groups (via crossreferencelink) and list_cases
+--     with paging and a preview of each case's submissions.
+--   - incident_time(): the footage's own capture time beats whatever the
+--     citizen typed. If the two are more than 3h apart we flag it so an admin
+--     has a look.
+--   - suggestions both ways (submission -> case, case -> submissions), each
+--     with a score and readable reasons, plus a one-tap review screen.
+--     Nothing ever joins a case without an admin saying yes.
 
 
--- ---------------------------------------------------------------------
--- 1. Columns and indexes
--- ---------------------------------------------------------------------
+-- --- 1. columns and indexes
 ALTER TABLE public.media
   ADD COLUMN aidescription text,
   ADD COLUMN aidescribedat timestamptz;
@@ -51,13 +32,13 @@ ALTER TABLE public.crimescene
   ADD COLUMN aisummarystatus varchar(20) NOT NULL DEFAULT 'none'
              CHECK (aisummarystatus IN ('none', 'processing', 'ready', 'outdated', 'failed')),
   ADD COLUMN aisummaryat     timestamptz,
-  -- "N1, Midrand " -> "n1 midrand": lower case, punctuation and extra
-  -- spaces removed. Used for the Location grouping.
+  -- "N1, Midrand " -> "n1 midrand" (lower case, no punctuation, single
+  -- spaces). This is what location grouping keys on.
   ADD COLUMN locationkey     text GENERATED ALWAYS AS (
              lower(trim(regexp_replace(location, '[^[:alnum:]]+', ' ', 'g')))) STORED,
   ADD CONSTRAINT crimescene_latlong_check CHECK ((latitude IS NULL) = (longitude IS NULL));
 
--- Paging: "the next 30 after this one", newest or oldest first
+-- for paging: "next 30 after this one", in either direction
 CREATE INDEX idx_crimescene_reported_id
   ON public.crimescene (datereported, incidentid);
 CREATE INDEX idx_crimescene_review_reported_id
@@ -66,13 +47,11 @@ CREATE INDEX idx_crimescene_case_reported_id
   ON public.crimescene (caseid, datereported, incidentid);
 CREATE INDEX idx_crimescene_locationkey
   ON public.crimescene (locationkey, datereported, incidentid);
--- the older single-column index is covered by idx_crimescene_reported_id
+-- idx_crimescene_reported_id covers what the old single-column index did
 DROP INDEX IF EXISTS public.idx_crimescene_datereported;
 
 
--- ---------------------------------------------------------------------
--- 2. Protect the AI fields: only the pipeline (service key) writes them
--- ---------------------------------------------------------------------
+-- --- 2. only the pipeline (service key) may write the AI fields
 CREATE OR REPLACE FUNCTION public.protect_crimescene_ai()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -118,9 +97,9 @@ CREATE TRIGGER protect_media_ai
   BEFORE INSERT OR UPDATE ON public.media
   FOR EACH ROW EXECUTE FUNCTION public.protect_media_ai();
 
--- New footage on an incident with a finished summary: the summary no
--- longer covers everything, so mark it 'outdated' until the pipeline
--- writes a new one. SECURITY DEFINER so a citizen's upload can do this.
+-- New footage on an incident that already has a finished summary means the
+-- summary is now missing something, so mark it 'outdated'. SECURITY DEFINER
+-- so this still works when it's a citizen doing the upload.
 CREATE OR REPLACE FUNCTION public.mark_ai_summary_outdated()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -141,20 +120,18 @@ CREATE TRIGGER mark_ai_summary_outdated
   FOR EACH ROW EXECUTE FUNCTION public.mark_ai_summary_outdated();
 
 
--- ---------------------------------------------------------------------
--- 3. Shared helpers
--- ---------------------------------------------------------------------
--- levenshtein() for "plates one character apart" (Supabase keeps
--- extensions in the extensions schema)
+-- --- 3. shared helpers
+-- levenshtein() lives in the extensions schema on Supabase. We need it for
+-- "plates one character apart".
 CREATE EXTENSION IF NOT EXISTS fuzzystrmatch WITH SCHEMA extensions;
 
--- capture times are read per incident
+-- capture times get looked up per incident
 CREATE INDEX IF NOT EXISTS idx_media_incident_capture
   ON public.media (incidentid, capturetimestamp);
 
--- The best time we have for when an incident happened: the earliest
--- capture time in its footage's metadata, otherwise the time the citizen
--- typed. (Metadata can be missing, e.g. a clip forwarded on WhatsApp.)
+-- Best guess at when an incident happened: the earliest capture time from
+-- its footage, falling back to what the citizen typed. Metadata is often
+-- missing, e.g. anything forwarded through WhatsApp.
 CREATE OR REPLACE FUNCTION public.incident_time(p_incidentid integer)
   RETURNS timestamptz
   LANGUAGE sql STABLE
@@ -167,9 +144,9 @@ AS $$
       WHERE cs.incidentid = p_incidentid))
 $$;
 
--- Two (normalised) plates that are exactly one character apart, e.g. an
--- OCR mix-up of 0/O, 8/B or 1/I. Short reads (under 5 characters) are
--- never "similar": too many different cars would match.
+-- Two normalised plates exactly one character apart, i.e. the OCR mixed up
+-- 0/O, 8/B, 1/I and so on. Anything shorter than 5 characters never counts,
+-- too many different cars would match. Same rule as ai/case_matcher.py.
 CREATE OR REPLACE FUNCTION public.plates_similar(p_a text, p_b text)
   RETURNS boolean
   LANGUAGE sql IMMUTABLE
@@ -181,7 +158,7 @@ AS $$
      AND extensions.levenshtein(p_a, p_b) = 1
 $$;
 
--- 'nd 123-456 gp' -> 'ND123456GP' (null when nothing is left)
+-- 'nd 123-456 gp' -> 'ND123456GP', NULL if nothing's left
 CREATE OR REPLACE FUNCTION public.normalize_plate(p_plate text)
   RETURNS text
   LANGUAGE sql IMMUTABLE
@@ -193,7 +170,7 @@ $$;
 CREATE INDEX idx_vehicledetail_plate
   ON public.vehicledetail (public.normalize_plate(licenceplatenumber));
 
--- Distance in km between two GPS points (haversine; no PostGIS needed)
+-- haversine distance in km, so we don't need PostGIS for this
 CREATE OR REPLACE FUNCTION public.distance_km(
   lat1 numeric, lon1 numeric, lat2 numeric, lon2 numeric)
   RETURNS numeric
@@ -206,10 +183,10 @@ AS $$
           * power(sin(radians((lon2 - lon1)::double precision) / 2), 2))))::numeric
 $$;
 
--- Incident pairs linked by crossreferencelink (rejected links ignored).
---   vehicle links: entityid_a/b = vehicledetail.vehicledetectionid
---   suspect links: entityid_a/b = suspect.suspectid
--- SECURITY INVOKER: callers only see links on incidents RLS lets them see.
+-- Pairs of incidents linked through crossreferencelink, ignoring rejected
+-- links. For vehicle links entityid_a/b are vehicledetail.vehicledetectionid,
+-- for suspect links they're suspect.suspectid. SECURITY INVOKER, so you only
+-- see links on incidents RLS already lets you see.
 CREATE OR REPLACE FUNCTION public.incident_links()
   RETURNS TABLE (
     incident_a      integer,
@@ -249,22 +226,20 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 4. list_submissions (replaces the 4-argument version)
+-- --- 4. list_submissions (replaces the 4-argument version)
 --
 --   p_order        'newest' (default) or 'oldest', by date reported
---   p_after_time   \ the datereported and incidentid of the LAST row you
---   p_after_id     / already have: returns the rows after it (next page)
---   p_limit        page size, default 30, max 100
+--   p_after_time   datereported of the last row you already have
+--   p_after_id     and its incidentid. Together they're the page cursor.
+--   p_limit        page size, default 30, capped at 100
 --   p_search       incident number ('42', 'INC-0042') or location text
 --   p_review       'pending' / 'accepted' / 'rejected' / 'duplicate'
---   p_caseid       only that case's incidents
---   p_locationkey  only that location group (from list_location_groups)
+--   p_caseid       only incidents in that case
+--   p_locationkey  only that location group
 --   p_ids          only these incidents (a linked group, suggestions)
 --
--- Paging with a cursor (not OFFSET) stays fast however far you scroll:
--- every page is an index range scan.
--- ---------------------------------------------------------------------
+-- Cursor paging instead of OFFSET, so page 50 is as quick as page 1. Every
+-- page is just an index range scan.
 DROP FUNCTION public.list_submissions(text, integer, text, integer);
 
 CREATE FUNCTION public.list_submissions(
@@ -301,12 +276,12 @@ CREATE FUNCTION public.list_submissions(
     aisummary       text,
     aisummarystatus varchar,
     aisummaryat     timestamptz,
-    vehiclecount    integer,   -- most vehicles seen in any one clip
-    personcount     integer,   -- most people seen in any one clip
-    weaponcount     integer,   -- most weapons seen in any one clip
-    plates          text[],    -- distinct number plates read, max 3
-    capturedat      timestamptz, -- earliest capture time in the footage's metadata
-    timemismatch    boolean      -- capture time and typed time > 3 h apart
+    vehiclecount    integer,   -- max vehicles in any single clip
+    personcount     integer,   -- max people in any single clip
+    weaponcount     integer,   -- max weapons in any single clip
+    plates          text[],    -- up to 3 distinct plates
+    capturedat      timestamptz, -- earliest capture time from the footage
+    timemismatch    boolean      -- capture time and typed time more than 3h apart
   )
   LANGUAGE sql STABLE SECURITY INVOKER
   SET search_path = ''
@@ -319,8 +294,8 @@ AS $$
            LEAST(GREATEST(COALESCE(p_limit, 30), 1), 100) AS lim
     FROM (SELECT NULLIF(trim(COALESCE(p_search, '')), '') AS raw) q
   ),
-  -- NOT MATERIALIZED: each page query below gets the filters pushed in
-  -- and can walk the (datereported, incidentid) index in order
+  -- NOT MATERIALIZED so the filters get pushed into each page query and it
+  -- can walk the (datereported, incidentid) index in order
   matches AS NOT MATERIALIZED (
     SELECT cs.*
     FROM public.crimescene cs CROSS JOIN t
@@ -332,7 +307,7 @@ AS $$
       AND (p_locationkey IS NULL OR cs.locationkey = p_locationkey)
       AND (p_ids IS NULL OR cs.incidentid = ANY (p_ids))
   ),
-  -- only one of these two runs (the other's WHERE is false up front)
+  -- only one of these two actually runs, the other's WHERE is false from the start
   page AS (
     (SELECT * FROM matches m
       WHERE COALESCE(p_order, 'newest') <> 'oldest'
@@ -394,7 +369,7 @@ AS $$
     p.datereported DESC, p.incidentid DESC
 $$;
 
--- The clips of one submission with what the AI saw in each
+-- a submission's clips and what the AI saw in each one
 CREATE OR REPLACE FUNCTION public.list_incident_media(p_incidentid integer)
   RETURNS TABLE (
     mediaid          integer,
@@ -422,13 +397,11 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 5. Grouping
--- ---------------------------------------------------------------------
+-- --- 5. grouping
 
--- Locations, most recently reported first. label = the most common
--- spelling in the group. Pass locationkey to list_submissions to page
--- through a group.
+-- Locations, most recently reported first. label is whichever spelling is
+-- most common in the group. Pass the locationkey to list_submissions to page
+-- through one.
 CREATE OR REPLACE FUNCTION public.list_location_groups(
   p_search text    DEFAULT NULL,
   p_review text    DEFAULT NULL,
@@ -463,22 +436,22 @@ AS $$
   OFFSET GREATEST(COALESCE(p_offset, 0), 0)
 $$;
 
--- Groups of submissions joined by cross-reference links (A-B and B-C
--- puts A, B and C in one group). Groups with a pending submission come
--- first, then the most recent.
+-- Submissions joined up by cross-reference links (A-B plus B-C puts all
+-- three in one group). Groups with something pending come first, then by
+-- most recent.
 CREATE OR REPLACE FUNCTION public.list_linked_groups(
   p_limit  integer DEFAULT 20,
   p_offset integer DEFAULT 0
 )
   RETURNS TABLE (
-    groupid         integer,      -- the lowest incident id in the group
+    groupid         integer,      -- lowest incident id in the group
     incidentids     integer[],
     submissioncount integer,
     pendingcount    integer,
     linkcount       integer,
     verifiedlinks   integer,
     bestconfidence  numeric,
-    plates          text[],       -- plates seen in 2+ of the group's submissions
+    plates          text[],       -- plates seen in at least 2 of the group's submissions
     latestreported  timestamptz
   )
   LANGUAGE sql STABLE SECURITY INVOKER
@@ -491,7 +464,7 @@ AS $$
     UNION
     SELECT incident_b, incident_a FROM links
   ),
-  -- every incident reachable from each linked incident
+  -- every incident you can reach from each linked one
   reach (root, node) AS (
     SELECT a, a FROM edges
     UNION
@@ -540,11 +513,11 @@ AS $$
   OFFSET GREATEST(COALESCE(p_offset, 0), 0)
 $$;
 
--- list_cases (replaces the 4-argument version): adds paging, the lead
--- investigator, media / plate totals and a preview of the 3 newest
--- submissions, so a case card can show what's inside without opening it.
---   p_after_time / p_after_id: lastactivity and caseid of the last case
---   you have (next page).
+-- list_cases (replaces the 4-argument version). Now with paging, the lead
+-- investigator, media/plate totals and a preview of the 3 newest
+-- submissions, so a case card can show what's in it without opening it.
+-- p_after_time / p_after_id are the lastactivity and caseid of the last
+-- case you have.
 DROP FUNCTION public.list_cases(text, text, integer, integer);
 
 CREATE FUNCTION public.list_cases(
@@ -564,11 +537,11 @@ CREATE FUNCTION public.list_cases(
     dateclosed    timestamptz,
     createdbyname text,
     incidentcount integer,
-    investigators jsonb,          -- [{assignmentid, userid, name, badgenumber, islead}] active only
+    investigators jsonb,          -- active assignments: [{assignmentid, userid, name, badgenumber, islead}]
     lastactivity  timestamptz,
     mediacount    integer,
     plates        text[],
-    preview       jsonb           -- 3 newest: [{incidentid, location, datereported, reviewstatus, description, aisummary}]
+    preview       jsonb           -- the 3 newest: [{incidentid, location, datereported, reviewstatus, description, aisummary}]
   )
   LANGUAGE sql STABLE SECURITY INVOKER
   SET search_path = ''
@@ -652,20 +625,17 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 6. Suggestions
+-- --- 6. suggestions
 --
--- match_incidents compares every candidate with every target and scores
--- the pair:
+-- match_incidents scores every candidate against every target:
 --   AI cross-reference link     verified +50 / pending +35
---   same number plate read      +40   or 1 character apart   +25
---   within 5 km (GPS)           +30   or same location text  +20
---   happened within 2 hours     +30   or within 24 hours     +10
---     (times from incident_time: footage capture time first)
+--   same plate                  +40, or one character off +25
+--   within 5km (GPS)            +30, or same location text +20
+--   within 2 hours              +30, or within 24 hours +10
+--     (using incident_time, so footage capture time wins)
 --   same vehicle colour + make  +10
--- Pairs scoring under 30 are left out (e.g. "same day" alone is not a
--- reason). The reasons are short texts the app shows as they are.
--- ---------------------------------------------------------------------
+-- Anything under 30 gets dropped, e.g. "same day" on its own isn't a reason.
+-- The reasons are short strings the app shows as-is.
 CREATE OR REPLACE FUNCTION public.match_incidents(
   p_candidates integer[],
   p_targets    integer[]
@@ -683,7 +653,7 @@ AS $$
   inc AS (
     SELECT cs.incidentid, cs.latitude, cs.longitude, cs.locationkey,
            COALESCE(cap.t, cs.datetime) AS t,
-           cap.t IS NOT NULL AS filmed       -- time came from the footage
+           cap.t IS NOT NULL AS filmed       -- true if the time came from the footage
     FROM public.crimescene cs
     LEFT JOIN LATERAL (
       SELECT min(m.capturetimestamp) AS t
@@ -783,9 +753,9 @@ AS $$
   WHERE s.total >= 30
 $$;
 
--- Pending submissions that probably belong in this case, best first.
--- Only submissions within 14 days of one of the case's incidents, or
--- linked / sharing a plate with one, are compared (keeps it fast).
+-- Pending submissions that probably belong in this case, best first. To keep
+-- it quick we only compare ones within 14 days of a case incident, or ones
+-- that are linked to or share a plate with one.
 CREATE OR REPLACE FUNCTION public.suggest_incidents_for_case(
   p_caseid integer,
   p_limit  integer DEFAULT 5
@@ -794,7 +764,7 @@ CREATE OR REPLACE FUNCTION public.suggest_incidents_for_case(
     incidentid        integer,
     score             integer,
     reasons           text[],
-    matchedincidentid integer      -- the incident in the case it matched best
+    matchedincidentid integer      -- which incident in the case it matched best
   )
   LANGUAGE plpgsql STABLE
   SET search_path = ''
@@ -808,7 +778,7 @@ BEGIN
   SELECT array_agg(cs.incidentid) INTO v_targets
   FROM public.crimescene cs WHERE cs.caseid = p_caseid;
   IF v_targets IS NULL THEN
-    RETURN;                                -- empty case: nothing to compare
+    RETURN;                                -- empty case, nothing to compare against
   END IF;
 
   SELECT array_agg(DISTINCT c.incidentid) INTO v_candidates
@@ -852,8 +822,8 @@ BEGIN
 END;
 $$;
 
--- Open / under-review cases this submission probably belongs to, best
--- first (for "Add to an existing case").
+-- Open/under-review cases this submission probably belongs to, best first.
+-- Used for "Add to an existing case".
 CREATE OR REPLACE FUNCTION public.suggest_cases_for_incident(
   p_incidentid integer,
   p_limit      integer DEFAULT 3
@@ -862,7 +832,7 @@ CREATE OR REPLACE FUNCTION public.suggest_cases_for_incident(
     caseid            integer,
     score             integer,
     reasons           text[],
-    matchedincidentid integer      -- the incident in that case it matched best
+    matchedincidentid integer      -- which incident in that case it matched best
   )
   LANGUAGE plpgsql STABLE
   SET search_path = ''
@@ -895,19 +865,15 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 6b. One-tap review of suggested matches
+-- --- 6b. one-tap review of suggested matches
 --
--- list_suggested_matches: pending submissions that match an existing
--- open case well enough to suggest (score >= 60 = "likely" or better),
--- each with its single best case. The admin reviews the list, unticks
--- anything wrong and accepts the rest in one tap with
--- accept_suggested_matches. Nothing is ever added to a case without an
--- admin accepting it.
+-- list_suggested_matches gives pending submissions that match an open case
+-- well enough (score >= 60, "likely" or better), each with its single best
+-- case. The admin unticks anything wrong and accepts the rest in one go with
+-- accept_suggested_matches.
 --
--- Only submissions reported in the last 30 days are checked, against
--- case incidents within 14 days of them (keeps it fast).
--- ---------------------------------------------------------------------
+-- Only looks at submissions from the last 30 days, against case incidents
+-- within 14 days of them, to keep it fast.
 CREATE OR REPLACE FUNCTION public.list_suggested_matches(
   p_minscore integer DEFAULT 60,
   p_limit    integer DEFAULT 50
@@ -917,8 +883,8 @@ CREATE OR REPLACE FUNCTION public.list_suggested_matches(
     caseid            integer,
     score             integer,
     reasons           text[],
-    matchedincidentid integer,     -- the incident in that case it matched best
-    othercases        integer      -- other cases that also scored >= p_minscore
+    matchedincidentid integer,     -- which incident in that case it matched best
+    othercases        integer      -- how many other cases also scored >= p_minscore
   )
   LANGUAGE plpgsql STABLE
   SET search_path = ''
@@ -953,7 +919,7 @@ BEGIN
 
   RETURN QUERY
   WITH per_case AS (
-    -- best score per (submission, case)
+    -- best score for each (submission, case) pair
     SELECT DISTINCT ON (mi.candidateid, t.caseid)
            mi.candidateid, t.caseid, mi.score, mi.reasons, mi.targetid
     FROM public.match_incidents(v_pending, v_targets) mi
@@ -978,10 +944,10 @@ BEGIN
 END;
 $$;
 
--- Accepts the matches the admin ticked, all in one transaction:
--- p_incidentids[i] goes into p_caseids[i]. Submissions that are no longer
--- pending (someone else reviewed them meanwhile) or whose case was closed
--- are skipped, not failed. Returns how many were added.
+-- Accept the ticked matches in one transaction, p_incidentids[i] goes into
+-- p_caseids[i]. If someone else already reviewed a submission, or the case
+-- got closed in the meantime, we skip it rather than fail. Returns how many
+-- were added.
 CREATE OR REPLACE FUNCTION public.accept_suggested_matches(
   p_incidentids integer[],
   p_caseids     integer[]
@@ -1014,9 +980,7 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 7. Privileges
--- ---------------------------------------------------------------------
+-- --- 7. privileges
 REVOKE EXECUTE ON FUNCTION public.protect_crimescene_ai()     FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.protect_media_ai()          FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.mark_ai_summary_outdated()  FROM PUBLIC, anon, authenticated;

@@ -1,5 +1,5 @@
-// Tests for the crime scene models (list_case_crime_scenes / get_crime_scene
-// rows) and for how corrections show up in a submission's AI findings.
+// The crime scene models (list_case_crime_scenes / get_crime_scene rows), and
+// how corrections show up in a submission's AI findings.
 
 import 'package:flutter_test/flutter_test.dart';
 

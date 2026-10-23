@@ -8,7 +8,7 @@ import '../theme/app_theme.dart';
 import 'preview_video_native.dart'
 if (dart.library.html) 'preview_video_web.dart' as platform;
 
-/// Previews local footage without uploading or editing the original file.
+/// Preview picked footage before upload. Doesn't touch the original file.
 class MediaPreviewPage extends StatefulWidget {
   final XFile file;
   final bool isImage;
@@ -36,7 +36,7 @@ class _MediaPreviewPageState extends State<MediaPreviewPage>
     WidgetsBinding.instance.addObserver(this);
 
     if (widget.isImage) {
-      // Read once so rebuilding does not reload the image.
+      // read it once so rebuilds don't reload the image
       _image = widget.file.readAsBytes();
     } else {
       _initialiseVideo();
@@ -117,7 +117,7 @@ class _MediaPreviewPageState extends State<MediaPreviewPage>
           child: Image.memory(
             snapshot.data!,
             fit: BoxFit.contain,
-            // Limit decoded memory for large camera photos.
+            // cap decoded size, camera photos can be huge
             cacheWidth: 1920,
             errorBuilder: (context, error, stackTrace) {
               return _message(

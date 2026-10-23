@@ -1,45 +1,41 @@
-// paged_list.dart — a list that loads more rows as you scroll.
+// A list that loads more as you scroll, used by every admin list that can
+// grow without bound (submissions, cases, location and linked groups).
 //
-// Used by every admin list that can grow without limit (submissions,
-// cases, location and linked groups). Only the first page loads when the
-// list opens; the next page is fetched when you get near the bottom, so
-// the app never downloads or builds rows you haven't scrolled to:
-//   * ListView.builder only builds the cards on screen
-//   * each page is one small database call (the database pages with a
-//     cursor, so later pages are as fast as the first)
+// Only the first page loads up front and the next one is fetched as you
+// get near the bottom. ListView.builder only builds what's on screen, and
+// the database pages with a cursor, so page 10 is as cheap as page 1.
 //
-// To reload from the top (a filter changed, an action changed a row), give
-// the PagedList a new key, e.g. ValueKey('$view/$query/$generation').
+// To reload from the top (filter changed, an action changed a row), just
+// give the PagedList a new key, e.g. ValueKey('$view/$query/$generation').
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 
-/// Loads the next page. [loaded] = everything loaded so far (empty for the
-/// first page): use loaded.last as the cursor, or loaded.length as an
-/// offset.
+/// Loads the next page. [loaded] is everything so far (empty on the first
+/// call), so use loaded.last as a cursor or loaded.length as an offset.
 typedef PageLoader<T> = Future<List<T>> Function(List<T> loaded);
 
 class PagedList<T> extends StatefulWidget {
   final PageLoader<T> loadPage;
   final Widget Function(BuildContext context, T item) itemBuilder;
 
-  /// A page shorter than this is the last one.
+  /// A page shorter than this means we've reached the end.
   final int pageSize;
 
-  /// Shown when the first page is empty.
+  /// Shown if the first page comes back empty.
   final String emptyText;
 
-  /// Shown when the first page fails.
+  /// Shown if the first page fails.
   final String errorText;
 
-  /// Optional widget above the first row (scrolls with the list).
+  /// Optional widget above the first row, scrolls with the list.
   final Widget? header;
 
-  /// Identifies a row so a page that repeats rows (e.g. something new was
-  /// reported while scrolling) doesn't show them twice.
+  /// Identifies a row, so if a page repeats rows (say something new got
+  /// reported while scrolling) they don't show up twice.
   final Object Function(T item)? idOf;
 
-  /// Space between rows.
+  /// Gap between rows.
   final double spacing;
 
   const PagedList({
@@ -60,10 +56,10 @@ class PagedList<T> extends StatefulWidget {
 
 class _PagedListState<T> extends State<PagedList<T>> {
   final List<T> _items = [];
-  bool _loading = false; // a page is being fetched
+  bool _loading = false; // fetching a page right now
   bool _hasMore = true;
-  String? _error; // error of the last fetch
-  int _generation = 0; // ignores pages that arrive after a refresh
+  String? _error; // from the last fetch
+  int _generation = 0; // so pages that land after a refresh get ignored
 
   @override
   void initState() {
@@ -88,8 +84,8 @@ class _PagedListState<T> extends State<PagedList<T>> {
           : page.where((item) => !seen.contains(idOf!(item))).toList();
       setState(() {
         _items.addAll(fresh);
-        // Stop when the page is short, or when it brought nothing new
-        // (protects against a cursor that doesn't move).
+        // Stop on a short page, or one that brought nothing new (guards
+        // against a cursor that's stuck).
         _hasMore = page.length >= widget.pageSize && fresh.isNotEmpty;
         _loading = false;
       });
@@ -102,7 +98,7 @@ class _PagedListState<T> extends State<PagedList<T>> {
     }
   }
 
-  /// Pull to refresh: start again from the first page.
+  /// Pull to refresh, start over from page one.
   Future<void> _refresh() async {
     _generation++;
     setState(() {
@@ -116,7 +112,7 @@ class _PagedListState<T> extends State<PagedList<T>> {
 
   @override
   Widget build(BuildContext context) {
-    // First page: spinner / error / empty in the middle
+    // first page: spinner / error / empty message in the middle
     if (_items.isEmpty) {
       Widget middle;
       if (_error != null) {
@@ -154,8 +150,7 @@ class _PagedListState<T> extends State<PagedList<T>> {
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView.builder(
-        // a small gap after the last card, so it isn't flush with the
-        // bottom of the screen
+        // small gap after the last card so it isn't flush with the bottom
         padding: const EdgeInsets.only(bottom: 12),
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: offset + _items.length + (showFooter ? 1 : 0),
@@ -165,7 +160,7 @@ class _PagedListState<T> extends State<PagedList<T>> {
 
           if (i >= _items.length) return _footer();
 
-          // Near the end: fetch the next page after this frame
+          // close to the end, fetch the next page after this frame
           if (_hasMore && !_loading && _error == null && i >= _items.length - 5) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _loadMore();

@@ -1,11 +1,7 @@
-// citizen_profile.dart — the logged-in citizen's details shown on the
-// Profile tab.
-//
-// Comes from two tables:
-//   public."User"    userid, username, firstname, surname, email, phonenumber
-//   public.citizen   residence
+// The logged-in citizen's details for the Profile tab. Most of it comes from
+// "User", residence comes from the citizen table.
 
-/// A citizen's profile. Immutable: saving creates a new copy with copyWith.
+/// A citizen's profile. Immutable, saving makes a new copy with copyWith.
 class CitizenProfile {
   final int userId;
   final String username;
@@ -13,7 +9,7 @@ class CitizenProfile {
   final String surname;
   final String email;
 
-  /// As stored in the database, e.g. '+27821234567'. Null if never set.
+  /// As stored, e.g. '+27821234567'. Null if never set.
   final String? phoneNumber;
 
   final String? residence;
@@ -46,8 +42,8 @@ class CitizenProfile {
 
   String get fullName => '$firstName $surname'.trim();
 
-  /// The 9 digits after +27, for the phone field (which shows "+27 " itself).
-  /// '+27821234567' → '821234567', '0821234567' → '821234567'.
+  /// The 9 digits after +27 for the phone field, which shows "+27 " itself.
+  /// '+27821234567' and '0821234567' both give '821234567'.
   String get localPhone {
     final digits = (phoneNumber ?? '').replaceAll(RegExp(r'\D'), '');
     if (digits.startsWith('27') && digits.length == 11) return digits.substring(2);

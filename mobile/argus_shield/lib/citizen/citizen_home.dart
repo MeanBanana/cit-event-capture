@@ -1,17 +1,15 @@
-// citizen_home.dart — where a citizen lands after logging in.
+// Where a citizen lands after logging in.
 
 import 'package:flutter/material.dart';
 import '../supabase_service.dart';
 import 'citizen_store.dart';
 import 'citizen_dashboard.dart';
 
-// Owns the citizen's session store and shows the citizen dashboard.
-
-// The login page navigates here when the signed-in user's role is 'citizen'.
-// (ArgusApp does the same job but builds its own MaterialApp, so it cannot be
-//pushed as a route from the login page.)
+// Holds the citizen's store and shows their dashboard. login.dart sends
+// citizens here. (ArgusApp does the same thing but builds its own
+// MaterialApp, so it can't be pushed as a route from login.)
 class CitizenHome extends StatefulWidget {
-  // Optional so tests can pass in a fake; the app uses the real service.
+  // tests pass a fake in here, the app just uses the real one
   final SupabaseService? service;
 
   const CitizenHome({super.key, this.service});
@@ -21,16 +19,16 @@ class CitizenHome extends StatefulWidget {
 }
 
 class _CitizenHomeState extends State<CitizenHome> {
-  // One shared store so all tabs see the same session data.
+  // one store shared by all the tabs
   late final CitizenStore _store = CitizenStore(service: widget.service);
 
   @override
   void initState() {
     super.initState();
-    // Start fetching the profile straight after login, so it's usually ready
-    // by the time the citizen opens the Profile tab.
+    // Start loading the profile right after login so it's usually ready by
+    // the time they open the Profile tab
     _store.loadProfile();
-    // and the citizen's reports for the Submissions tab
+    // and their reports for the Submissions tab
     _store.loadSubmissions();
   }
 

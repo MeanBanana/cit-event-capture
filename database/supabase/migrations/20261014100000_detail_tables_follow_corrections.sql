@@ -1,36 +1,26 @@
--- =====================================================================
--- Argus Shield: vehicledetail / weapondetail always follow the value
--- that counts (detection_value), also after a correction or its undo.
+-- Keep vehicledetail / weapondetail in step with detection_value(), including
+-- after a correction or an undone correction.
 --
--- Until now ai_save_analysis (20261012100100 section 6) skipped the
--- detail rows of any detection with a correctionlog row. After a
--- correction - or a correction that was undone - a new analysis run never
--- refreshed them, so they drifted away from detection_value(). Plate
--- matching and list_submissions read vehicledetail.
+-- The bug: ai_save_analysis (20261012100100 section 6) skipped the detail
+-- rows for any detection that had ever been corrected. So after a correction,
+-- or even one that got undone, re-runs stopped refreshing them and they
+-- drifted away from detection_value(). That matters because plate matching
+-- and list_submissions read vehicledetail.
 --
--- Now:
---   * ai_save_analysis always writes the detail rows from
---     detection_value(): a corrected field keeps the investigator's value,
---     every other field follows the new AI run. vehicledetail.model is
---     filled too. weapondetail.heldbydetectionid is unchanged (taken from
---     the run, as before).
---   * detection_ai_value('weapon_type') maps a class weapondetail doesn't
---     know (e.g. 'pistol') to 'other', the way ai_save_analysis always
---     has, so the crime scene page and weapondetail agree.
---   * existing rows are brought in line once.
---
--- Contents
---   1. detection_ai_value: unknown weapon classes are 'other'
---   2. ai_save_analysis: detail rows from detection_value()
---   3. Existing data
--- =====================================================================
+-- The fix:
+--   - ai_save_analysis always writes the detail rows from detection_value(),
+--     so a corrected field keeps the investigator's value and the rest follow
+--     the new run. vehicledetail.model gets filled in too.
+--     weapondetail.heldbydetectionid still comes from the run.
+--   - detection_ai_value('weapon_type') maps classes weapondetail doesn't know
+--     (like 'pistol') to 'other', same as ai_save_analysis always did, so the
+--     scene page and weapondetail agree.
+--   - existing rows get fixed up once at the bottom.
 
 
--- ---------------------------------------------------------------------
--- 1. What the AI said for a field (null = it didn't say).
---    Same as 20261013100000 section 3, but a weapon class weapondetail
---    doesn't know is 'other'.
--- ---------------------------------------------------------------------
+-- --- 1. what the AI said for a field (NULL if it didn't say)
+-- Same as 20261013100000 section 3, except weapon classes weapondetail
+-- doesn't know come out as 'other'.
 CREATE OR REPLACE FUNCTION public.detection_ai_value(p_attributes jsonb, p_field text)
   RETURNS text
   LANGUAGE sql IMMUTABLE
@@ -56,10 +46,8 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 2. ai_save_analysis: same as 20261012100100 section 6, except that the
---    detail rows are always written from detection_value().
--- ---------------------------------------------------------------------
+-- --- 2. ai_save_analysis: same as 20261012100100 section 6, except the
+-- detail rows always come from detection_value()
 CREATE OR REPLACE FUNCTION public.ai_save_analysis(
   p_incidentid integer, p_result jsonb, p_summary text DEFAULT NULL)
   RETURNS jsonb
@@ -92,8 +80,8 @@ BEGIN
     RAISE EXCEPTION 'Incident % not found', p_incidentid;
   END IF;
 
-  -- analysed again after it was combined into its case: take the old
-  -- results out first (finish_job queues a fresh merge)
+  -- re-analysed after it was already merged into a case: take the old
+  -- results out first, finish_job will queue a fresh merge
   IF v_cs.aimerged AND v_cs.caseid IS NOT NULL THEN
     PERFORM public.ai_unmerge_incident(p_incidentid, v_cs.caseid);
   END IF;
@@ -110,7 +98,7 @@ BEGIN
     END IF;
     v_files := v_files + 1;
 
-    IF v_file ? 'error' THEN                 -- this file could not be analysed
+    IF v_file ? 'error' THEN                 -- the pipeline couldn't handle this file
       UPDATE public.media SET processingstatus = 'failed' WHERE mediaid = v_mediaid;
       CONTINUE;
     END IF;
@@ -130,7 +118,7 @@ BEGIN
            longitude = COALESCE(round(v_lon, 6), longitude)
      WHERE mediaid = v_mediaid;
 
-    -- people first: weapons point at the person holding them
+    -- people first, because weapons point at whoever is holding them
     v_keep := '{}';
     FOR v_det IN
       SELECT d FROM jsonb_array_elements(COALESCE(v_file -> 'detections', '[]'::jsonb))
@@ -156,7 +144,7 @@ BEGIN
         round(GREATEST(public.ai_num(v_det -> 'last_seen_seconds'),
                        public.ai_num(v_det -> 'first_seen_seconds')), 3),
         public.ai_num(v_det -> 'frames_seen')::integer,
-        -- the rest of what the AI said (paths and fingerprints have their own columns)
+        -- everything else the AI said (paths and fingerprints have their own columns)
         v_det - ARRAY['track_id', 'detection_type', 'bounding_box', 'confidence',
                       'first_seen_seconds', 'last_seen_seconds', 'frames_seen',
                       'model_version', 'appearance', 'person_crop_path', 'face_crop_path',
@@ -180,8 +168,8 @@ BEGIN
       RETURNING detectionid, attributes, corrections INTO v_detid, v_attrs, v_corr;
       v_keep := v_keep || v_detid;
 
-      -- details: what counts now (detection_value), so a corrected field
-      -- keeps the investigator's value and every other field follows this run
+      -- details from detection_value(), so a corrected field keeps the
+      -- investigator's value and everything else follows this run
       IF v_kind = 'vehicle' THEN
         INSERT INTO public.vehicledetail (detectionid, vehicletype, make, model, colour,
                                           platedetected, licenceplatenumber, plateconfidence)
@@ -192,7 +180,7 @@ BEGIN
                 left(public.detection_value(v_attrs, v_corr, 'colour'), 50),
                 public.detection_value(v_attrs, v_corr, 'plate') IS NOT NULL,
                 left(public.detection_value(v_attrs, v_corr, 'plate'), 20),
-                -- a corrected plate has no AI confidence (as in correct_detection)
+                -- a corrected plate has no AI confidence (same as correct_detection)
                 CASE WHEN v_corr ? 'plate' THEN NULL
                      ELSE LEAST(GREATEST(round(public.ai_num(v_det -> 'plate_confidence'), 4), 0), 1) END)
         ON CONFLICT (detectionid) DO UPDATE
@@ -216,7 +204,7 @@ BEGIN
       END IF;
     END LOOP;
 
-    -- rows of an earlier run the new run doesn't have, nobody worked on
+    -- rows from an earlier run that this run doesn't have and nobody has touched
     WITH stale AS (
       SELECT d.detectionid FROM public.detection d
       WHERE d.mediaid = v_mediaid
@@ -235,7 +223,7 @@ BEGIN
     v_all := v_all || v_keep;
   END LOOP;
 
-  -- where: the files' own GPS beats the phone's
+  -- location: GPS from the files beats the phone's
   v_lat := public.ai_num(p_result -> 'location' -> 'latitude');
   v_lon := public.ai_num(p_result -> 'location' -> 'longitude');
   IF COALESCE(p_result -> 'location' ->> 'source', 'file') = 'file'
@@ -266,13 +254,11 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 3. Existing data
--- ---------------------------------------------------------------------
+-- --- 3. fix up existing data
 
--- A weapon_type correction to 'other' of a class that now reads 'other'
--- anyway is no correction any more (a key is in detection.corrections
--- only while it differs from the AI's value; the log keeps the history).
+-- A weapon_type correction to 'other' on a class that now reads 'other'
+-- anyway isn't a correction any more. corrections only holds keys that differ
+-- from the AI, and the log still has the history.
 UPDATE public.detection
    SET corrections = corrections - 'weapon_type'
  WHERE detectiontype = 'weapon'
@@ -280,7 +266,7 @@ UPDATE public.detection
    AND corrections ->> 'weapon_type' IS NOT DISTINCT FROM
        public.detection_ai_value(attributes, 'weapon_type');
 
--- Detail rows that drifted: back to what counts now
+-- detail rows that drifted get reset to the current value
 UPDATE public.vehicledetail vd
    SET vehicletype        = left(public.detection_value(d.attributes, d.corrections, 'vehicle_type'), 50),
        make               = left(public.detection_value(d.attributes, d.corrections, 'make'), 100),

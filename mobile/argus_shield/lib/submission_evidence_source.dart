@@ -1,15 +1,13 @@
-// submission_evidence_source.dart — the people / vehicles / weapons the AI
-// found in ONE submission (before or without a case), in the same shape as a
-// case's evidence, so the submission page can reuse the case screens: the
-// cards with View, the 3-column pictures grid, the enlarged picture with
-// Download.
+// The people/vehicles/weapons the AI found in a single submission, shaped like
+// a case's evidence so the submission page can reuse the case widgets (cards,
+// pictures grid, enlarged view with Download).
 //
-// Each tracked object in each clip is one card (Person 1, Vehicle 1 ...).
-// Combining the same person across clips / submissions happens when the
-// submission is accepted into a case (the case page shows that).
+// Every tracked object in every clip gets its own card. Merging the same
+// person across clips only happens once the submission is accepted into a
+// case.
 //
-// Reads the detection rows the AI worker saved (ai_save_analysis): admins and
-// investigators on the case may read them (RLS), citizens never.
+// Reads the detection rows the worker saved. Admins and investigators on the
+// case can read them (RLS), citizens never can.
 
 import 'package:flutter/foundation.dart';
 
@@ -17,10 +15,10 @@ import 'package:argus_shield/case_evidence_source.dart';
 import 'package:argus_shield/models/case_evidence.dart';
 
 class SubmissionEvidenceSource extends SupabaseEvidenceSource {
-  /// [client] only for tests; the app uses Supabase.instance.client.
+  /// [client] is only for tests, the app uses Supabase.instance.client.
   SubmissionEvidenceSource([super.client]);
 
-  /// [incidentId] (not a case id): this submission's detections.
+  /// Takes an [incidentId], not a case id.
   @override
   Future<CaseEvidence?> load(int incidentId) async {
     try {
@@ -37,7 +35,7 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
           .from('detection')
           .select('detectionid, mediaid, detectiontype, trackid, firstseen, attributes, crops, corrections')
           .inFilter('mediaid', clipNumber.keys.toList())
-          // the order get_crime_scene numbers them in (see [byLabelOrder])
+          // same order get_crime_scene numbers them in (see [byLabelOrder])
           .order('mediaid')
           .order('firstseen', nullsFirst: true)
           .order('detectionid') as List;
@@ -67,12 +65,11 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
     }
   }
 
-  /// One submission has no "Is this Person 2?" questions.
+  /// A single submission never has "Is this Person 2?" questions.
   @override
   Future<void> answer(int caseId, String memberKey, {required bool yes}) async {}
 
-  /// Each clip's people are listed separately on purpose: combining only
-  /// happens in a case.
+  /// Each clip's people stay separate on purpose, merging only happens in a case.
   @override
   bool get canCombine => false;
 
@@ -81,7 +78,7 @@ class SubmissionEvidenceSource extends SupabaseEvidenceSource {
       throw UnsupportedError('Combine people in the case, not in one submission.');
 }
 
-/// Corrected field (detection.corrections) -> the attribute it replaces.
+/// Corrected field (detection.corrections) -> the attribute it overrides.
 const correctedAttribute = <String, String>{
   'upper_clothing': 'upper_clothing',
   'lower_clothing': 'lower_clothing',
@@ -93,8 +90,8 @@ const correctedAttribute = <String, String>{
   'weapon_type': 'class_name',
 };
 
-/// The get_case_evidence-shaped map for one submission's detection rows
-/// (separate from the database calls so it can be tested).
+/// Builds the get_case_evidence-shaped map from one submission's detection
+/// rows. Kept apart from the database calls so it can be tested.
 Map<String, dynamic> buildSubmissionEvidence(
   int incidentId,
   List<Map> rows,
@@ -107,7 +104,7 @@ Map<String, dynamic> buildSubmissionEvidence(
     'person': [], 'vehicle': [], 'weapon': [],
   };
 
-  // people first, so weapons can say who held them
+  // people first so weapons can say who was holding them
   final sorted = [...rows]..sort(byLabelOrder);
 
   for (final r in sorted) {
@@ -118,7 +115,7 @@ Map<String, dynamic> buildSubmissionEvidence(
     final label = '${kind[0].toUpperCase()}${kind.substring(1)} $number';
     labelOf[id] = label;
     final a = Map<String, dynamic>.from((r['attributes'] as Map?) ?? const {});
-    // an investigator's corrections win over the AI (correct_detection)
+    // investigator corrections beat the AI
     final fixes = Map<String, dynamic>.from((r['corrections'] as Map?) ?? const {});
     for (final fix in fixes.entries) {
       final key = correctedAttribute[fix.key];
@@ -192,10 +189,10 @@ Map<String, dynamic> buildSubmissionEvidence(
   };
 }
 
-/// The order detections are numbered in (Person 1, Person 2 ...): by kind,
-/// then the same as get_crime_scene / detection_label in the database:
-/// clip (mediaid), first seen with "not known" first, then detectionid. A
-/// total order, so the numbers never depend on the order rows arrived in.
+/// The order detections get numbered in (Person 1, Person 2...). By kind,
+/// then the same as get_crime_scene / detection_label in the database: clip,
+/// first seen (unknowns first), then detectionid. It's a total order so the
+/// numbers never depend on what order the rows came back in.
 int byLabelOrder(Map a, Map b) {
   const order = {'person': 0, 'vehicle': 1, 'weapon': 2};
   int num0(Map r, String key) => (r[key] as num).toInt();
@@ -213,8 +210,8 @@ int byLabelOrder(Map a, Map b) {
   return num0(a, 'detectionid').compareTo(num0(b, 'detectionid'));
 }
 
-/// "top black, bottom blue · face seen" / "white Toyota car · plate ND123456"
-/// / "long gun · held by Person 1" (same wording as the case page).
+/// e.g. "top black, bottom blue · face seen", "white Toyota car · plate
+/// ND123456", "long gun · held by Person 1". Same wording as the case page.
 String describeDetection(String kind, Map<String, dynamic> a) {
   String? text(String key) {
     final v = a[key];

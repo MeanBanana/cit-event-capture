@@ -1,8 +1,6 @@
-// profile_page.dart — the logged-in citizen's details, loaded from Supabase.
-//
-// Full name is shown but cannot be changed. Email, phone number and
-// residence are filled in with the current values; Save Changes sends only
-// what was changed (see CitizenStore.saveProfile).
+// The citizen's profile. Name is shown but can't be changed. Email, phone and
+// residence start out with the current values, and Save Changes only sends
+// what actually changed (CitizenStore.saveProfile).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,7 +9,7 @@ import '../theme/app_theme.dart';
 import '../theme/argus_widgets.dart';
 import '../app_settings.dart';
 
-/// Displays the citizen's profile and saves changes to Supabase.
+/// Shows the citizen's profile and saves changes.
 class ProfilePage extends StatefulWidget {
   final CitizenStore store;
 
@@ -23,21 +21,19 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage>
     with AutomaticKeepAliveClientMixin<ProfilePage> {
-  // The form key triggers validation; controllers hold the field values.
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController(); // read-only
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _residenceController = TextEditingController();
 
-  /// The profile the fields were last filled from. When the store's profile
-  /// becomes a different object (first load, a save, a reload), the fields
-  /// are refilled from it.
+  /// The profile we last filled the fields from. When the store's profile
+  /// turns into a different object (first load, a save, a reload) we refill.
   CitizenProfile? _filledFrom;
   bool _saving = false;
 
   @override
-  // Retain form input while another tab is visible.
+  // keep what they typed when they switch tabs
   bool get wantKeepAlive => true;
 
   @override
@@ -46,10 +42,10 @@ class _ProfilePageState extends State<ProfilePage>
     widget.store.addListener(_fillFromStore);
     _fillFromStore();
 
-    // CitizenHome normally starts the load at login. This covers the case
-    // where it hasn't (and no error is showing yet). Run after the first
-    // frame, because loading notifies listeners and that can't happen
-    // while widgets are still being built.
+    // CitizenHome normally kicks off the load at login, this covers the case
+    // where it didn't (and there's no error showing). It has to wait for the
+    // first frame, since loading notifies listeners and that can't happen
+    // mid-build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final store = widget.store;
       if (mounted &&
@@ -64,7 +60,6 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void dispose() {
     widget.store.removeListener(_fillFromStore);
-    // Clean up text controllers when the page leaves the widget tree.
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -72,7 +67,7 @@ class _ProfilePageState extends State<ProfilePage>
     super.dispose();
   }
 
-  /// Copies the store's profile into the fields when it's new.
+  /// Copy the store's profile into the fields if it's a new one.
   void _fillFromStore() {
     final profile = widget.store.profile;
     if (profile == null || identical(profile, _filledFrom)) return;
@@ -85,7 +80,7 @@ class _ProfilePageState extends State<ProfilePage>
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    FocusScope.of(context).unfocus(); // close the keyboard
+    FocusScope.of(context).unfocus(); // hide the keyboard
 
     setState(() => _saving = true);
     Map<String, dynamic> result;
@@ -101,8 +96,8 @@ class _ProfilePageState extends State<ProfilePage>
     if (!mounted) return;
     setState(() => _saving = false);
 
-    // A requested email change only applies once confirmed, so show the
-    // current (confirmed) address again instead of the typed one.
+    // An email change only takes effect once confirmed, so put the current
+    // confirmed address back instead of what they typed.
     if (result["emailPending"] == true) {
       _emailController.text = widget.store.profile?.email ?? '';
     }
@@ -119,7 +114,6 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   Widget build(BuildContext context) {
-    // Keeps this page alive during tab changes.
     super.build(context);
     return ListenableBuilder(
       listenable: widget.store,
@@ -175,7 +169,7 @@ class _ProfilePageState extends State<ProfilePage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           FieldLabel(appSettings.t('fullName')),
-          // Read-only: names are fixed after registration.
+          // read-only, names can't change after registration
           TextFormField(
             controller: _nameController,
             readOnly: true,
@@ -198,7 +192,7 @@ class _ProfilePageState extends State<ProfilePage>
             autocorrect: false,
             decoration:
                 InputDecoration(hintText: appSettings.t('enterEmail')),
-            // Same check as the register form.
+            // same check as the register form
             validator: (value) {
               final text = value?.trim() ?? '';
               if (text.isEmpty) return appSettings.t('emailRequired');
@@ -214,7 +208,7 @@ class _ProfilePageState extends State<ProfilePage>
           TextFormField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            // Same format as the register form: "+27 " shown, 9 digits typed.
+            // same as the register form: "+27 " shown, they type the 9 digits
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
               LengthLimitingTextInputFormatter(9),

@@ -1,51 +1,39 @@
--- =====================================================================
--- Argus Shield: storage bucket for citizen submissions
+-- The 'submissions' storage bucket.
 --
--- One private bucket, 'submissions' (Supabase Storage, S3-compatible),
--- holds everything that belongs to an incident, one folder per incident:
+-- One private bucket with a folder per incident:
+--   <incidentid>/media/<file>                     what the citizen uploaded
+--   <incidentid>/ai/<run>/results.json            one AI run
+--   <incidentid>/ai/<run>/1_clip1/vehicle_3.png   that run's crops
 --
---   <incidentid>/media/<file>                     footage the citizen uploaded
---   <incidentid>/ai/<run>/results.json            one AI pipeline run
---   <incidentid>/ai/<run>/1_clip1/vehicle_3.png   its pictures, per file
+-- AI results stay as a JSON file rather than rows, since a single submission
+-- can have hundreds of detections. The database just keeps one pointer per
+-- clip (media.airesultpath). <run> is a timestamp so re-runs never overwrite
+-- older results. backend/upload_results.py does the uploading.
 --
--- The AI results stay a JSON FILE, not table rows: one submission can
--- produce hundreds of detections, so a row per detection would grow the
--- database very fast. The database only keeps ONE pointer per clip
--- (media.airesultpath). <run> = when the analysis ran, so re-running
--- never overwrites an earlier result. Uploaded by backend/upload_results.py.
+-- The app uploads like this: insert the crimescene, upload each file to
+-- <incidentid>/media/<uuid>.<ext> (no upsert), then insert the media row with
+-- that same path.
 --
--- Upload flow (app):
---   1. insert crimescene  (as now)
---   2. upload the file to  <incidentid>/media/<uuid>.<ext>   (no upsert)
---   3. insert media with storagepath = that same path
---
--- Who may do what:
---   citizen       upload footage to incidents THEY reported; read that
---                 footage back. Never sees the ai/ folder (it holds crops
---                 of other people's faces and plates - POPIA).
---   investigator  read and add footage for incidents in their assigned
---                 cases, read the AI results.
---   admin         everything above, for every incident.
---   pipeline      service key (bypasses RLS): reads footage, writes ai/.
---   Nobody changes or deletes files from the app: footage is evidence.
---
--- Contents
---   1. Bucket                3. media.storagepath must be in its folder
---   2. media AI pointer      4. Storage policies
--- =====================================================================
+-- Access:
+--   citizen       upload and read footage on incidents they reported. Never
+--                 the ai/ folder though, that has crops of other people's
+--                 faces and plates (POPIA).
+--   investigator  read and add footage on their assigned cases' incidents,
+--                 and read the AI results
+--   admin         all of the above, for everything
+--   pipeline      service key, bypasses RLS, reads footage and writes ai/
+-- Nobody can change or delete files from the app. Footage is evidence.
 
 
--- ---------------------------------------------------------------------
--- 1. Bucket
--- ---------------------------------------------------------------------
--- 50 MiB = the project's upload limit (config.toml [storage]). On the
--- free plan that is also the maximum; original-quality phone video
--- (needed for readable plates) is often bigger, so on Pro raise both.
+-- --- 1. bucket
+-- 50 MiB matches the project upload limit in config.toml. That's also the
+-- free plan's max, and full-quality phone video (which you need to read
+-- plates) is often bigger, so bump both if we go Pro.
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('submissions', 'submissions', false,
         52428800,
         ARRAY[
-          -- footage (the formats the AI pipeline accepts)
+          -- footage, same formats the pipeline accepts
           'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
           'video/x-m4v', 'video/3gpp', 'video/webm',
           'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
@@ -58,12 +46,10 @@ ON CONFLICT (id) DO UPDATE
       allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 
--- ---------------------------------------------------------------------
--- 2. AI results pointer on media (one per clip, not one per detection)
--- ---------------------------------------------------------------------
+-- --- 2. AI results pointer on media (per clip, not per detection)
 ALTER TABLE public.media
-  ADD COLUMN airesultpath text,          -- newest results.json in 'submissions'
-  ADD COLUMN airesultat   timestamptz;   -- when that analysis ran
+  ADD COLUMN airesultpath text,          -- latest results.json in the bucket
+  ADD COLUMN airesultat   timestamptz;   -- when that run happened
 
 CREATE OR REPLACE FUNCTION public.protect_media_ai()
   RETURNS trigger
@@ -88,11 +74,9 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 3. media.storagepath must point into the incident's own media folder,
---    so nobody can attach a file from someone else's incident.
---    (App users only; the service key may still import other paths.)
--- ---------------------------------------------------------------------
+-- --- 3. media.storagepath has to be inside the incident's own media folder,
+-- so nobody can attach a file from somebody else's incident. Only applies to
+-- app users, the service key can still import from elsewhere.
 CREATE OR REPLACE FUNCTION public.check_media_storagepath()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -113,11 +97,9 @@ CREATE TRIGGER check_media_storagepath
   FOR EACH ROW EXECUTE FUNCTION public.check_media_storagepath();
 
 
--- ---------------------------------------------------------------------
--- 4. Storage policies
--- ---------------------------------------------------------------------
--- True when the signed-in user reported the incident.
--- SECURITY DEFINER like the other policy helpers.
+-- --- 4. storage policies
+-- did the signed-in user report this incident? SECURITY DEFINER like the
+-- other policy helpers.
 CREATE OR REPLACE FUNCTION public.reported_by_me(p_incidentid integer)
   RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER
@@ -130,8 +112,8 @@ AS $$
   )
 $$;
 
--- Incident id from an object name ('42/media/x.mp4' -> 42), NULL when
--- the name doesn't start with a number (so a cast can never fail).
+-- Incident id from an object name ('42/media/x.mp4' -> 42). NULL if the name
+-- doesn't start with a number, so the cast can't blow up.
 CREATE OR REPLACE FUNCTION public.submission_incident(p_name text)
   RETURNS integer
   LANGUAGE sql IMMUTABLE
@@ -146,8 +128,8 @@ REVOKE EXECUTE ON FUNCTION public.submission_incident(text) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.reported_by_me(integer)   TO authenticated, service_role;
 GRANT  EXECUTE ON FUNCTION public.submission_incident(text) TO authenticated, service_role;
 
--- Read: admin anything; assigned investigator the whole incident folder
--- (footage + AI results); the reporting citizen only the media/ folder.
+-- Read: admins anything, assigned investigators the whole incident folder
+-- (footage and AI results), the reporting citizen only media/.
 CREATE POLICY "submissions_select" ON storage.objects
   FOR SELECT TO authenticated
   USING (
@@ -161,8 +143,8 @@ CREATE POLICY "submissions_select" ON storage.objects
   );
 
 -- Upload: footage only, straight into <incidentid>/media/<file>, for an
--- incident you reported, are assigned to, or (admin) any. Same rule as
--- the media_insert policy. The ai/ folder is pipeline-only.
+-- incident you reported or are assigned to (admins: any). Same rule as the
+-- media_insert policy. ai/ is pipeline only.
 CREATE POLICY "submissions_insert" ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -175,6 +157,6 @@ CREATE POLICY "submissions_insert" ON storage.objects
     )
   );
 
--- No UPDATE / DELETE policies on purpose: uploaded footage and AI
--- results can't be replaced or removed from the app (chain of evidence).
--- Upload without upsert; an admin can clean up with the service key.
+-- Deliberately no UPDATE/DELETE policies. Uploaded footage and AI results
+-- can't be replaced or removed from the app, chain of evidence and all that.
+-- If something really needs cleaning up an admin can use the service key.

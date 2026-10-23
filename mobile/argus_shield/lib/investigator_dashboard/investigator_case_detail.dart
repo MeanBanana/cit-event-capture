@@ -14,8 +14,8 @@ import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/app_settings.dart';
 
-/// Assigned-case brief for investigators. Administrative review and
-/// assignment controls are intentionally omitted from this surface.
+/// A case as an investigator sees it. None of the admin review/assignment
+/// controls on purpose.
 ///
 ///   N1 Midrand CIT robbery                       [OPEN]  Mark under review
 ///   Two vans hit on the N1 ...
@@ -23,13 +23,10 @@ import 'package:argus_shield/app_settings.dart';
 ///   │ [card] INC-0042 · description · location · 2 suspects ...      │
 ///   │ [card] INC-0043 · ...                                          │
 ///
-/// The crime scenes are the first tab, so they are what an investigator
-/// sees on opening a case (no scrolling past the AI summary). Each card
-/// opens the crime scene page: its footage, everything the AI found and the
-/// corrections (crime_scene_page.dart). The case-wide AI summary (people /
-/// vehicles / weapons combined over all crime scenes) and the case history
-/// have their own tabs. Chat is a group chat for the investigators assigned
-/// to the case (case_chat_tab.dart).
+/// Crime scenes are the first tab so that's what you see on opening a case,
+/// no scrolling past the summary. Each card opens crime_scene_page.dart. The
+/// case-wide AI summary and the history have their own tabs, and Chat is the
+/// group chat for everyone on the case (case_chat_tab.dart).
 class InvestigatorCaseDetailPage extends StatefulWidget {
   final int caseId;
   final SupabaseService? service;
@@ -49,14 +46,14 @@ class _InvestigatorCaseDetailPageState
     extends State<InvestigatorCaseDetailPage> {
   late final SupabaseService _service = widget.service ?? SupabaseService();
 
-  /// The AI pictures read Supabase directly: not with the fake services of
-  /// the widget tests.
+  /// The AI pictures go straight to Supabase, so they're off with the
+  /// widget tests' fake services.
   late final bool _showEvidence = usesRealDatabase(widget.service);
 
-  /// Padding of each tab's list.
+  /// Padding for each tab's list.
   static const _tabPadding = EdgeInsets.fromLTRB(16, 16, 16, 32);
 
-  /// Changes on pull-to-refresh, so the AI summary loads again.
+  /// Bumped on pull-to-refresh so the AI summary reloads.
   int _version = 0;
   CaseSummary? _case;
   List<CrimeSceneCardInfo> _scenes = const [];
@@ -126,7 +123,7 @@ class _InvestigatorCaseDetailPageState
         ),
       ),
     );
-    // corrections change the counts and the case's AI summary
+    // corrections change the counts and the case summary
     if (mounted) await _load();
   }
 
@@ -173,9 +170,8 @@ class _InvestigatorCaseDetailPageState
                           labelColor: Colors.white,
                           unselectedLabelColor: Colors.white70,
                           indicatorColor: AppColors.accent,
-                          // fixed tabs sharing the width: all four always on
-                          // screen, so labels are short and the side padding
-                          // small enough to fit a quarter of a phone
+                          // fixed tabs splitting the width so all four always
+                          // fit, hence the short labels and small padding
                           labelPadding:
                               const EdgeInsets.symmetric(horizontal: 4),
                           tabs: [
@@ -207,7 +203,7 @@ class _InvestigatorCaseDetailPageState
     );
   }
 
-  /// One tab: a list that can be pulled down to reload the case.
+  /// One tab, a list you can pull down to reload the case.
   Widget _tab(List<Widget> children) => RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -281,8 +277,8 @@ class _InvestigatorCaseDetailPageState
       ];
 }
 
-/// Title, description and status of the case, above the tabs. Kept short
-/// (description clipped to two lines) so the tabs stay near the top.
+/// Title, description and status above the tabs. Description is clipped to
+/// two lines so the tabs stay near the top.
 class _CaseHeader extends StatelessWidget {
   final CaseSummary caseSummary;
   final bool updating;
@@ -318,8 +314,8 @@ class _CaseHeader extends StatelessWidget {
                 style: mutedOnPage(context)),
           ],
           const SizedBox(height: 8),
-          // Wrap, not Row: if the action doesn't fit beside the tag on a
-          // narrow phone it goes to the next line instead of overflowing
+          // Wrap rather than Row, so on a narrow phone the action drops to
+          // the next line instead of overflowing
           Wrap(
             spacing: 8,
             runSpacing: 4,

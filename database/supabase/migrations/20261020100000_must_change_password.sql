@@ -1,22 +1,18 @@
--- =====================================================================
--- Temporary passwords: "must change password" until the user picks one
+-- Temporary passwords: the "must change password" flag.
 --
--- Admin and investigator accounts are created with a temporary password
--- chosen (usually generated) by whoever creates them:
---   * the root admin creates admins in the web console (create-admin)
---   * an admin creates investigators in the mobile app (create-investigator)
--- Both Edge Functions put must_change_password: true in the login's
--- app_metadata. Only the service key can write app_metadata, so a user
--- can't clear it themselves through the API.
+-- Admins and investigators start out with a temporary password picked by
+-- whoever created them (root creates admins in the web console, admins
+-- create investigators in the app). Both Edge Functions set
+-- must_change_password: true in app_metadata, and since only the service key
+-- can write app_metadata nobody can just clear it themselves.
 --
--- The mobile app reads the flag at sign-in and shows the "Choose your
--- password" screen instead of the dashboard until the password is changed.
+-- The app checks the flag at sign-in and shows "Choose your password"
+-- instead of the dashboard until it's done.
 --
--- This trigger takes the flag off as soon as the password really changes
--- (in the app, or through a "Forgot password?" email link). It ignores the
--- first password set on a brand-new login (OLD password empty), so the flag
--- stays on while the account is being created.
--- =====================================================================
+-- This trigger clears the flag once the password actually changes, either in
+-- the app or through a "Forgot password?" link. It ignores the very first
+-- password on a new login (OLD password empty), otherwise the flag would be
+-- cleared while the account is still being created.
 
 CREATE OR REPLACE FUNCTION public.clear_must_change_password()
   RETURNS trigger

@@ -1,10 +1,10 @@
 """
-Tests for the root admin's Cases page in the web admin console
-(migration 20261021120000_root_case_management.sql): root_list_cases() and
-delete_closed_case(), and the cases_delete policy (root admin, closed only).
+Tests for the root admin's Cases page in the web console
+(20261021120000_root_case_management.sql): root_list_cases(),
+delete_closed_case() and the cases_delete policy, which only lets root
+delete closed cases.
 
-Runs against the LOCAL Supabase database like test_ai_pipeline_db.py (every
-test is rolled back):
+Same setup as test_ai_pipeline_db.py, every test gets rolled back:
     cd database && supabase db reset
     python tests/test_root_cases_db.py
 """
@@ -54,10 +54,10 @@ def test_root_admin_deletes_a_closed_case(db, w):
     assert out["caseid"] == case_id and out["incidents"] == 1, out
     assert db.val("SELECT count(*) FROM public.cases WHERE caseid = %s", [case_id]) == 0
     assert db.val("SELECT count(*) FROM public.caseassignment WHERE caseid = %s", [case_id]) == 0
-    # the submission is kept and goes back to the review queue
+    # the submission survives and goes back into the review queue
     sub = db.one("SELECT caseid, reviewstatus FROM public.crimescene WHERE incidentid = %s", [one])
     assert sub["caseid"] is None and sub["reviewstatus"] == "pending", sub
-    # and the history says so
+    # with a note in the history
     assert db.val("SELECT count(*) FROM public.caseevent WHERE eventtype = 'case_deleted' AND detail LIKE %s",
                   [f"CASE-{case_id:04d}%"]) == 1
 
@@ -79,7 +79,7 @@ def test_only_the_root_admin_deletes_cases(db, w):
     for who in (w.admin, w.investigator, w.citizen):
         db.fails(delete_case, db, case_id, who, contains="Only the root administrator")
     db.fails(delete_case, db, case_id, "anon", contains="permission denied")
-    # a direct table delete by a station admin is stopped by the policy
+    # station admins deleting straight from the table get stopped by the policy
     db.rows("DELETE FROM public.cases WHERE caseid = %s", [case_id], w.admin)
     assert db.val("SELECT count(*) FROM public.cases WHERE caseid = %s", [case_id]) == 1
 

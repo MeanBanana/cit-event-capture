@@ -12,10 +12,10 @@ import 'loadingscreen.dart';
 import 'reset_password.dart';
 
 class LoginPage extends StatefulWidget{
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
-  /// Optional so tests can pass in a fake; the app uses the device storage.
+  /// Tests pass a fake in here, the app uses the phone's storage.
   final SavedContactStore? savedContacts;
 
   const LoginPage({super.key, this.service, this.savedContacts});
@@ -28,8 +28,8 @@ class _LoginPageState extends State<LoginPage>{
   final TextEditingController userNameController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
-  /// Checks that username and password are filled in before logging in;
-  /// an empty field turns red with "... is required" (like registration).
+  /// Make sure username and password are filled in. Empty fields go red with
+  /// "... is required", same as registration.
   final _formKey = GlobalKey<FormState>();
 
   late final SupabaseService service = widget.service ?? SupabaseService();
@@ -37,8 +37,8 @@ class _LoginPageState extends State<LoginPage>{
       widget.savedContacts ?? SavedContactStore();
   bool isLoading = false;
 
-  /// Email/phone remembered on this phone from the last login. Empty until
-  /// someone has logged in on this device.
+  /// Email/phone remembered from the last login on this phone. Empty until
+  /// someone logs in here.
   SavedContact _saved = const SavedContact();
 
   @override
@@ -54,15 +54,15 @@ class _LoginPageState extends State<LoginPage>{
     super.dispose();
   }
 
-  /// Step 1 of the saved-details flow: when the app opens, check the device.
-  /// If nothing is there yet, _saved stays empty until the user logs in.
+  /// When the app opens, check the phone for saved details. If there's
+  /// nothing, _saved stays empty until someone logs in.
   Future<void> _loadSavedContact() async {
     final saved = await savedContacts.load();
     if (mounted) setState(() => _saved = saved);
   }
 
-  /// Step 2: after a successful login, insert or update the saved details.
-  /// Not awaited by the caller - the next screen doesn't need to wait for it.
+  /// After a successful login, save or update the details. The caller doesn't
+  /// await this, the next screen doesn't need it.
   void _rememberContact(Map<String, dynamic>? profile) {
     if (profile == null) return;
     savedContacts.save(
@@ -74,11 +74,11 @@ class _LoginPageState extends State<LoginPage>{
   Future<void> _login() async {
     final ctx = context;
 
-    // An empty field: show "required" under it and stay on this page.
+    // empty field: show "required" under it and stay here
     if (!_formKey.currentState!.validate()) return;
 
-    // pushReplacement (not push) everywhere below: the loading screen takes the
-    // login page's place, so Back from a dashboard does not return here.
+    // pushReplacement everywhere below, so the loading screen replaces the
+    // login page and Back from a dashboard doesn't bring you back here
 
     setState(() => isLoading = true);
 
@@ -92,14 +92,14 @@ class _LoginPageState extends State<LoginPage>{
     final success = result["success"] == true;
     final role = result["profile"]?["role"];
     String message = result["message"];
-    Widget nextScreen = const LoginPage(); // failed login: back to this page
+    Widget nextScreen = const LoginPage(); // if login fails we just come back here
 
     if (success) {
       _rememberContact(result["profile"] as Map<String, dynamic>?);
     }
 
-    // Still on the temporary password from whoever made the account: they
-    // must choose their own before reaching any dashboard.
+    // Still on the temporary password someone else set, so they have to
+    // pick their own before getting to any dashboard.
     if (success && result["mustChangePassword"] == true) {
       Navigator.pushReplacement(
         ctx,
@@ -114,7 +114,7 @@ class _LoginPageState extends State<LoginPage>{
       return;
     }
 
-    // Choose the dashboard for the signed-in user's role
+    // pick the dashboard for their role
     if (success) {
       switch (role) {
         case 'citizen':
@@ -124,8 +124,8 @@ class _LoginPageState extends State<LoginPage>{
         case 'investigator':
           nextScreen = const InvestigatorDashboard();
         default:
-          // Unknown role: sign out again so the session does not stay
-          // open, and return to the login page.
+          // Unknown role: sign out so the session doesn't stay open, and go
+          // back to login.
           await service.logout();
           if (!ctx.mounted) return;
           message = "This account has no dashboard. Contact an administrator.";
@@ -145,8 +145,8 @@ class _LoginPageState extends State<LoginPage>{
     if (mounted) setState(() => isLoading = false);
   }
 
-  /// Opens the Forgot password overlay, pre-filled with the email saved on
-  /// this phone (editable). It slides up and fades in as it opens.
+  /// Open the Forgot password overlay, pre-filled with the saved email (they
+  /// can change it). Slides up and fades in.
   Future<void> _showForgotPassword() async {
     final email = await showGeneralDialog<String>(
       context: context,
@@ -155,7 +155,7 @@ class _LoginPageState extends State<LoginPage>{
       barrierColor: Colors.black.withValues(alpha: 0.6),
       transitionDuration: const Duration(milliseconds: 380),
       pageBuilder: (context, _, _) => _ForgotPasswordPanel(saved: _saved),
-      // Slide up from slightly below + fade + a touch of scale.
+      // slide up from a bit below, fade in, and scale up slightly
       transitionBuilder: (context, animation, _, child) {
         final curved = CurvedAnimation(
           parent: animation,
@@ -178,8 +178,8 @@ class _LoginPageState extends State<LoginPage>{
 
     if (email == null || !mounted) return; // closed without resetting
 
-    // Emails the reset link. Tapping it opens the app on ResetPasswordPage
-    // (see main.dart and supabase_service.dart, "RESET PASSWORD").
+    // Send the reset email. The link opens the app on ResetPasswordPage
+    // (see main.dart and the reset password bit of supabase_service.dart).
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
       const SnackBar(content: Text('Sending reset link...')),
@@ -199,8 +199,8 @@ class _LoginPageState extends State<LoginPage>{
 
   @override
   Widget build(BuildContext context) {
-    // Tiny top/bottom padding so the buttons sit right at the bottom.
-    // Left/right stay at the usual 30.
+    // Barely any top/bottom padding so the buttons sit right at the bottom.
+    // Left/right is the usual 30.
     const padding = EdgeInsets.symmetric(horizontal: 30, vertical: 4);
 
     return ListenableBuilder(
@@ -209,12 +209,12 @@ class _LoginPageState extends State<LoginPage>{
       appBar: const ArgusAppBar(),
       body: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
-          // Scrolls so the form still fits when the keyboard is open
+          // scrollable so it still fits with the keyboard open
           padding: padding,
           child: ConstrainedBox(
-            // At least as tall as the screen, so spaceBetween below can push
-            // the bottom group down to the bottom edge. On a short screen
-            // (or with the keyboard open) the content is taller and scrolls.
+            // At least screen height so spaceBetween can push the bottom group
+            // down to the edge. On short screens or with the keyboard up it's
+            // taller than that and just scrolls.
             constraints: BoxConstraints(
               minHeight: constraints.maxHeight - padding.vertical,
             ),
@@ -222,21 +222,19 @@ class _LoginPageState extends State<LoginPage>{
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Empty first child: with spaceBetween, the free space is
-                // split equally above and below the form, so the form sits
-                // centred between the header and the bottom buttons. On a
-                // short screen (or with the keyboard open) there is no free
-                // space and everything simply scrolls.
+                // Empty first child, so spaceBetween splits the free space
+                // above and below the form and it ends up centred between the
+                // header and the bottom buttons. With no free space (short
+                // screen, keyboard up) it all just scrolls.
                 const SizedBox.shrink(),
 
-                // ---- middle: the form
+                // the form
                 Form(
                   key: _formKey,
                   child: Column(
                     children: [
-                      // height 1.0 + no extra space above the first line:
-                      // the 50px Courier font otherwise adds a tall blank band
-                      // above the letters.
+                      // height 1.0 and no leading space, otherwise the 50px
+                      // Courier font adds a big blank band above the letters
                       Text(
                         appSettings.t('login'),
                         style: AppText.pageTitle.copyWith(height: 1.0),
@@ -284,10 +282,10 @@ class _LoginPageState extends State<LoginPage>{
                   ),
                 ),
 
-                // ---- bottom: register, login button, footer
+                // bottom: register, login button, footer
                 Column(
                   children: [
-                    // keeps a gap from the form on short screens
+                    // keeps a gap between this and the form on short screens
                     const SizedBox(height: AppSpacing.medium),
 
                     TextButton(
@@ -334,9 +332,7 @@ class _LoginPageState extends State<LoginPage>{
 
 }
 
-// ===========================================================================
-// Forgot password overlay (email only)
-// ===========================================================================
+// --- Forgot password overlay (email only)
 
 class _ForgotPasswordPanel extends StatefulWidget {
   final SavedContact saved;
@@ -348,7 +344,7 @@ class _ForgotPasswordPanel extends StatefulWidget {
 }
 
 class _ForgotPasswordPanelState extends State<_ForgotPasswordPanel> {
-  // Pre-filled with the email saved on this phone; the user can change it.
+  // pre-filled with the email saved on this phone, they can change it
   late final _emailController =
       TextEditingController(text: widget.saved.email ?? '');
   final _formKey = GlobalKey<FormState>();
@@ -359,7 +355,7 @@ class _ForgotPasswordPanelState extends State<_ForgotPasswordPanel> {
     super.dispose();
   }
 
-  /// Checks the email and closes the overlay, returning it to LoginPage.
+  /// Check the email and close the overlay, handing it back to LoginPage.
   void _reset() {
     if (!_formKey.currentState!.validate()) return;
     Navigator.of(context).pop(_emailController.text.trim());
@@ -367,7 +363,7 @@ class _ForgotPasswordPanelState extends State<_ForgotPasswordPanel> {
 
   @override
   Widget build(BuildContext context) {
-    // Lift the panel above the keyboard when the field is focused.
+    // lift the panel above the keyboard when the field is focused
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final hasSavedEmail = widget.saved.email?.isNotEmpty ?? false;
 

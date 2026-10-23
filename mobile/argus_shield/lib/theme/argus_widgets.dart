@@ -1,18 +1,18 @@
-// argus_widgets.dart — small building blocks shared by every screen, so the
-// header, field labels and main buttons look the same everywhere.
+// Small widgets every screen shares, so the header, field labels and main
+// buttons look the same everywhere.
 
 import 'package:flutter/material.dart';
 import 'app_theme.dart';
 
-/// The Argus Shield header: "Argus Shield" with "CIT Intelligence System"
-/// underneath. Optionally shows the signed-in role on the right and a TabBar
-/// (or any other widget) along the bottom.
+/// The "Argus Shield / CIT Intelligence System" header. Can show the
+/// signed-in role on the right and a TabBar (or anything else) along the
+/// bottom.
 class ArgusAppBar extends StatelessWidget implements PreferredSizeWidget {
-  /// e.g. 'Citizen'. Leave null on pages shown before logging in.
+  /// e.g. 'Citizen'. Leave it null on screens before login.
   final String? roleLabel;
   final PreferredSizeWidget? bottom;
 
-  /// Extra buttons on the right, before the role name. Used for Settings.
+  /// Extra buttons on the right, before the role name (e.g. Settings).
   final List<Widget>? actions;
 
   const ArgusAppBar({
@@ -56,21 +56,21 @@ class ArgusAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// Shape of the small marker beside the role name in [RoleAppBar].
+/// The little marker next to the role name in [RoleAppBar].
 enum RoleMarker {
-  /// Citizen screens.
+  /// citizen screens
   circle,
 
-  /// System Administrator screens.
+  /// admin screens
   diamond,
 }
 
-/// Header for screens after logging in. Two lines:
+/// Header for screens after login, two lines:
 ///   ● CITIZEN                  ◆ SYSTEM ADMINISTRATOR
 ///   Argus Shield               Argus Shield
 ///
-/// The toolbar is made taller than the default 56px so the 30px
-/// "Argus Shield" title and the role line both fit without cropping.
+/// Taller than the default 56px toolbar, otherwise the 30px title and the
+/// role line don't both fit.
 class RoleAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String roleLabel;
   final RoleMarker marker;
@@ -122,7 +122,7 @@ class RoleAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-/// The small orange circle (citizen) or diamond (admin) before the role.
+/// Orange circle for citizens, diamond for admins.
 class _RoleMarkerIcon extends StatelessWidget {
   final RoleMarker marker;
 
@@ -141,13 +141,13 @@ class _RoleMarkerIcon extends StatelessWidget {
           ),
         );
       case RoleMarker.diamond:
-        // A square turned 45° — sized so its corners match the circle's width.
+        // a square rotated 45°, sized so its corners line up with the circle's width
         return SizedBox(
           width: 10,
           height: 10,
           child: Center(
             child: Transform.rotate(
-              angle: 0.785398, // 45° in radians (pi / 4)
+              angle: 0.785398, // pi / 4
               child: Container(width: 7.5, height: 7.5, color: AppColors.accent),
             ),
           ),
@@ -156,7 +156,7 @@ class _RoleMarkerIcon extends StatelessWidget {
   }
 }
 
-/// Left-aligned label shown above a text field.
+/// Left-aligned label above a text field.
 class FieldLabel extends StatelessWidget {
   final String text;
 
@@ -177,8 +177,8 @@ class FieldLabel extends StatelessWidget {
   }
 }
 
-/// The big square orange action button ("Access System", "Submit Report").
-/// Pass `onPressed: null` to show it disabled.
+/// The big square orange button ("Access System", "Submit Report").
+/// `onPressed: null` shows it disabled.
 class PrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -192,22 +192,21 @@ class PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: AppSpacing.buttonMaxWidth, // shrinks to fit narrower screens
+      width: AppSpacing.buttonMaxWidth, // shrinks on narrower screens
       height: AppSpacing.buttonHeight,
       child: ElevatedButton(
         onPressed: onPressed,
-        // scaleDown keeps long labels on one line on small phones
+        // scaleDown so long labels stay on one line on small phones
         child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
       ),
     );
   }
 }
 
-/// The partner of [PrimaryButton] for the other choices on a screen
-/// ("Use the AI's value", "Not a real weapon"): same square shape and
-/// full width, outlined instead of filled and a little lower, so the
-/// primary action stays the obvious one. [color] defaults to the accent;
-/// pass AppColors.danger for destructive choices.
+/// Sidekick to [PrimaryButton] for the other options on a screen ("Use the
+/// AI's value", "Not a real weapon"). Same square full-width shape but
+/// outlined and a bit shorter, so the main action still stands out.
+/// [color] defaults to the accent, use AppColors.danger for destructive stuff.
 class SecondaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -228,7 +227,7 @@ class SecondaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = FittedBox(fit: BoxFit.scaleDown, child: Text(label));
     return SizedBox(
-      width: AppSpacing.buttonMaxWidth, // shrinks to fit narrower screens
+      width: AppSpacing.buttonMaxWidth, // shrinks on narrower screens
       height: height,
       child: OutlinedButton(
         onPressed: onPressed,
@@ -257,43 +256,41 @@ class SecondaryButton extends StatelessWidget {
   }
 }
 
-/// A box whose border is a line of dashes that keeps running around the
-/// edge, like a warning tape. Used to draw attention to something urgent
-/// (e.g. the Active cases tile on the admin Overview).
+/// A box with a dashed border that keeps crawling around the edge, a bit like
+/// warning tape. For drawing the eye to something urgent, e.g. the Active
+/// cases tile on the admin Overview.
 ///
 ///   AnimatedStripeBorder(
 ///     color: AppColors.danger,
 ///     child: Text('2 active'),
 ///   )
 ///
-/// How it works: a CustomPainter draws the rounded-rectangle outline as
-/// separate dashes. An AnimationController moves the starting point of the
-/// first dash a little further along the outline every frame, so the dashes
-/// appear to travel round the box. When it has moved one full dash + gap the
-/// pattern looks identical again, so the loop is seamless.
+/// A CustomPainter draws the rounded outline as separate dashes, and an
+/// AnimationController nudges where the first dash starts a little further
+/// each frame. After one dash + gap the pattern looks the same again, so the
+/// loop is seamless.
 class AnimatedStripeBorder extends StatefulWidget {
   final Widget child;
 
-  /// Colour of the moving dashes.
+  /// Dash colour.
   final Color color;
 
   /// Border thickness.
   final double strokeWidth;
 
-  /// Length of each dash and of the gap after it.
+  /// Length of each dash, and of the gap after it.
   final double dashLength;
   final double gapLength;
 
   final double borderRadius;
 
-  /// Time for the dashes to move one full dash + gap.
-  /// Shorter = faster.
+  /// How long it takes the dashes to move one dash + gap. Lower is faster.
   final Duration cycle;
 
-  /// Space between the border and [child].
+  /// Padding between the border and [child].
   final EdgeInsetsGeometry padding;
 
-  /// Fill behind [child]; transparent by default.
+  /// Background behind [child], transparent unless set.
   final Color? backgroundColor;
 
   const AnimatedStripeBorder({
@@ -313,8 +310,8 @@ class AnimatedStripeBorder extends StatefulWidget {
   State<AnimatedStripeBorder> createState() => _AnimatedStripeBorderState();
 }
 
-// SingleTickerProviderStateMixin gives the controller a ticker that pauses
-// automatically when this widget is off screen (e.g. on another tab).
+// SingleTickerProviderStateMixin's ticker pauses by itself when the widget is
+// off screen, e.g. on another tab.
 class _AnimatedStripeBorderState extends State<AnimatedStripeBorder>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller =
@@ -332,13 +329,13 @@ class _AnimatedStripeBorderState extends State<AnimatedStripeBorder>
 
   @override
   void dispose() {
-    _controller.dispose(); // stop the ticker, or Flutter reports a leak
+    _controller.dispose(); // otherwise Flutter complains about a leaked ticker
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // RepaintBoundary: only the border repaints 60x a second, not the child.
+    // RepaintBoundary so only the border repaints 60 times a second, not the child
     return RepaintBoundary(
       child: CustomPaint(
         foregroundPainter: _StripeBorderPainter(
@@ -363,15 +360,15 @@ class _AnimatedStripeBorderState extends State<AnimatedStripeBorder>
 }
 
 class _StripeBorderPainter extends CustomPainter {
-  final Animation<double> progress; // 0 → 1, repeating
+  final Animation<double> progress; // loops 0 -> 1
   final Color color;
   final double strokeWidth;
   final double dashLength;
   final double gapLength;
   final double borderRadius;
 
-  // Passing the animation as `repaint` makes the painter redraw on every
-  // tick without rebuilding any widgets.
+  // Passing the animation as `repaint` redraws on every tick without
+  // rebuilding any widgets.
   _StripeBorderPainter({
     required this.progress,
     required this.color,
@@ -383,12 +380,12 @@ class _StripeBorderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Inset by half the stroke so the line sits fully inside the box.
+    // inset by half the stroke so the line sits fully inside the box
     final rect = (Offset.zero & size).deflate(strokeWidth / 2);
     final outline = Path()
       ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(borderRadius)));
 
-    // Faint solid line underneath, so the box edge stays readable in the gaps.
+    // faint solid line underneath so the edge is still visible in the gaps
     canvas.drawPath(
       outline,
       Paint()
@@ -407,9 +404,8 @@ class _StripeBorderPainter extends CustomPainter {
       final length = metric.length;
       if (length <= 0) continue;
 
-      // Stretch dash + gap slightly so a whole number of them fits round the
-      // box. Otherwise there'd be a visible jump where the outline's start
-      // and end meet.
+      // Stretch dash + gap a touch so a whole number fits around the box,
+      // otherwise you'd see a jump where the outline's start and end meet.
       final requested = dashLength + gapLength;
       final count = (length / requested).round().clamp(1, 100000);
       final pattern = length / count;
@@ -417,8 +413,8 @@ class _StripeBorderPainter extends CustomPainter {
 
       final shift = progress.value * pattern;
 
-      // Start one pattern "before" the outline so a dash is always sliding
-      // in at the start while the matching piece slides out at the end.
+      // Start one pattern before the outline begins, so there's always a dash
+      // sliding in at the start while its other half slides out at the end.
       for (double d = shift - pattern; d < length; d += pattern) {
         final start = d.clamp(0.0, length);
         final end = (d + dash).clamp(0.0, length);
@@ -438,15 +434,14 @@ class _StripeBorderPainter extends CustomPainter {
       old.borderRadius != borderRadius;
 }
 
-/// MaterialApp `builder` that keeps every screen above the phone's own
-/// navigation buttons / gesture bar (and clear of side notches in
-/// landscape). Newer Android versions draw apps edge-to-edge, so without
-/// this, content at the very bottom of a page, bottom sheets and bottom
-/// buttons end up underneath the system buttons.
+/// MaterialApp `builder` that keeps every screen above the phone's nav
+/// buttons / gesture bar (and clear of side notches in landscape). Newer
+/// Android draws apps edge to edge, so without this, anything at the bottom
+/// of a page ends up under the system buttons.
 ///
-/// The strip behind the system bar gets the page background colour, so it
-/// looks like part of the app. The top is left alone: the app bar already
-/// handles the status bar.
+/// The strip behind the system bar gets the page background so it looks like
+/// part of the app. The top's left alone since the app bar already handles
+/// the status bar.
 ///
 ///   MaterialApp(builder: keepAboveSystemBars, ...)
 Widget keepAboveSystemBars(BuildContext context, Widget? child) {

@@ -1,6 +1,5 @@
-// Tests for the crime scenes of a case (investigator case page), the crime
-// scene page and correcting what the AI found. Uses CrimeSceneFakeService,
-// which keeps everything in memory.
+// A case's crime scenes on the investigator case page, the crime scene page,
+// and correcting the AI. Runs against CrimeSceneFakeService.
 
 import 'dart:typed_data';
 
@@ -36,7 +35,7 @@ Future<void> openScene(WidgetTester tester, CrimeSceneFakeService fake,
   }
 }
 
-/// Taps the tab whose label starts with [label] ("Findings" for
+/// Tap the tab whose label starts with [label] ("Findings" matches
 /// "Findings (3)").
 Future<void> openTab(WidgetTester tester, String label,
     {bool settle = true}) async {
@@ -56,7 +55,7 @@ Future<void> openTab(WidgetTester tester, String label,
   }
 }
 
-/// Scrolls [finder] into view and taps it.
+/// Scroll [finder] into view and tap it.
 Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
@@ -64,7 +63,7 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
-/// A 1x1 transparent PNG, so pictures "load" in tests.
+/// 1x1 transparent PNG so pictures "load" in tests.
 final _png = Uint8List.fromList(const [
   0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
   0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
@@ -74,7 +73,7 @@ final _png = Uint8List.fromList(const [
   0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 ]);
 
-/// The submission's detection rows, as SubmissionEvidenceSource reads them.
+/// The submission's detection rows the way SubmissionEvidenceSource reads them.
 class _RowsSource implements CaseEvidenceSource {
   _RowsSource(this.rows);
   final List<Map> rows;
@@ -90,7 +89,7 @@ class _RowsSource implements CaseEvidenceSource {
   Future<void> answer(int caseId, String memberKey, {required bool yes}) async {}
 }
 
-/// Opens the correction sheet of detection [id] (on the Findings tab).
+/// Open the correction sheet for detection [id] on the Findings tab.
 Future<void> openCorrection(WidgetTester tester, int id) =>
     tapVisible(tester, find.byKey(ValueKey('correct-$id')));
 
@@ -545,10 +544,10 @@ void main() {
   });
 
   group('Pictures of a finding', () {
-    // Three people in one clip: one with no first-seen time, two seen at the
-    // same moment. get_crime_scene numbers them 31, 32, 33 (unknown time
-    // first, then by detection id); the rows reach the pictures page in
-    // another order.
+    // Three people in one clip, one with no first-seen time and two seen at
+    // the same moment. get_crime_scene numbers them 31, 32, 33 (unknown time
+    // first, then by id), but the rows reach the pictures page in a
+    // different order.
     Map<String, dynamic> sceneDetection(
             int id, int number, double? seen, String top) =>
         fakeDetection(id, 'person', number,

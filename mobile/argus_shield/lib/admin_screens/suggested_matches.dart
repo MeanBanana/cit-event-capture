@@ -1,18 +1,16 @@
-// suggested_matches.dart — one-tap review of the AI's case suggestions.
+// One-tap review of the case suggestions.
 //
-// The database scores every pending submission against the open cases
-// (same plate, AI links, distance, time ...). Submissions that most likely
-// belong to an existing case are listed here, each with its best case and
-// the reasons. Every match starts ticked, except where another case also
-// matches well. The admin checks the list, unticks anything wrong, and
-// accepts the rest with one tap.
+// The database scores every pending submission against the open cases (same
+// plate, AI links, distance, time...). The ones that very likely belong to an
+// existing case get listed here with their best case and the reasons. Each
+// starts ticked, unless another case matches well too. The admin looks
+// through, unticks anything wrong and accepts the rest in one go.
 //
-// Nothing joins a case automatically: until the admin taps Accept, the
-// submissions stay pending and investigators can't see them.
+// Nothing joins a case on its own. Until the admin taps Accept they stay
+// pending and investigators can't see them.
 //
-//   SuggestedMatchesBanner  the "N submissions match existing cases" bar at
-//                           the top of the Submissions list
-//   SuggestedMatchesPage    the review list itself
+// SuggestedMatchesBanner is the "N submissions match existing cases" bar on
+// the Submissions list, SuggestedMatchesPage is the review list.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -24,13 +22,13 @@ import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/submission_detail.dart';
 
-/// Bar shown above the Submissions list when there are suggested matches.
-/// Shows nothing while loading, on error, or when there are none.
+/// Bar above the Submissions list when there are suggestions. Shows nothing
+/// while loading, on error, or if there aren't any.
 class SuggestedMatchesBanner extends StatefulWidget {
   final SupabaseService service;
 
-  /// Called when the admin comes back from the review page, so the list
-  /// behind can reload.
+  /// Called when the admin comes back from the review page so the list
+  /// behind it can reload.
   final VoidCallback onChanged;
 
   const SuggestedMatchesBanner({
@@ -50,7 +48,7 @@ class _SuggestedMatchesBannerState extends State<SuggestedMatchesBanner> {
     try {
       return await widget.service.listSuggestedMatches();
     } catch (_) {
-      return const []; // a bonus: never break the Submissions list
+      return const []; // it's a bonus, never break the Submissions list over it
     }
   }
 
@@ -105,7 +103,7 @@ class _SuggestedMatchesBannerState extends State<SuggestedMatchesBanner> {
   }
 }
 
-/// One suggestion with the submission and case it is about.
+/// A suggestion plus the submission and case it's about.
 class _Item {
   final SuggestedMatch match;
   final CrimeSceneSummary submission;
@@ -140,8 +138,8 @@ class _SuggestedMatchesPageState extends State<SuggestedMatchesPage> {
     _load();
   }
 
-  /// The matches, plus the submissions and cases they are about (one call
-  /// for all the submissions, one per distinct case).
+  /// The matches plus their submissions and cases. One call for all the
+  /// submissions, one per distinct case.
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -205,7 +203,7 @@ class _SuggestedMatchesPageState extends State<SuggestedMatchesPage> {
         builder: (_) => SubmissionDetailPage(submission: s, service: _service),
       ),
     );
-    if (mounted) await _load(); // it may have been reviewed there
+    if (mounted) await _load(); // they might have reviewed it in there
   }
 
   void _setAll(bool value) {
@@ -271,7 +269,7 @@ class _SuggestedMatchesPageState extends State<SuggestedMatchesPage> {
                   ),
                   const SizedBox(height: AppSpacing.small),
                 ],
-                const SizedBox(height: 80), // room above the button
+                const SizedBox(height: 80), // space above the button
               ],
             ],
           ),
@@ -296,7 +294,7 @@ class _SuggestedMatchesPageState extends State<SuggestedMatchesPage> {
   }
 }
 
-/// One suggestion: tick box, the submission, the case it goes into, and why.
+/// One suggestion: tick box, the submission, the case it'd go into, and why.
 class _MatchCard extends StatelessWidget {
   final _Item item;
   final ValueChanged<bool> onChanged;

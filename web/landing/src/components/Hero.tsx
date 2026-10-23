@@ -7,28 +7,29 @@ import {CUT_SIZE, DETECTIONS, type Cut, type Detection, type LayerName} from '..
 
 /**
  * The ambush, seen from a witness's car. Six illustrated layers cut from one
- * scene, stacked and pinned; one scroll range moves each at its own rate:
+ * scene, stacked and pinned, each moving at its own rate across one scroll
+ * range:
  *
- *   0.00 – 0.18  "signal lost" static clears off the camera feed
- *   0.04 – 0.50  the cash van rolls up the highway into view
- *   0.08 – 0.50  ARGUS SHIELD resolves above the road
- *   0.16 – 0.42  the robbers' cars and gunmen close in — shots are fired
- *   0.26 – 0.50  Argus boxes every person, vehicle, weapon and plate
- *   0.40 – 0.66  the windscreen, the phone and the dashboard rise around
- *                the view — you are the witness, filming
- *   0.72 – 1.00  everything tilts away upward and the dashboard swallows
- *                the frame to black, which is where the page continues
+ *   0.00-0.18  "signal lost" static clears off the feed
+ *   0.04-0.50  the cash van rolls up the highway
+ *   0.08-0.50  ARGUS SHIELD fades in above the road
+ *   0.16-0.42  the robbers' cars and gunmen close in and open fire
+ *   0.26-0.50  Argus boxes every person, vehicle, weapon and plate
+ *   0.40-0.66  windscreen, phone and dashboard rise up around the view, so
+ *              you're the witness filming it
+ *   0.72-1.00  it all tilts away and the dashboard swallows the frame to
+ *              black, which is where the rest of the page picks up
  *
- * A camera HUD rides on top: recording clock, live detection counts,
- * location. The AI boxes are drawn on a canvas from src/scene.ts, mapped
- * through each layer's current transform so they stay locked to the scene.
+ * On top there's a camera HUD (recording clock, live counts, location). The
+ * AI boxes get drawn on a canvas from src/scene.ts and run through each
+ * layer's current transform so they stick to the scene.
  */
 
 const STAGE_VH = 440;
 
 const ORDER: LayerName[] = ['sky', 'van', 'ambush', 'frame', 'phone', 'ground'];
 
-/** All layers share one crop (object-cover, centred), so they stay registered. */
+/** Every layer uses the same crop (object-cover, centred) so they line up. */
 const FIT = 'absolute inset-0 size-full object-cover object-center';
 
 const COLOURS: Record<Detection['kind'], string> = {
@@ -39,7 +40,7 @@ const COLOURS: Record<Detection['kind'], string> = {
 };
 const SCORES = [0.97, 0.93, 0.91, 0.88, 0.95, 0.9, 0.86, 0.94, 0.89, 0.92];
 
-/** Bursts of fire: each gun fires a few quick rounds, then pauses. */
+/** Bursts of fire: each gun gets off a few quick rounds, then pauses. */
 function firing(time: number, i: number) {
   const phase = (time / 1000 + i * 0.53) % 1.5;
   return phase < 0.45 && (phase * 1000) % 150 < 55;
@@ -60,7 +61,7 @@ export function Hero() {
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
 
-  // The AI canvas matches the screen (device pixels, capped at 2x).
+  // AI canvas matches the screen in device pixels, capped at 2x
   useEffect(() => {
     const c = aiRef.current!;
     const sync = () => {
@@ -82,7 +83,7 @@ export function Hero() {
     const img = nctx.createImageData(noise.width, noise.height);
     const mobileQuery = window.matchMedia('(max-width: 767px)');
 
-    // Where each layer is right now (translate in vh, scale about the centre).
+    // current transform of each layer (translate in vh, scale around the centre)
     const pose: Record<LayerName, {y: number; s: number}> = {
       sky: {y: 0, s: 1}, van: {y: 0, s: 1}, ambush: {y: 0, s: 1},
       frame: {y: 0, s: 1}, phone: {y: 0, s: 1}, ground: {y: 0, s: 1},
@@ -100,7 +101,7 @@ export function Hero() {
       el.style.opacity = String(opacity);
     };
 
-    /** A point in a layer image (fractions) -> CSS pixels on screen. */
+    /** Layer image point (fractions) -> CSS pixels on screen. */
     const toScreen = (cut: Cut, layer: LayerName, fx: number, fy: number, vw: number, vh: number) => {
       const {w: iw, h: ih} = CUT_SIZE[cut];
       const k = Math.max(vw / iw, vh / ih);
@@ -124,7 +125,7 @@ export function Hero() {
       const dets = DETECTIONS[cut];
       const motion = !reducedRef.current;
 
-      // Shots: muzzle flashes and tracers while the gunmen are in view.
+      // muzzle flashes and tracers while the gunmen are on screen
       const gunsLive = range(p, 0.2, 0.3) * (1 - range(p, 0.6, 0.7));
       shooting = false;
       if (motion && gunsLive > 0) {
@@ -170,7 +171,7 @@ export function Hero() {
         actx.globalAlpha = 1;
       }
 
-      // Scan line sweeps once as the AI starts looking.
+      // scan line sweeps across once when the AI starts looking
       const sweep = range(p, 0.24, 0.36);
       if (sweep > 0 && sweep < 1) {
         const y = sweep * vh;
@@ -183,7 +184,7 @@ export function Hero() {
         actx.fillRect(0, y, vw, 1.5);
       }
 
-      // Boxes: each detection snaps in, a little after the one before.
+      // boxes snap in one after another
       let count = 0;
       const font = vw < 768 ? 9 : 11;
       actx.font = `500 ${font}px "IBM Plex Mono", monospace`;
@@ -247,7 +248,7 @@ export function Hero() {
       if (rect.bottom < 0) return;
       frame++;
 
-      // "Signal lost" static flickers while the veil is up.
+      // static flickers while the veil is up
       const veil = 1 - range(p, 0, 0.18);
       if (veil > 0.001 && (frame % 2 === 0 || lastP < 0)) {
         const data = img.data;
@@ -259,7 +260,7 @@ export function Hero() {
         nctx.putImageData(img, 0, 0);
       }
 
-      // The AI layer animates every frame (shots), not only on scroll.
+      // the AI layer has to redraw every frame because of the shots, not just on scroll
       drawAI(p, time);
       alertRef.current!.style.opacity = shooting ? '1' : String(Math.max(0, Number(alertRef.current!.style.opacity || 0) - 0.04));
 
@@ -269,11 +270,11 @@ export function Hero() {
       const exit = range(p, 0.72, 1);
       const settle = easeOutCubic(range(p, 0, 0.5));
 
-      // Veil clears upward.
+      // veil lifts upward
       veilRef.current!.style.opacity = String(veil);
       veilRef.current!.style.transform = `translate3d(0, ${-range(p, 0, 0.18) * 24}vh, 0) scale(${1 + range(p, 0, 0.18) * 0.25})`;
 
-      // Far → near, each faster than the one behind it.
+      // back to front, each layer faster than the one behind
       set('sky', lerp(0, -6, p), lerp(1.14, 1, settle));
       const rise = easeOutCubic(range(p, 0.04, 0.5));
       set('van', lerp(34, 0, rise) - exit * 12, lerp(0.92, 1, rise));
@@ -286,7 +287,7 @@ export function Hero() {
       const dash = easeOutCubic(range(p, 0.44, 0.64));
       set('ground', lerp(36, 0, dash) - exit * 78);
 
-      // Title: resolves (tracking closes in), then yields to the scene.
+      // title sharpens (letter spacing closes up), then gets out of the way
       const tIn = easeOutCubic(range(p, 0.08, 0.24));
       const tOut = range(p, 0.38, 0.48);
       const title = titleRef.current!;
@@ -295,7 +296,7 @@ export function Hero() {
       title.style.transform = `translate3d(0, ${-p * 6}vh, 0)`;
       title.style.filter = tIn < 0.99 ? `blur(${(1 - tIn) * 10}px)` : '';
 
-      // Camera HUD.
+      // camera HUD
       hudRef.current!.style.opacity = String(range(p, 0.02, 0.1) * (1 - range(p, 0.66, 0.74)));
       const secs = 5 * 3600 + 41 * 60 + 30 + p * 150;
       clockRef.current!.textContent = `${String(Math.floor(secs / 3600)).padStart(2, '0')}:${String(Math.floor((secs % 3600) / 60)).padStart(2, '0')}:${String(Math.floor(secs % 60)).padStart(2, '0')}`;
@@ -333,12 +334,12 @@ export function Hero() {
           <p className="mt-4 font-mono text-label text-signal uppercase">{hero.kicker}</p>
         </div>
 
-        {/* What the AI sees: boxes, labels, and the shots being fired. */}
+        {/* The AI overlay: boxes, labels and the shots. */}
         <canvas ref={aiRef} aria-hidden="true" className="pointer-events-none absolute inset-0 size-full" />
 
         {ORDER.slice(3).map((n) => layer(n))}
 
-        {/* "Signal lost": static on the camera feed. */}
+        {/* "Signal lost" static on the feed. */}
         <div ref={veilRef} aria-hidden="true" className="pointer-events-none absolute inset-0 bg-void">
           <canvas ref={staticRef} width={160} height={100} className="absolute inset-0 size-full opacity-25 [image-rendering:pixelated]" />
           <div className="scanlines absolute inset-0" />

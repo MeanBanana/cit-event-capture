@@ -1,7 +1,7 @@
-// upload_page.dart — the citizen reports an incident: 1-5 videos / photos,
-// where it happened and what they saw. Submit sends it to Argus Shield:
-// the incident and the footage go to Supabase, and the AI worker analyses
-// it (CitizenStore.sendReport). Admins then see it in their Submissions tab.
+// Where a citizen reports an incident: 1-5 videos/photos, where it happened
+// and what they saw. Submit creates the incident, uploads the footage and
+// queues it for the AI (CitizenStore.sendReport). Admins then see it under
+// Submissions.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,12 +13,12 @@ import 'citizen_store.dart';
 import 'phone_location.dart';
 import 'media_preview_page.dart';
 
-/// Lets a citizen pick footage, describe the incident and send the report.
+/// Pick footage, describe the incident, send the report.
 class UploadPage extends StatefulWidget {
   final CitizenStore store;
 
-  /// The phone's GPS. Optional so tests can replace it; the app uses the
-  /// real one (phone_location.dart).
+  /// Phone GPS. Only optional so tests can swap it out, the app uses
+  /// phone_location.dart.
   final Future<(double, double)?> Function()? getLocation;
 
   const UploadPage({
@@ -31,31 +31,29 @@ class UploadPage extends StatefulWidget {
   State<UploadPage> createState() => _UploadPageState();
 }
 
-// State holds form inputs and the chosen footage while this page is open.
 class _UploadPageState extends State<UploadPage>
     with AutomaticKeepAliveClientMixin<UploadPage> {
   @override
-  // Retain unfinished input when the user switches tabs.
+  // keep half-finished input when they switch tabs
   bool get wantKeepAlive => true;
   final _picker = ImagePicker();
-  // The key gives access to Form.validate(); controllers hold field text.
   final _formKey = GlobalKey<FormState>();
   final _locationController = TextEditingController();
   final _descriptionController = TextEditingController();
 
-  /// The picked / recorded files, in the order they will be uploaded.
+  /// Picked/recorded files, in upload order.
   final List<FootageFile> _files = [];
   final Map<FootageFile, XFile> _previewFiles = {};
 
-  /// Share the phone's location with the report (the citizen can switch it off).
+  /// Whether to attach the phone's location. On by default, they can turn it off.
   bool _shareLocation = true;
 
-  // Sending state
+  // sending state
   bool _sending = false;
   SendProgress? _progress;
   String? _sendError;
 
-  // Set when sending stopped part-way: Try again carries on from here.
+  // set if sending stopped part way, Try again carries on from here
   int? _resumeIncidentId;
   int _alreadyUploaded = 0;
 
@@ -63,7 +61,6 @@ class _UploadPageState extends State<UploadPage>
 
   @override
   void dispose() {
-    // Controllers own resources; release them when this page is removed.
     _locationController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -93,7 +90,7 @@ class _UploadPageState extends State<UploadPage>
     }
   }
 
-  /// Opens the gallery for videos and photos (up to the files still allowed).
+  /// Open the gallery for videos and photos, up to however many files are still allowed.
   Future<void> _chooseFromGallery() async {
     if (_sending) return;
     if (_room <= 0) {
@@ -101,7 +98,7 @@ class _UploadPageState extends State<UploadPage>
       return;
     }
     try {
-      // pickMultipleMedia needs a limit of at least 2
+      // pickMultipleMedia wants a limit of at least 2
       final picked = _room == 1
           ? [?await _picker.pickMedia()]
           : await _picker.pickMultipleMedia(limit: _room);
@@ -111,7 +108,7 @@ class _UploadPageState extends State<UploadPage>
     }
   }
 
-  /// Opens the device camera to record a video; errors appear in a SnackBar.
+  /// Open the camera to record a video. Errors show in a SnackBar.
   Future<void> _recordVideo() async {
     if (_sending) return;
     if (_room <= 0) {
@@ -127,7 +124,7 @@ class _UploadPageState extends State<UploadPage>
   }
 
   void _removeFile(int index) {
-    if (_sending || _resumeIncidentId != null) return; // files already sent stay
+    if (_sending || _resumeIncidentId != null) return; // can't remove files once some have been sent
     setState(() {
       _previewFiles.remove(_files[index]);
       _files.removeAt(index);
@@ -146,17 +143,16 @@ class _UploadPageState extends State<UploadPage>
     ));
   }
 
-  /// Displays brief feedback at the bottom of the dashboard.
+  /// Short message at the bottom of the screen.
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Validates the form and sends the report (or carries on after a failure).
+  /// Validate and send the report, or carry on after a failed attempt.
   Future<void> _submitReport() async {
     if (_sending) return;
-    // Run the validators attached to both TextFormField widgets.
     final fieldsValid = _formKey.currentState!.validate();
     if (_files.isEmpty) {
       _showMessage('Please select or record footage first.');
@@ -191,7 +187,7 @@ class _UploadPageState extends State<UploadPage>
         },
       );
       if (!mounted) return;
-      // Clear only after the report is safely sent.
+      // only clear the form once it's definitely sent
       _locationController.clear();
       _descriptionController.clear();
       setState(() {
@@ -270,10 +266,9 @@ class _UploadPageState extends State<UploadPage>
 
   @override
   Widget build(BuildContext context) {
-    // Required by AutomaticKeepAliveClientMixin to retain the page state.
     super.build(context);
     final resuming = _resumeIncidentId != null;
-    // Scrolling accommodates a small screen and the on-screen keyboard.
+    // scrollable so it fits small screens and the keyboard
     return SingleChildScrollView(
       padding: AppSpacing.page,
       child: Form(
@@ -289,7 +284,7 @@ class _UploadPageState extends State<UploadPage>
             ),
             const SizedBox(height: AppSpacing.medium),
 
-            // Footage box from the mock-up.
+            // footage box, as in the mock-up
             InkWell(
               onTap: _sending || resuming ? null : _chooseFromGallery,
               borderRadius: BorderRadius.circular(4),
@@ -324,7 +319,7 @@ class _UploadPageState extends State<UploadPage>
               ),
             ),
 
-            // The selected files
+            // selected files
             for (var i = 0; i < _files.length; i++)
               _FileRow(
                 file: _files[i],
@@ -334,8 +329,8 @@ class _UploadPageState extends State<UploadPage>
               ),
             const SizedBox(height: AppSpacing.medium),
 
-            // Recording live is the urgent action, so it uses the danger colour;
-            // shape and text colour come from the theme.
+            // Record live is the urgent action, hence the danger colour. Shape
+            // and text colour come from the theme.
             Center(
               child: ElevatedButton(
                 onPressed: _sending || resuming ? null : _recordVideo,
@@ -455,7 +450,7 @@ class _UploadPageState extends State<UploadPage>
   }
 }
 
-/// One selected file: name, size, remove button (or "sent" after a
+/// One picked file: name, size and a remove button (or "sent" after a
 /// partial upload).
 class _FileRow extends StatelessWidget {
   final FootageFile file;

@@ -54,7 +54,7 @@ function adminConsole(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), adminConsole()],
   build: {
-    // Hero layers and reel stills live in public/ and are served as-is.
+    // hero layers and reel stills live in public/ and get served as they are
     target: 'es2020',
   },
 });

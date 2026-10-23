@@ -1,38 +1,16 @@
 """
-main.py - run the detector on a SUBMISSION: 1 to 5 videos and/or photos that
-belong together (e.g. one witness's clips of the same robbery).
+Command-line entry point. Runs the detector over one submission, which is
+1-5 videos/photos that belong together (say, one witness's clips of the same
+robbery).
 
-Usage:
-    python main.py video.mp4
-    python main.py clip1.mp4 clip2.mp4 photo1.jpg          (up to 5 files)
+    python main.py clip1.mp4 clip2.mp4 photo1.jpg
 
-Photos: JPEG, PNG, WebP, BMP, TIFF, GIF and iPhone HEIC/HEIF.
-Videos: MP4, MOV, AVI, MKV, M4V, 3GP, WebM (and anything else OpenCV opens).
+Each run gets its own numbered folder under crops/ with a results.json and a
+subfolder of PNG crops per file. The latest results.json is also copied to
+output_detections.json for convenience.
 
-Every run is ONE submission and gets the next number. Results go in:
-
-    crops/
-      submission 1/
-        results.json              everything found, per file
-        1_clip1/                  the PNG pictures from the first file
-          vehicle_3.png  plate_3.png  person_7.png  face_7.png  weapon_2.png ...
-        2_clip2/
-        3_photo1/
-      submission 2/
-        ...
-
-(output_detections.json next to main.py is a copy of the latest results.json.)
-
-Track numbers (Vehicle #3, Person #7, ...) are per file: Person #7 in clip1
-and Person #7 in clip2 are not necessarily the same person.
-
-Printed summary per file, e.g.:
-
-    Vehicle #3  car  Toyota (90%)  white (80%)  plate CA123456 (85%, 9 reads)  seen in 15 frames
-    Most people visible at once: 3 (at 4.2 s)
-    Person  #7  top black / bottom blue   face visible (52 px) - picture saved
-    Weapon  #2  long_gun (88%)  with person #7   seen 12.0-16.4 s
-    Heard 14.2-15.1 s: gunfire (94% sure) - AUTOMATIC: 11 bangs 0.085 s apart, evenly spaced ...
+Heads up: track numbers restart per file, so Person #7 in clip1 and
+Person #7 in clip2 aren't necessarily the same person.
 """
 
 import json
@@ -42,8 +20,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Hide OpenCV's harmless "Targets are not supported by the new graph engine"
-# warning (from the face finder). Must be set before OpenCV is imported.
+# The face finder makes OpenCV spam a harmless "Targets are not supported"
+# warning. This has to be set before cv2 gets imported.
 os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
 
 from detector import IMAGE_TYPES, ArgusDetector
@@ -52,19 +30,17 @@ from clothing import clothing_word
 
 try:
     from audio import AudioAnalyser
-except ImportError as error:              # audio.py or a package missing
+except ImportError as error:
     AudioAnalyser, _AUDIO_ERROR = None, error
 
 MAX_FILES = 5
 CROPS = Path("crops")
 
 
-# ---------------------------------------------------------------------------
-# Submission folders
-# ---------------------------------------------------------------------------
+# --- submission folders
 
 def next_submission_folder(root=CROPS):
-    """crops/submission N, with N one higher than the highest existing one."""
+    """Make the next crops/submission N folder."""
     root.mkdir(exist_ok=True)
     numbers = [int(m.group(1)) for d in root.iterdir()
                if d.is_dir() and (m := re.fullmatch(r"submission (\d+)", d.name))]
@@ -75,27 +51,26 @@ def next_submission_folder(root=CROPS):
 
 
 def file_folder_name(index, path):
-    """'1_clip1' - the file's position in the submission + its name (made safe)."""
+    """e.g. '1_clip1': position in the submission plus a filesystem-safe name."""
     stem = re.sub(r"[^A-Za-z0-9_-]+", "_", Path(path).stem).strip("_") or "file"
     return f"{index}_{stem}"
 
 
-# ---------------------------------------------------------------------------
-# Sound
-# ---------------------------------------------------------------------------
+# --- sound
 
 _audio = None
 
 
 def analyse_sound(video_path):
-    """Gunfire / explosion events in the video's sound (never stops the run)."""
+    """Look for gunfire/explosions in the audio. Never raises, a failure here
+    shouldn't take the rest of the run down with it."""
     global _audio
     if AudioAnalyser is None:
         print(f"Sound analysis not available ({_AUDIO_ERROR}). "
               "Run: pip install -r requirements.txt")
         return {"audio_available": False, "audio_events": []}
     try:
-        _audio = _audio or AudioAnalyser()     # load the sound model once
+        _audio = _audio or AudioAnalyser()     # only load the model once
         return _audio.analyse(video_path)
     except Exception as error:
         print(f"Sound analysis failed ({error}).")
@@ -103,7 +78,7 @@ def analyse_sound(video_path):
 
 
 def describe_sound(e):
-    """One line for a gunfire / explosion event."""
+    """One printable line for an audio event."""
     when = f"{e['start_seconds']}-{e['end_seconds']} s"
     flags = [f"could be {w}" for w, key in (("fireworks", "could_be_fireworks"),
                                              ("an explosion", "could_be_explosion"),
@@ -118,12 +93,10 @@ def describe_sound(e):
             f"{e['fire_mode_note']}{extra}")
 
 
-# ---------------------------------------------------------------------------
-# One file
-# ---------------------------------------------------------------------------
+# --- one file
 
 def analyse_file(detector, source, crops_dir):
-    """Runs everything on one video/photo. Returns its results (a dict)."""
+    """Run everything on a single video or photo and return its results."""
     is_image = source.suffix.lower() in IMAGE_TYPES
     if is_image:
         objects = detector.process_image(source, crops_dir=str(crops_dir))
@@ -132,7 +105,7 @@ def analyse_file(detector, source, crops_dir):
         objects = detector.process_video(source, crops_dir=str(crops_dir))
         sound = analyse_sound(source)
 
-    # where / when it was filmed, from the file itself (None if stripped)
+    # GPS/time from the file's own metadata. Often None, WhatsApp strips it.
     meta = file_metadata(source, is_image=is_image)
 
     vehicles = [o for o in objects if o["detection_type"] == "vehicle"]
@@ -143,17 +116,16 @@ def analyse_file(detector, source, crops_dir):
         "source_path": str(source),
         "source_type": "image" if is_image else "video",
         "crops_folder": str(crops_dir),
-        **meta,                  # latitude, longitude, gps_source, capture_time, time_source
+        **meta,
         "total_objects": len(objects),
         "vehicle_count": len(vehicles),
-        # person_count = different people the tracker followed (can be too
-        # high if someone was hidden and came back with a new ID);
-        # max_people_at_once = most people visible together (the safer number)
+        # person_count is distinct track IDs, which overcounts when someone
+        # disappears and comes back. max_people_at_once is the safer number.
         "person_count": len(people),
         "weapon_count": len(weapons),
         **detector.last_run_stats,
-        "detections": objects,   # one per object
-        # gunfire / explosions heard (videos only); AI leads to check by ear
+        "detections": objects,
+        # audio leads, videos only. Someone should still listen to confirm.
         **sound,
     }
     print_file_summary(result, vehicles, people, weapons, is_image)
@@ -171,8 +143,8 @@ def print_file_summary(result, vehicles, people, weapons, is_image):
     print(f"Found {len(vehicles)} vehicle(s), {len(people)} person(s) "
           f"and {len(weapons)} weapon(s).")
     for v in vehicles:
-        # percentages = how many of the car's frames agreed on the answer
-        # "unsure: Opel?" = the best guess had too little agreement to report
+        # % = how much of the car's evidence agreed. "unsure: Opel?" means
+        # we had a best guess but not enough agreement to commit to it.
         def describe(answer, share, top3, what):
             if answer:
                 return f"{answer} ({round(share * 100)}%)"
@@ -228,13 +200,11 @@ def print_file_summary(result, vehicles, people, weapons, is_image):
             print(f"  Heard {describe_sound(e)}")
 
 
-# ---------------------------------------------------------------------------
-# The submission
-# ---------------------------------------------------------------------------
+# --- the whole submission
 
 def analyse_submission(detector, files, folder, number):
-    """Runs every file of ONE submission and writes folder/results.json.
-    Returns the submission dict (also used by backend/worker.py)."""
+    """Run every file in the submission and write results.json.
+    backend/worker.py calls this too, so be careful changing what it returns."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     results = []
@@ -244,14 +214,14 @@ def analyse_submission(detector, files, folder, number):
         file_crops = folder / file_folder_name(index, source)
         try:
             results.append(analyse_file(detector, source, file_crops))
-        except Exception as error:             # one bad file doesn't stop the rest
+        except Exception as error:             # one broken file shouldn't sink the rest
             print(f"Could not process {source.name}: {error}")
             results.append({"source_path": str(source), "error": str(error)})
 
     ok = [r for r in results if "error" not in r]
-    # The submission's place and time: the first file with GPS, the earliest
-    # recording time. The case system uses these to suggest a case (see
-    # case_matcher.py); without them the app uses the phone's GPS at upload.
+    # Location = first file that has GPS, time = earliest recording. The case
+    # matcher uses these to suggest a case. If the files have neither, the
+    # app falls back to the phone's GPS at upload time.
     with_gps = [r for r in ok if r.get("latitude") is not None]
     times = sorted(r["capture_time"] for r in ok if r.get("capture_time"))
     submission = {
@@ -263,8 +233,7 @@ def analyse_submission(detector, files, folder, number):
                       "longitude": with_gps[0]["longitude"], "source": "file"}
                      if with_gps else None),
         "capture_time": times[0] if times else None,
-        # totals over all files - note the same person/vehicle filmed in two
-        # clips is counted once per clip
+        # Note these just add up per file, so a car seen in two clips counts twice
         "totals": {
             "vehicles": sum(r["vehicle_count"] for r in ok),
             "people": sum(r["person_count"] for r in ok),
@@ -279,9 +248,8 @@ def analyse_submission(detector, files, folder, number):
 
 
 def submission_summary(submission):
-    """Short plain summary of one submission for the app (max 600 chars),
-    e.g. "2 files. 3 people (most at once: 2), 1 vehicle: white Toyota,
-    plate ND123456. 1 long gun, held by a person. Gunfire heard (automatic)."""
+    """Short plain-English summary for the app, capped at 600 chars. Something
+    like "2 files. 3 people (most at once: 2), 1 vehicle: white Toyota..." """
     ok = [f for f in submission["files"] if "error" not in f]
     if not ok:
         return "The AI could not analyse these files."
@@ -341,7 +309,7 @@ def main():
 
     number, folder = next_submission_folder()
     print(f"Submission {number}: {len(files)} file(s) -> {folder}")
-    detector = ArgusDetector()                 # load the models once for all files
+    detector = ArgusDetector()                 # load models once, reuse for every file
     submission = analyse_submission(detector, files, folder, number)
     with open("output_detections.json", "w", encoding="utf-8") as f:
         json.dump(submission, f, indent=2)

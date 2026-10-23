@@ -1,4 +1,4 @@
-/* Argus Shield admin console: white, quiet, navy + a touch of the logo's amber */
+/* Admin console styles. Mostly white and navy, with a bit of the logo's amber */
 :root {
   --navy: #16305a;
   --navy-hover: #1e3d70;
@@ -35,7 +35,7 @@ h2 { font-size: 17px; font-weight: 600; }
 .muted { color: var(--muted); margin: 4px 0 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-/* ---------- buttons & fields ---------- */
+/* --- buttons and fields */
 button {
   font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid transparent;
   padding: 9px 16px; font-weight: 500; transition: background .15s, border-color .15s, color .15s;
@@ -79,7 +79,7 @@ input:focus { border-color: var(--navy); }
   padding: 9px 12px; margin: 4px 0 12px; font-size: 13px;
 }
 
-/* ---------- sign in ---------- */
+/* --- sign in */
 .login {
   min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
   background:
@@ -96,7 +96,7 @@ input:focus { border-color: var(--navy); }
 .login form { text-align: left; }
 .fine-print { margin: 18px 0 0; color: var(--muted); font-size: 12px; }
 
-/* ---------- console ---------- */
+/* --- console */
 .topbar {
   position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 10px 24px; background: rgba(255, 255, 255, .92); backdrop-filter: blur(6px);
@@ -122,7 +122,7 @@ input:focus { border-color: var(--navy); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .card-head { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
 .search { max-width: 420px; flex: 1 1 200px; }
-/* safety net: a table that still doesn't fit scrolls instead of being cut off */
+/* last resort: if a table still doesn't fit, let it scroll rather than get cut off */
 .table-wrap { overflow-x: auto; }
 .list-status { padding: 28px 16px; text-align: center; color: var(--muted); }
 
@@ -142,7 +142,7 @@ table.admins { width: 100%; border-collapse: collapse; }
 .person-name { font-weight: 500; }
 .sub { color: var(--muted); font-size: 12px; }
 .actions-col { width: 1%; text-align: right; }
-/* actions one above the other, so the column stays narrow */
+/* stack the actions so the column stays narrow */
 td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
 
 .badge { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
@@ -150,7 +150,7 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
 .badge.normal { background: #f0f2f5; color: #475467; }
 .unassigned { color: var(--danger); }
 
-/* ---------- tabs ---------- */
+/* --- tabs */
 .tabs { display: flex; gap: 4px; padding: 0 24px; background: #fff; border-bottom: 1px solid var(--line); }
 .tab {
   background: none; border: 0; border-radius: 0; padding: 12px 14px 10px; color: var(--muted);
@@ -159,7 +159,7 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
 .tab:hover { color: var(--text); }
 .tab[aria-current="page"] { color: var(--navy); border-bottom-color: var(--navy); font-weight: 600; }
 
-/* ---------- cases ---------- */
+/* --- cases */
 .card-head.wrap { flex-wrap: wrap; }
 .segments { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; flex: none; }
 .segment {
@@ -171,7 +171,7 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
 .segment.active { background: var(--navy); color: #fff; }
 .segment .count { margin-left: 6px; font-size: 12px; opacity: .7; }
 .case-group + .case-group { border-top: 1px solid var(--line); }
-/* each case is a card with a coloured bar for its stage */
+/* each case is a card with a coloured bar showing its stage */
 .case-list { list-style: none; margin: 0; padding: 4px 16px 16px; display: grid; gap: 10px; }
 .case-card {
   border: 1px solid var(--line-strong); border-radius: 10px; background: #fff;
@@ -197,7 +197,7 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
 .badge.stage-under_review { background: var(--amber-soft); color: var(--amber-text); }
 .badge.stage-closed { background: #f0f2f5; color: #475467; }
 
-/* ---------- dialogs ---------- */
+/* --- dialogs */
 .dialog {
   border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; width: min(560px, calc(100vw - 32px));
   box-shadow: 0 20px 50px rgba(16, 24, 40, .18); color: var(--text);
@@ -226,9 +226,9 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
   background: var(--text); color: #fff; padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); font-size: 13px;
 }
 
-/* ---------- medium screens (laptops, zoomed in, split windows) ----------
-   The admin table needs about 1100px; below that each admin becomes a block:
-   name on top, the other details in as many columns as fit, actions last. */
+/* --- medium screens (laptops, zoomed in, split windows)
+   The admins table needs roughly 1100px. Below that each admin turns into a
+   block: name first, the rest in however many columns fit, actions last. */
 @media (max-width: 1100px) {
   .admins thead { display: none; }
   .admins, .admins tbody { display: block; width: 100%; }
@@ -246,7 +246,7 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
   td.actions-col .link { display: inline-block; margin: 0; padding-left: 0; }
 }
 
-/* ---------- small screens ---------- */
+/* --- small screens */
 @media (max-width: 760px) {
   .topbar { padding: 10px 16px; }
   .tabs { padding: 0 16px; }
@@ -265,7 +265,7 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
   .case-card { padding: 12px 14px 12px 18px; }
 }
 
-/* ---------- very narrow phones ---------- */
+/* --- really narrow phones */
 @media (max-width: 400px) {
   .topbar-name { display: none; }
   .admins tr, .facts { grid-template-columns: 1fr; }

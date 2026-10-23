@@ -1,7 +1,6 @@
-// Tests for the citizen's report: CitizenStore.sendReport (incident ->
-// upload each file -> start the analysis, with "Try again" carrying on after
-// a failure) and the Submissions tab listing the citizen's reports.
-// A fake SupabaseService stands in for Supabase.
+// Citizen reports: CitizenStore.sendReport (incident, upload each file, start
+// analysis, and Try again picking up after a failure) plus the Submissions
+// tab listing them. Uses a fake SupabaseService.
 
 import 'dart:typed_data';
 
@@ -18,7 +17,7 @@ class FakeCitizenService extends SupabaseService {
   final List<MySubmission> reports = [];
   int nextIncident = 57;
 
-  /// Make the upload of this file name fail once (to test Try again).
+  /// Make the upload of this file fail once, to test Try again.
   String? failUploadOf;
 
   @override

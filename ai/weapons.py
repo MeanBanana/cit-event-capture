@@ -1,36 +1,24 @@
 """
-weapons.py - finds WEAPONS in the video and links each one to the person
-holding it.
+Finds weapons and links each one to whoever's holding it.
 
-Four kinds of weapon (what investigators need, not exact models):
-    handgun    pistols, revolvers
-    long_gun   rifles (incl. AK-style), shotguns
-    knife      short blades
-    machete    long blades, pangas
+We only care about four kinds, since that's what investigators need:
+handgun, long_gun (rifles, AKs, shotguns), knife and machete (incl. pangas).
+Automatic vs semi-auto can't be seen on camera, an AK and a semi-auto rifle
+look identical. That comes from the audio instead (audio.py).
 
-A camera can't tell automatic from semi-automatic (an AK-47 and a
-semi-automatic rifle look the same) - that comes from the SOUND, see audio.py.
+Model: if weapon_models/best.pt exists we use that, it's our own trained
+model and the most accurate (see the README for how it was trained).
+Otherwise we fall back to YOLOE, which takes plain-text prompts like
+"handgun" and needs no training. It's a decent stopgap but misses more and
+sometimes mistakes phones or drills for guns.
 
-Which model:
-  1. weapon_models/best.pt, if it exists: our own model, trained on labelled
-     weapon pictures (see README, "Training the weapon model"). Most accurate.
-  2. Otherwise YOLOE (Ultralytics, open-vocabulary): it finds objects from a
-     plain-text description ("handgun", "rifle", ...) without any training.
-     A useful stopgap, but less accurate - expect some misses and some false
-     alarms (phones, drills, tools held like a gun).
-  YOLOE's model files download by themselves the first time (about 30 MB
-  plus its small text model); best.pt needs no download.
+For each weapon we report the kind (voted over frames), when it was seen,
+its best crop, and the person it was inside the box of most often.
 
-What it reports per weapon:
-  * its kind (voted over frames, like a vehicle's make) and how sure
-  * when it was visible, and its clearest picture (crops/weapon_<id>.png)
-  * the person holding it: the tracked person whose box the weapon is in
-    most often (held_by_person = that person's track_id)
-
-IMPORTANT for investigators: CIT guards carry guns too. A weapon next to a
-person says nothing about who is the robber - same rule as faces: "weapon
-seen", never "suspect". Small or distant weapons are often missed, so "no
-weapon found" does NOT mean there were none.
+Please keep in mind: CIT guards are armed too. A gun next to someone tells
+you nothing about who the robber is, so it's "weapon seen", never
+"suspect". And small or far-off weapons get missed a lot, so finding none
+doesn't mean there weren't any.
 """
 
 from collections import Counter
@@ -39,21 +27,20 @@ from pathlib import Path
 import cv2
 
 MODELS = Path(__file__).parent / "weapon_models"
-# Own tracker settings: lower thresholds than for people/vehicles
+# separate tracker config with lower thresholds, see the yaml
 WEAPON_TRACKER = str(Path(__file__).parent / "weapon_tracker.yaml")
 TRAINED_MODEL = MODELS / "best.pt"
 
-# SWITCH: True = use our trained model (weapon_models/best.pt) when it exists;
-# False = always use YOLOE. Set to False while the trained model is worse
-# than YOLOE. Version 1 was (guns at 8-13% confidence); version 2 (11 Oct,
-# mAP50 0.64 clear / 0.60 bad footage) beat YOLOE on our test clips.
+# Flip to False to force YOLOE. Our first trained model was worse than YOLOE
+# (guns at 8-13% confidence), v2 from 11 Oct (mAP50 0.64 clean / 0.60 rough
+# footage) beats it on our test clips.
 USE_TRAINED_MODEL = True
 YOLOE_MODEL = "yoloe-26s-seg.pt"
 
 WEAPON_KINDS = ["handgun", "long_gun", "knife", "machete"]
 
-# Text prompts for YOLOE -> our four kinds. Several wordings per kind find
-# more (the model learnt from captions written by many different people).
+# YOLOE prompt -> our kind. More phrasings = more hits, since the model
+# learnt from captions written by lots of different people.
 YOLOE_PROMPTS = {
     "handgun": "handgun",
     "pistol": "handgun",
@@ -65,8 +52,8 @@ YOLOE_PROMPTS = {
     "machete": "machete",
 }
 
-# Class names a trained model might use -> our four kinds. Anything not in
-# here (e.g. "person" if the dataset had it) is ignored.
+# Whatever class names a trained model might use, mapped to our four. Anything
+# not listed (like "person") gets ignored.
 TRAINED_NAMES = {
     "handgun": "handgun", "pistol": "handgun", "revolver": "handgun", "gun": "handgun",
     "long_gun": "long_gun", "rifle": "long_gun", "shotgun": "long_gun",
@@ -77,7 +64,7 @@ TRAINED_NAMES = {
 
 
 def _overlap_share(inner, outer):
-    """How much of box `inner` lies inside box `outer` (0-1)."""
+    """Fraction of `inner` that sits inside `outer`."""
     x1, y1 = max(inner[0], outer[0]), max(inner[1], outer[1])
     x2, y2 = min(inner[2], outer[2]), min(inner[3], outer[3])
     if x2 <= x1 or y2 <= y1:
@@ -87,11 +74,10 @@ def _overlap_share(inner, outer):
 
 
 def holder(weapon_box, people, min_share=0.5):
-    """track_id of the person most likely holding the weapon, or None.
+    """track_id of whoever is most likely holding the weapon, or None.
 
-    people: [(person track_id, [x1, y1, x2, y2]), ...]. A person's box is
-    widened by 25% each side first, because an arm holding a gun often
-    sticks out of the body's box.
+    We widen each person's box by 25% on both sides first, since an arm
+    holding a gun often sticks out past the body.
     """
     best, best_share, best_dist = None, 0.0, None
     wx, wy = (weapon_box[0] + weapon_box[2]) / 2, (weapon_box[1] + weapon_box[3]) / 2
@@ -107,7 +93,7 @@ def holder(weapon_box, people, min_share=0.5):
 
 
 class WeaponFinder:
-    """Finds and tracks weapons frame by frame (own tracker, own IDs)."""
+    """Detects and tracks weapons, with its own tracker and IDs."""
 
     def __init__(self, tracker=WEAPON_TRACKER):
         from ultralytics import YOLO, YOLOE
@@ -126,15 +112,17 @@ class WeaponFinder:
             self._set_prompts(prompts)
             self.kind_of = {i: YOLOE_PROMPTS[p] for i, p in enumerate(prompts)}
             self.version = Path(YOLOE_MODEL).stem + "-text"
-            self.default_conf = 0.3                   # open-vocabulary scores run lower
+            self.default_conf = 0.3                   # open-vocab scores run lower
         self.reset()
 
     def _set_prompts(self, prompts):
-        """Tells YOLOE what to look for. Turning text into the model's numbers
-        needs a text model (and the 'clip' package, which Ultralytics installs
-        by itself the first time - this needs Git installed). The result is
-        saved to weapon_models/yoloe_prompts.npz, so later runs - and anyone
-        who gets that file through Git - skip this step entirely."""
+        """Tell YOLOE what to look for.
+
+        Turning the prompts into embeddings needs a text model plus the 'clip'
+        package, which Ultralytics installs on the fly (needs Git). That's a
+        pain, so we cache the result in weapon_models/yoloe_prompts.npz and
+        commit it, and nobody else has to do this step.
+        """
         cache = MODELS / "yoloe_prompts.npz"
         if cache.exists():
             try:
@@ -144,7 +132,7 @@ class WeaponFinder:
                 if names == prompts:
                     return
             except Exception:
-                pass                                  # wrong/old file: rebuild it
+                pass                                  # stale cache, rebuild below
         try:
             self.model.set_classes(prompts)
         except Exception as error:
@@ -156,20 +144,20 @@ class WeaponFinder:
         try:
             self.model.save_prompt_embeddings(cache)
         except Exception:
-            pass                                      # works, just not cached
+                pass                                      # fine, just won't be cached
 
     def reset(self):
-        """Forget everything (call before each new video / photo)."""
-        self.records = {}                             # weapon id -> record
+        """Clear everything. Call this before each new video or photo."""
+        self.records = {}
         self._next_photo_id = 1
-        self.model.predictor = None                   # fresh tracker
+        self.model.predictor = None                   # resets the tracker
 
-    # --- one picture -------------------------------------------------------
+    # --- per frame
 
     def _boxes(self, results, frame, max_area=0.5):
-        """[(weapon id or None, kind, confidence, [x1, y1, x2, y2])] from a result.
-        Boxes covering more than `max_area` of the picture are dropped: in
-        street footage a "gun" that big is almost always a mistake."""
+        """Pull (id, kind, conf, box) out of a result. Anything covering more
+        than `max_area` of the frame gets dropped, in street footage a "gun"
+        that big is basically always wrong."""
         boxes = results.boxes
         if boxes is None or len(boxes) == 0:
             return []
@@ -189,12 +177,12 @@ class WeaponFinder:
         return found
 
     def add_frame(self, frame, frame_number, frame_time, people, min_conf=0.15):
-        """Looks for weapons in one video frame. people = [(track_id, box)].
+        """Check one video frame for weapons.
 
-        Low-scoring boxes (down to `min_conf`) go to the tracker on purpose:
-        it only STARTS a weapon track from a sure detection (weapon_tracker.yaml,
-        new_track_thresh), then uses the weaker ones to follow that weapon
-        through blurry frames."""
+        We pass low-confidence boxes to the tracker on purpose. It only starts
+        a track from a confident detection (new_track_thresh), but then uses
+        the weaker ones to keep following the weapon through blurry frames.
+        """
         conf = min_conf
         results = self.model.track(frame, persist=True, tracker=self.tracker,
                                    conf=conf, verbose=False)[0]
@@ -204,10 +192,10 @@ class WeaponFinder:
                              frame_number, frame_time, people)
 
     def add_image(self, frame, people, min_conf=None):
-        """Looks for weapons in one photo (no tracking: each gets its own id)."""
+        """Check a single photo. No tracking, each weapon gets its own id."""
         conf = self.default_conf if min_conf is None else min_conf
         results = self.model.predict(frame, conf=conf, verbose=False)[0]
-        # a photo may be a close-up of a weapon left at the scene: allow big boxes
+        # photos can be close-ups of a weapon left at the scene, so allow big boxes
         for _, kind, confidence, xyxy in self._boxes(results, frame, max_area=0.95):
             self._record(self._next_photo_id, kind, confidence, xyxy, frame, 1, 0.0, people)
             self.records[self._next_photo_id]["photo"] = True
@@ -234,29 +222,29 @@ class WeaponFinder:
                      bounding_box=xyxy, frame_number=frame_number,
                      frame_time_seconds=frame_time,
                      area_share=width * height / (fw * fh))
-            mx, my = width * 0.3, height * 0.3          # a bit of the hand/arm too
+            mx, my = width * 0.3, height * 0.3          # include a bit of the hand
             x1, y1 = max(0, int(xyxy[0] - mx)), max(0, int(xyxy[1] - my))
             x2, y2 = min(fw, int(xyxy[2] + mx)), min(fh, int(xyxy[3] + my))
             if x2 > x1 and y2 > y1:
                 r["best_crop"] = frame[y1:y2, x1:x2].copy()
 
-    # --- results -----------------------------------------------------------
+    # --- results
 
     def results(self, min_frames=3, min_answer_share=0.4, crops_dir=None,
                 max_lone_area=0.15, min_lone_frames=5):
-        """One dictionary per weapon seen in at least `min_frames` frames.
+        """One dict per weapon seen in at least `min_frames` frames.
 
-        In videos, a "weapon" that nobody is holding AND that fills more than
-        `max_lone_area` of the picture is dropped: that is scenery (the
-        trained model once called a long straight road a rifle). A real
-        weapon that big is a close-up, and then someone is holding it.
-        A video "weapon" nobody holds must also be seen in at least
-        `min_lone_frames` frames (a 3-frame "knife" in a street corner was
-        a false alarm)."""
+        For videos we're extra suspicious of weapons nobody is holding. If one
+        takes up more than `max_lone_area` of the frame it's almost certainly
+        scenery (the trained model once decided a long straight road was a
+        rifle), since a real weapon that close would be in someone's hand. And
+        it has to show up in at least `min_lone_frames` frames, after a
+        3-frame "knife" on a street corner turned out to be nothing.
+        """
         objects = []
         for weapon_id, r in sorted(self.records.items()):
             if r["frames_seen"] < min_frames:
-                continue                  # one-frame "weapons" are usually mistakes
+                continue
             total = sum(r["kind_votes"].values())
             ranked = r["kind_votes"].most_common(3)
             kind, weight = ranked[0]
@@ -269,18 +257,18 @@ class WeaponFinder:
             obj = {
                 "track_id": weapon_id,
                 "detection_type": "weapon",
-                # None = the frames disagreed too much about the kind
+                # None if the frames couldn't agree on what kind it is
                 "class_name": kind if share >= min_answer_share else None,
                 "weapon_confidence": share,
                 "weapon_top3": {k: round(v / total, 2) for k, v in ranked},
-                "confidence": r["confidence"],          # detector's, clearest view
+                "confidence": r["confidence"],          # detector score at the best view
                 "bounding_box": r["bounding_box"],
                 "frame_number": r["frame_number"],
                 "frame_time_seconds": r["frame_time_seconds"],
                 "first_seen_seconds": r["first_seen_seconds"],
                 "last_seen_seconds": r["last_seen_seconds"],
                 "frames_seen": r["frames_seen"],
-                # the person (track_id) it was with most often; None = nobody
+                # track_id of the person it was with most often
                 "held_by_person": holder_id,
                 "held_by_share": round(holder_frames / r["frames_seen"], 2),
                 "model_version": self.version,
@@ -289,7 +277,7 @@ class WeaponFinder:
                 folder = Path(crops_dir)
                 folder.mkdir(parents=True, exist_ok=True)
                 crop = r["best_crop"]
-                if crop.shape[0] < 200:          # enlarge small weapons to look at
+                if crop.shape[0] < 200:          # blow small ones up so they're easier to see
                     scale = 200 / crop.shape[0]
                     crop = cv2.resize(crop, None, fx=scale, fy=scale,
                                       interpolation=cv2.INTER_CUBIC)

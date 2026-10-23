@@ -1,29 +1,23 @@
--- =====================================================================
--- Argus Shield: admin Overview - Pending tile + live Recent activity
+-- Admin Overview: the Pending tile and a live Recent activity feed.
 --
--- 1. admin_overview_stats(): "pendingcases" now counts SUBMISSIONS that
---    are not in a case yet (crimescene.caseid IS NULL), so new citizen
---    reports show up on the dashboard straight away. The other three
---    numbers are unchanged.
+-- admin_overview_stats() now counts submissions that aren't in a case yet as
+-- "pending", so new reports show up on the dashboard right away. The other
+-- three numbers are the same as before.
 --
--- 2. recent_activity(): the newest events, built from dates the database
---    already stores (no separate log table to keep in sync):
---      NEW   a citizen reported an incident        crimescene.datereported
---      CASE  an admin created a case               cases.datecreated
---      ASGN  an investigator was assigned          caseassignment.dateassigned
---      CLSD  a case was closed                     cases.dateclosed
---      INV   an investigator account was added     "User".datecreated
---      VER   an admin confirmed a suspect          suspect.dateconfirmed
---      COR   someone corrected an AI detection     correctionlog.correctiontimestamp
+-- recent_activity() builds the feed out of dates we already store, so there's
+-- no separate log table to keep in sync:
+--   NEW   citizen reported an incident     crimescene.datereported
+--   CASE  admin created a case             cases.datecreated
+--   ASGN  investigator assigned            caseassignment.dateassigned
+--   CLSD  case closed                      cases.dateclosed
+--   INV   investigator account added       "User".datecreated
+--   VER   admin confirmed a suspect        suspect.dateconfirmed
+--   COR   someone corrected the AI         correctionlog.correctiontimestamp
 --
--- Both are SECURITY INVOKER: normal RLS applies, so only admins see
--- everything.
--- =====================================================================
+-- Both are SECURITY INVOKER, so normal RLS applies and only admins see it all.
 
 
--- ---------------------------------------------------------------------
--- 1. Pending = submissions not in a case
--- ---------------------------------------------------------------------
+-- --- 1. pending = submissions that aren't in a case
 CREATE OR REPLACE FUNCTION public.admin_overview_stats()
   RETURNS TABLE (
     totalcases    integer,
@@ -44,9 +38,7 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 2. recent_activity
--- ---------------------------------------------------------------------
+-- --- 2. recent_activity
 CREATE OR REPLACE FUNCTION public.recent_activity(p_limit integer DEFAULT 5)
   RETURNS TABLE (
     tag        text,         -- NEW, CASE, ASGN, CLSD, INV, VER, COR
@@ -57,7 +49,7 @@ CREATE OR REPLACE FUNCTION public.recent_activity(p_limit integer DEFAULT 5)
   SET search_path = ''
 AS $$
   WITH events AS (
-    -- a citizen reported an incident
+    -- citizen reported an incident
     SELECT 'NEW' AS tag,
            'New citizen submission: INC-' || lpad(cs.incidentid::text, 4, '0')
              || ', ' || cs.location AS message,
@@ -65,14 +57,14 @@ AS $$
     FROM public.crimescene cs
 
     UNION ALL
-    -- an admin created a case
+    -- admin created a case
     SELECT 'CASE',
            'Case CASE-' || lpad(c.caseid::text, 4, '0') || ' created: ' || c.title,
            c.datecreated
     FROM public.cases c
 
     UNION ALL
-    -- an investigator was assigned to a case
+    -- investigator assigned to a case
     SELECT 'ASGN',
            concat_ws(' ', i.rank, u.firstname, u.surname)
              || ' assigned to CASE-' || lpad(ca.caseid::text, 4, '0'),
@@ -82,7 +74,7 @@ AS $$
     LEFT JOIN public.investigator i ON i.userid = ca.assignedto
 
     UNION ALL
-    -- a case was closed
+    -- case closed
     SELECT 'CLSD',
            'CASE-' || lpad(c.caseid::text, 4, '0') || ' closed: ' || c.title,
            c.dateclosed
@@ -90,7 +82,7 @@ AS $$
     WHERE c.dateclosed IS NOT NULL
 
     UNION ALL
-    -- an investigator account was added
+    -- investigator account added
     SELECT 'INV',
            'Investigator added: ' || concat_ws(' ', i.rank, u.firstname, u.surname)
              || ' (' || i.badgenumber || ')',
@@ -99,7 +91,7 @@ AS $$
     JOIN public."User" u ON u.userid = i.userid
 
     UNION ALL
-    -- an admin confirmed a suspect
+    -- admin confirmed a suspect
     SELECT 'VER',
            'Suspect confirmed on INC-' || lpad(s.incidentid::text, 4, '0'),
            s.dateconfirmed
@@ -118,7 +110,7 @@ AS $$
   SELECT tag, message, occurredat
   FROM events
   ORDER BY occurredat DESC
-  LIMIT LEAST(GREATEST(COALESCE(p_limit, 5), 1), 50)   -- 1 to 50 rows
+  LIMIT LEAST(GREATEST(COALESCE(p_limit, 5), 1), 50)   -- clamp to 1-50 rows
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.recent_activity(integer) FROM PUBLIC, anon;

@@ -1,4 +1,4 @@
-// Tests for the temporary password on the "New investigator" form.
+// The temporary password on the New investigator form.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

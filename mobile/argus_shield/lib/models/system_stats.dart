@@ -1,10 +1,9 @@
-// system_stats.dart — the four numbers under SYSTEM STATUS on the admin
-// Overview tab. Rows come from the admin_overview_stats database function.
+// The four System status numbers on the admin Overview (admin_overview_stats).
 class SystemStats {
-  final int totalCases; // every case
-  final int activeCases; // cases 'open' or 'under_review'
-  final int pendingCases; // submissions not in a case yet ("unassigned")
-  final int investigators; // registered investigators
+  final int totalCases;
+  final int activeCases; // open or under_review
+  final int pendingCases; // submissions not in a case yet
+  final int investigators;
 
   const SystemStats({
     required this.totalCases,

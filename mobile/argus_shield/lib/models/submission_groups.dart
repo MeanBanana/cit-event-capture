@@ -1,6 +1,5 @@
-// submission_groups.dart — the groups shown on the Submissions tab, the
-// AI suggestions, a submission's clips and a case's history.
-// Each comes from one database function (named on each class).
+// Models for the Submissions tab groups, AI suggestions, a submission's clips
+// and a case's history. Each class says which database function it comes from.
 
 DateTime? _time(Map<String, dynamic> row, String key) => row[key] == null
     ? null
@@ -9,12 +8,12 @@ DateTime? _time(Map<String, dynamic> row, String key) => row[key] == null
 List<String> _strings(Object? value) =>
     ((value as List?) ?? const []).cast<String>();
 
-/// One location on the Location tab (list_location_groups). Submissions
-/// whose location text is the same apart from capitals, commas and spaces
-/// share a group ("N1, Midrand" and "n1 midrand").
+/// A location on the Location tab (list_location_groups). Locations that only
+/// differ in capitals, commas and spaces land in the same group ("N1, Midrand"
+/// and "n1 midrand").
 class LocationGroup {
-  final String locationKey; // pass to listSubmissionsPage(locationKey: ...)
-  final String label; // the most common spelling, e.g. 'N1, Midrand'
+  final String locationKey; // pass this to listSubmissionsPage(locationKey: ...)
+  final String label; // whichever spelling is most common, e.g. 'N1, Midrand'
   final int submissionCount;
   final int pendingCount;
   final DateTime? latestReported;
@@ -36,16 +35,16 @@ class LocationGroup {
       );
 }
 
-/// Submissions joined by AI cross-reference links (list_linked_groups):
-/// e.g. the same car seen in three different reports.
+/// Submissions tied together by AI cross-reference links
+/// (list_linked_groups), e.g. the same car in three different reports.
 class LinkedGroup {
   final int groupId; // lowest incident id in the group
-  final List<int> incidentIds; // newest reported first
+  final List<int> incidentIds; // newest first
   final int pendingCount;
   final int linkCount;
   final int verifiedLinks;
   final double? bestConfidence; // 0..1
-  final List<String> plates; // plates seen in 2+ of the submissions
+  final List<String> plates; // plates seen in at least 2 of them
   final DateTime? latestReported;
 
   const LinkedGroup({
@@ -83,9 +82,9 @@ class LinkedGroup {
 /// (suggest_incidents_for_case).
 class IncidentSuggestion {
   final int incidentId;
-  final int score; // higher = more likely; 30 is the minimum shown
+  final int score; // higher is more likely, 30 is the lowest we show
   final List<String> reasons; // e.g. ['Same plate ND123456GP', '750 m apart']
-  final int matchedIncidentId; // the submission in the case it matched
+  final int matchedIncidentId; // which submission in the case it matched
 
   const IncidentSuggestion({
     required this.incidentId,
@@ -103,26 +102,23 @@ class IncidentSuggestion {
       );
 }
 
-/// The best suggested pending submission for one case, as shown on the
-/// case card (case_card_suggestions): same scoring as
-/// [IncidentSuggestion], plus the most relevant number plate the AI read
-/// in that submission.
+/// The best suggestion for a case card (case_card_suggestions). Same scoring
+/// as [IncidentSuggestion], plus the most relevant plate the AI read.
 class CaseCardSuggestion {
   final int caseId;
   final int incidentId;
   final int score;
   final List<String> reasons;
 
-  /// Other submissions also suggested for this case.
+  /// How many other submissions were suggested for this case.
   final int otherCount;
 
-  /// The plate that matters most: one also in the case, else one a
-  /// character off a plate in the case, else the plate read with the
-  /// highest confidence. Null when no plate was read. An AI read, not
-  /// confirmed by anyone.
+  /// The plate that matters most: one that's also in the case, else one a
+  /// character off, else the most confident read. Null if no plate was read.
+  /// It's an AI read, nobody has confirmed it.
   final String? plate;
 
-  /// 'same' / 'similar' when [plate] matches a plate in the case, else null.
+  /// 'same' or 'similar' if [plate] matches one in the case, else null.
   final String? plateMatch;
 
   const CaseCardSuggestion({
@@ -146,7 +142,7 @@ class CaseCardSuggestion {
         plateMatch: row['platematch'] as String?,
       );
 
-  /// 14 -> "INC-0014".
+  /// 14 -> "INC-0014"
   String get reference => 'INC-${incidentId.toString().padLeft(4, '0')}';
 }
 
@@ -156,7 +152,7 @@ class CaseSuggestion {
   final int caseId;
   final int score;
   final List<String> reasons;
-  final int matchedIncidentId; // the submission in that case it matched
+  final int matchedIncidentId; // which submission in that case it matched
 
   const CaseSuggestion({
     required this.caseId,
@@ -173,14 +169,14 @@ class CaseSuggestion {
       );
 }
 
-/// How sure a suggestion is, in words, from its score.
+/// Suggestion strength in words, from the score.
 String suggestionStrength(int score) => score >= 90
     ? 'Strong match'
     : score >= 60
         ? 'Likely match'
         : 'Possible match';
 
-/// One clip or photo of a submission, with what the AI saw in it
+/// A clip or photo in a submission and what the AI saw in it
 /// (list_incident_media).
 class MediaItem {
   final int mediaId;
@@ -191,7 +187,7 @@ class MediaItem {
   final String processingStatus; // 'pending' | 'processing' | 'completed' | 'failed'
   final String? aiDescription;
   final int detections;
-  final int verified; // detections an investigator confirmed
+  final int verified; // detections an investigator has confirmed
 
   const MediaItem({
     required this.mediaId,
@@ -218,13 +214,13 @@ class MediaItem {
       );
 }
 
-/// One line of a case's history (list_case_events).
+/// One line of case history (list_case_events).
 class CaseEvent {
   final int eventId;
   final String eventType; // 'added_to_case', 'status_changed', 'assigned' ...
   final int? incidentId;
   final String? detail;
-  final String? actorName; // null = system / AI or not visible
+  final String? actorName; // null for the system/AI, or if you can't see who
   final DateTime occurredAt;
 
   const CaseEvent({
@@ -278,16 +274,16 @@ class CaseEvent {
   }
 }
 
-/// "This pending submission most likely belongs in that case": one row of
-/// the Suggested matches review list (list_suggested_matches). Nothing is
-/// added to a case until an admin accepts it.
+/// One row in the Suggested matches list (list_suggested_matches): a pending
+/// submission that very likely belongs in a case. Nothing happens until an
+/// admin accepts it.
 class SuggestedMatch {
   final int incidentId;
   final int caseId;
   final int score;
   final List<String> reasons;
-  final int matchedIncidentId; // the submission in the case it matched
-  final int otherCases; // other cases that also match well (be careful)
+  final int matchedIncidentId; // which submission in the case it matched
+  final int otherCases; // how many other cases also match well, so be careful
 
   const SuggestedMatch({
     required this.incidentId,

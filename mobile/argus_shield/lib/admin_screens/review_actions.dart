@@ -1,9 +1,9 @@
-// review_actions.dart — what happens when the admin taps Accept, Reject,
-// Duplicate, Move, Remove from case, Reopen or Delete on a submission.
+// What happens when the admin taps Accept, Reject, Duplicate, Move, Remove
+// from case, Reopen or Delete on a submission.
 //
-// Each function asks for whatever it needs (a case, a reason, ...), calls
-// SupabaseService, shows a short message, and returns true when something
-// changed, so the calling screen knows to reload.
+// Each one asks for whatever it needs (a case, a reason...), calls
+// SupabaseService, shows a short message and returns true if anything
+// changed so the screen knows to reload.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -15,12 +15,12 @@ import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/pickers.dart';
 import 'package:argus_shield/admin_screens/case_detail.dart';
 
-/// The shape of every action below: returns true when something changed.
+/// Signature for all the actions below. True means something changed.
 typedef ReviewAction = Future<bool> Function(
     BuildContext context, SupabaseService service, CrimeSceneSummary submission);
 
-/// Accept: put the submission in a NEW case or an EXISTING one. The panel
-/// suggests the cases it most likely belongs to first.
+/// Accept into a new or existing case. The panel shows the most likely
+/// cases first.
 Future<bool> acceptSubmission(
   BuildContext context,
   SupabaseService service,
@@ -28,8 +28,8 @@ Future<bool> acceptSubmission(
 ) =>
     acceptSubmissions(context, service, [submission]);
 
-/// Accept several submissions at once (e.g. a linked group) into one new
-/// or existing case.
+/// Accept several submissions (e.g. a linked group) into one case, new or
+/// existing.
 Future<bool> acceptSubmissions(
   BuildContext context,
   SupabaseService service,
@@ -49,7 +49,7 @@ Future<bool> acceptSubmissions(
   if (!context.mounted) return true;
 
   if (result.openCase) {
-    // "The case isn't listed" -> it was just created; go to its page
+    // they hit "case isn't listed" and made one, so go straight to it
     showSnack(context, result.message);
     await Navigator.push(
       context,
@@ -77,22 +77,22 @@ Future<bool> acceptSubmissions(
   return true;
 }
 
-/// What the Accept panel did.
+/// What the Accept panel ended up doing.
 class _AcceptResult {
   final String message;
   final int caseId;
-  final bool openCase; // go to the case page now
+  final bool openCase; // jump to the case page afterwards
 
   const _AcceptResult(this.message, this.caseId, {this.openCase = false});
 }
 
-/// Reject: ask for an optional reason, then reject. It stays on record.
+/// Reject, with an optional reason. It stays on record.
 Future<bool> rejectSubmission(
   BuildContext context,
   SupabaseService service,
   CrimeSceneSummary submission,
 ) async {
-  // null = cancelled; '' = rejected without a reason
+  // null means cancelled, '' means rejected with no reason
   final note = await showDialog<String>(
     context: context,
     builder: (_) => _RejectDialog(reference: submission.reference),
@@ -103,9 +103,9 @@ Future<bool> rejectSubmission(
       () => service.rejectSubmission(submission.incidentId, note: note));
 }
 
-/// Asks "Reject INC-0042?" with an optional reason. Pops with the reason
-/// (possibly empty) or null when cancelled. Owns its text controller so it
-/// is only disposed after the dialog has fully closed.
+/// "Reject INC-0042?" with an optional reason. Pops the reason (maybe empty)
+/// or null if cancelled. It owns its own text controller so the controller
+/// isn't disposed until the dialog has completely closed.
 class _RejectDialog extends StatefulWidget {
   final String reference;
 
@@ -163,7 +163,7 @@ class _RejectDialogState extends State<_RejectDialog> {
   }
 }
 
-/// Duplicate: choose the original incident.
+/// Duplicate: pick the original incident.
 Future<bool> markAsDuplicate(
   BuildContext context,
   SupabaseService service,
@@ -193,7 +193,7 @@ Future<bool> markAsDuplicate(
   return done != null;
 }
 
-/// Move an accepted submission to another case.
+/// Move an accepted submission to a different case.
 Future<bool> moveToCase(
   BuildContext context,
   SupabaseService service,
@@ -213,7 +213,7 @@ Future<bool> moveToCase(
   return done != null;
 }
 
-/// Remove from its case: back to the review queue.
+/// Remove from its case, back into the review queue.
 Future<bool> removeFromCase(
   BuildContext context,
   SupabaseService service,
@@ -233,7 +233,7 @@ Future<bool> removeFromCase(
       () => service.reopenSubmission(submission.incidentId));
 }
 
-/// Reopen a rejected / duplicate submission for review.
+/// Reopen a rejected or duplicate submission for review.
 Future<bool> reopenSubmission(
   BuildContext context,
   SupabaseService service,
@@ -250,8 +250,8 @@ Future<bool> reopenSubmission(
       () => service.reopenSubmission(submission.incidentId));
 }
 
-/// Delete a REJECTED submission for good: the submission, its footage and
-/// everything the AI found in it (delete-submission Edge Function).
+/// Permanently delete a rejected submission, its footage and everything the
+/// AI found (delete-submission Edge Function).
 Future<bool> deleteSubmission(
   BuildContext context,
   SupabaseService service,
@@ -279,9 +279,9 @@ Future<bool> deleteSubmission(
   }
 }
 
-// ---------------------------------------------------------------------------
+// ---
 
-/// Runs [action]; shows [doneMessage] or the error. True when it worked.
+/// Run [action], then show [doneMessage] or the error. True if it worked.
 Future<bool> _run(BuildContext context, String doneMessage,
     Future<void> Function() action) async {
   try {
@@ -294,7 +294,7 @@ Future<bool> _run(BuildContext context, String doneMessage,
   }
 }
 
-/// Adds the submission to a case, then closes the sheet with a message.
+/// Add the submission to a case, then close the sheet with a message.
 Future<void> _addToCase(BuildContext sheetContext, SupabaseService service,
     CrimeSceneSummary submission, int caseId, String caseReference) async {
   try {
@@ -314,8 +314,8 @@ String _what(List<CrimeSceneSummary> submissions) => submissions.length == 1
     : '${submissions.length} submissions';
 
 /// The Accept panel: suggested cases first, then "New case" or "Existing
-/// case", then the form or the case list. The case list has a "not
-/// listed? create it" button that creates the case and opens its page.
+/// case" and the matching form or list. The list has a "not listed? create
+/// it" button that makes the case and opens it.
 class _AcceptChoice extends StatefulWidget {
   final SupabaseService service;
   final List<CrimeSceneSummary> submissions;
@@ -331,7 +331,7 @@ enum _AcceptMode { choose, newCase, existingCase, newCaseThenOpen }
 class _AcceptChoiceState extends State<_AcceptChoice> {
   _AcceptMode _mode = _AcceptMode.choose;
 
-  /// Suggested cases (with their details) for the first submission.
+  /// Suggested cases (with details) for the first submission.
   late final Future<List<(CaseSuggestion, CaseSummary)>> _suggestions =
       _loadSuggestions();
 
@@ -346,7 +346,7 @@ class _AcceptChoiceState extends State<_AcceptChoice> {
           if (cases[i] != null) (found[i], cases[i]!),
       ];
     } catch (_) {
-      return const []; // suggestions are a bonus; never block accepting
+      return const []; // suggestions are just a bonus, never block accepting over them
     }
   }
 
@@ -468,7 +468,7 @@ class _AcceptChoiceState extends State<_AcceptChoice> {
   }
 }
 
-/// A suggestion: title, how strong the match is, why, and one action.
+/// A suggestion: title, how strong a match, why, and one action button.
 class SuggestionTile extends StatelessWidget {
   final String title;
   final int score;

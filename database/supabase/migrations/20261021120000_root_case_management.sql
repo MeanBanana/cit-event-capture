@@ -1,26 +1,17 @@
--- ============================================================================
--- The root admin sees every case and deletes closed ones (web admin console)
--- ============================================================================
+-- Root admin can see every case and delete closed ones, from the web console.
 --
--- 1. root_list_cases()      every case with its lifecycle status, for the
---                           console's Cases page (grouped / filtered by
---                           status there). Root admin only.
+-- root_list_cases() lists every case with its status for the console's Cases
+-- page (which does the grouping/filtering). Root only.
 --
--- 2. delete_closed_case(caseid)
---                           deletes a CLOSED case. Root admin only. As with
---                           any case delete (migration 20261005163000):
---                             * its submissions are kept and go back to the
---                               review queue (release_case_incidents)
---                             * assignments, chat and AI case data cascade
---                             * its history stays, with a 'case_deleted' line
+-- delete_closed_case(caseid) deletes a closed case, root only. Works like any
+-- other case delete (20261005163000): the submissions survive and go back to
+-- the review queue, assignments/chat/AI data cascade, and the history stays
+-- with a 'case_deleted' line added.
 --
--- 3. cases_delete policy    was "any admin"; now root admin + closed only, so
---                           the rule holds for direct table deletes too.
--- ============================================================================
+-- The cases_delete policy used to be "any admin". Now it's root + closed
+-- only, so the same rule holds even for direct table deletes.
 
--- ---------------------------------------------------------------------------
--- 1. root_list_cases
--- ---------------------------------------------------------------------------
+-- --- 1. root_list_cases
 CREATE OR REPLACE FUNCTION public.root_list_cases()
   RETURNS TABLE (
     caseid        integer,
@@ -56,9 +47,7 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------------
--- 2. delete_closed_case
--- ---------------------------------------------------------------------------
+-- --- 2. delete_closed_case
 CREATE OR REPLACE FUNCTION public.delete_closed_case(p_caseid integer)
   RETURNS jsonb
   LANGUAGE plpgsql
@@ -86,16 +75,14 @@ BEGIN
   SELECT count(*)::integer INTO v_incidents
     FROM public.crimescene WHERE caseid = p_caseid;
 
-  DELETE FROM public.cases WHERE caseid = p_caseid;   -- triggers do the rest
+  DELETE FROM public.cases WHERE caseid = p_caseid;   -- the triggers handle the rest
   RETURN jsonb_build_object('caseid', p_caseid, 'title', v_case.title,
                             'incidents', v_incidents);
 END;
 $$;
 
 
--- ---------------------------------------------------------------------------
--- 3. Direct deletes: root admin, closed cases only
--- ---------------------------------------------------------------------------
+-- --- 3. direct deletes: root only, closed cases only
 DROP POLICY "cases_delete" ON public.cases;
 
 CREATE POLICY "cases_delete" ON public.cases
@@ -103,9 +90,7 @@ CREATE POLICY "cases_delete" ON public.cases
   USING ((SELECT public.is_root_admin()) AND status = 'closed');
 
 
--- ---------------------------------------------------------------------------
--- Privileges (each function checks the caller itself)
--- ---------------------------------------------------------------------------
+-- --- privileges (each function checks the caller itself)
 REVOKE EXECUTE ON FUNCTION public.root_list_cases()            FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.delete_closed_case(integer)  FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION public.root_list_cases()            TO authenticated, service_role;

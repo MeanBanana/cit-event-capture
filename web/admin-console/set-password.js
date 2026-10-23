@@ -1,17 +1,16 @@
-// Argus Shield "Choose your password" page (set-password.html).
+// The "Choose your password" page (set-password.html).
 //
-// New admins and investigators are created without a password; the
-// create-admin / create-investigator Edge Functions email them a link that
-// opens this page. The link is an implicit-flow link: the session is in the
-// address (#access_token=...&type=recovery), so it works on any device,
-// unlike the mobile app's own reset links (PKCE, only on the asking phone).
+// Opened from an emailed link. The link uses the implicit flow, so the
+// session sits right in the URL (#access_token=...&type=recovery). That means
+// it works on any device, unlike the app's own reset links which use PKCE and
+// only work on the phone that asked.
 //
-//   1. supabase-js reads the session from the address.
-//   2. The person types a new password -> auth.updateUser.
-//   3. Signed out again here; they sign in on the mobile app.
+// supabase-js picks the session up from the URL, the person types a new
+// password, we call auth.updateUser and sign them out again so they can sign
+// in on the app.
 //
-// Nothing is kept in the browser (persistSession: false), so this page never
-// leaves anyone signed in and doesn't touch the console's own session.
+// persistSession is off, so this never leaves anyone signed in and doesn't
+// interfere with the console's own session.
 
 (function () {
   "use strict";
@@ -23,7 +22,7 @@
     el.hidden = !message;
   }
 
-  // Supabase reports a used or expired link in the address too:
+  // Supabase also reports used/expired links in the URL, e.g.
   // #error=access_denied&error_code=otp_expired&error_description=...
   const params = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
   const linkError = params.get("error_code") || params.get("error");
@@ -99,7 +98,7 @@
   (async function start() {
     if (linkError) return badLink(params.get("error_code"));
     const { data } = await sb.auth.getSession();
-    // the tokens are in memory now; take them out of the address bar
+    // we have the tokens in memory now, so get them out of the address bar
     history.replaceState(null, "", location.pathname);
     const session = data && data.session;
     if (!session) return badLink(null);

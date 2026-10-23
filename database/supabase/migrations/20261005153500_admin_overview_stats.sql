@@ -1,15 +1,12 @@
--- =====================================================================
--- Argus Shield: admin_overview_stats() for the admin Overview tab
+-- admin_overview_stats() for the admin Overview tab. One row with the four
+-- "System status" numbers:
+--   totalcases     all cases
+--   activecases    open or under_review
+--   pendingcases   active cases nobody is actively assigned to
+--   investigators  all registered investigators
 --
--- One row with the four "System status" numbers:
---   totalcases     every case
---   activecases    cases that are 'open' or 'under_review'
---   pendingcases   active cases with no investigator actively assigned
---   investigators  every registered investigator
---
--- SECURITY INVOKER: normal RLS applies, so only an admin gets the real
--- totals (an investigator would only count their own cases).
--- =====================================================================
+-- SECURITY INVOKER, so only admins get the real totals. An investigator
+-- would just be counting their own cases.
 
 CREATE OR REPLACE FUNCTION public.admin_overview_stats()
   RETURNS TABLE (

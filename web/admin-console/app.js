@@ -1,22 +1,14 @@
-// Argus Shield admin console (root administrator only).
+// Admin console for the root administrator.
 //
-//   sign in  username (or email) + password -> Supabase Auth; then
-//            current_admin() must say admin_type 'root', otherwise the
-//            session is ended at once ("only the root administrator").
-//   list     list_admins()                         (root only, checked in SQL)
-//   create   Edge Function create-admin            (root only, checked there;
-//            with a temporary password the new admin must change at their
-//            first sign-in to the app)
-//   station  set_admin_station(userid, station)    (root only, checked in SQL)
-//   remove   Edge Function manage-admin            (root only, checked there
-//            and in SQL; the root admin itself can't be removed)
-//   cases    root_list_cases()                     (root only, checked in SQL;
-//            grouped / filtered by lifecycle stage here)
-//   delete   delete_closed_case(caseid)            (root only and closed cases
-//            only, checked in SQL and by the cases_delete policy)
+// Sign in with username/email + password, then current_admin() has to come
+// back as 'root' or we sign you straight out again. From there root can list
+// admins, create new ones (create-admin, with a temp password they change on
+// first sign-in), change an admin's station, remove admins (manage-admin),
+// and see all cases and delete closed ones.
 //
-// Every rule is enforced by the database / Edge Function; the checks here
-// only give clear messages.
+// Nothing here is the actual security. The database and Edge Functions
+// enforce every rule, the checks in this file are just there to give nicer
+// messages.
 
 (function () {
   "use strict";
@@ -29,11 +21,11 @@
   const $ = (id) => document.getElementById(id);
   const views = { login: $("login-view"), console: $("console-view") };
   let admins = [];
-  let cases = null;          // loaded the first time the Cases tab is opened
+  let cases = null;          // only loaded the first time someone opens the Cases tab
   let caseFilter = "all";
   let me = null;
 
-  // ------------------------------------------------------------ helpers
+  // --- helpers
   function show(view) {
     views.login.hidden = view !== "login";
     views.console.hidden = view !== "console";
@@ -64,16 +56,16 @@
     }
   }
 
-  /** Readable message from a Supabase / Edge Function error. */
+  /** Pull a readable message out of a Supabase or Edge Function error. */
   async function messageOf(error, fallback) {
     if (!error) return fallback;
     try {
-      // Edge Function errors carry the response: { error: "..." }
+      // Edge Function errors have the response body: { error: "..." }
       if (error.context && typeof error.context.json === "function") {
         const body = await error.context.json();
         if (body && body.error) return body.error;
       }
-    } catch (_) { /* not JSON */ }
+    } catch (_) { /* wasn't JSON */ }
     if (error.message && !/^Edge Function returned/i.test(error.message)) return error.message;
     return fallback;
   }
@@ -114,7 +106,7 @@
     return [(a.firstname || "")[0], (a.surname || "")[0]].filter(Boolean).join("").toUpperCase() || "?";
   }
 
-  // ------------------------------------------------------------ sign in
+  // --- sign in
   async function emailFor(identifier) {
     if (identifier.includes("@")) return identifier;
     const { data, error } = await sb.rpc("email_for_username", { p_username: identifier });
@@ -122,7 +114,7 @@
     return data || null;
   }
 
-  /** The signed-in account if it is the root admin; otherwise signs out. */
+  /** Returns the signed-in account if it's root, otherwise signs out. */
   async function requireRoot() {
     const { data, error } = await sb.rpc("current_admin");
     if (error) throw new Error(await messageOf(error, "Could not check your account."));
@@ -178,7 +170,7 @@
     });
   });
 
-  // ------------------------------------------------------------ console
+  // --- console
   async function openConsole() {
     $("me-name").textContent = me.name || me.username;
     show("console");
@@ -289,8 +281,8 @@
   $("search").addEventListener("input", renderList);
   $("refresh").addEventListener("click", loadAdmins);
 
-  // ------------------------------------------------------------ cases
-  // The lifecycle stages, in order (cases.status)
+  // --- cases
+  // lifecycle stages in order (cases.status)
   const STAGES = [
     { key: "open", label: "Open" },
     { key: "under_review", label: "Under review" },
@@ -344,7 +336,7 @@
       return;
     }
     status.hidden = true;
-    // one group per lifecycle stage, in lifecycle order
+    // group by stage, in lifecycle order
     groups.replaceChildren(...STAGES
       .map((s) => ({ stage: s, rows: matches.filter((c) => c.status === s.key) }))
       .filter((g) => g.rows.length)
@@ -355,7 +347,7 @@
         el("ul", { class: "case-list" }, ...g.rows.map(caseCard)))));
   }
 
-  // One case: title, description and every detail, the same on any screen
+  // one case with all its details, looks the same wherever it's shown
   function caseCard(c) {
     const created = when(c.datecreated);
     const closed = when(c.dateclosed);
@@ -384,11 +376,11 @@
   $("case-search").addEventListener("input", () => cases && renderCases());
   $("case-refresh").addEventListener("click", loadCases);
 
-  // ------------------------------------------------------------ dialogs
+  // --- dialogs
   document.querySelectorAll("dialog [data-close]").forEach((button) =>
     button.addEventListener("click", () => button.closest("dialog").close()));
 
-  // New admin
+  // new admin
   const newDialog = $("new-dialog");
   const newForm = $("new-form");
 
@@ -403,21 +395,21 @@
     newForm.elements.firstname.focus();
   });
 
-  // an old message goes away as soon as the form is being corrected
+  // clear the old error as soon as they start fixing the form
   newForm.addEventListener("input", () => setError($("new-error"), ""));
   $("login-form").addEventListener("input", () => setError($("login-error"), ""));
   $("station-form").addEventListener("input", () => setError($("station-error"), ""));
 
-  // Letters and digits without look-alikes (0/O, 1/l/I), so the password
-  // can be read out or typed over without mistakes.
+  // No look-alike characters (0/O, 1/l/I) so the password can be read out
+  // over the phone or copied by hand without mistakes.
   const PASSWORD_LETTERS = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
   const PASSWORD_DIGITS = "23456789";
 
-  /** A random 12-character temporary password with letters and digits. */
+  /** Random 12-character temporary password. */
   function generatePassword(length = 12) {
     const all = PASSWORD_LETTERS + PASSWORD_DIGITS;
     const pick = (chars) => {
-      // rejection sampling, so every character is equally likely
+      // rejection sampling so every character is equally likely
       const limit = 256 - (256 % chars.length);
       const byte = new Uint8Array(1);
       do crypto.getRandomValues(byte); while (byte[0] >= limit);
@@ -433,7 +425,7 @@
   $("new-generate").addEventListener("click", () => {
     const input = $("new-password");
     input.value = generatePassword();
-    input.type = "text"; // show it, so it can be noted down
+    input.type = "text"; // show it so they can write it down
     const toggle = document.querySelector('[data-toggle-password="new-password"]');
     if (toggle) toggle.textContent = "Hide";
     setError($("new-error"), "");
@@ -454,7 +446,7 @@
     }
   });
 
-  /** Same rules as the Edge Function, for instant messages. */
+  /** Same checks as the Edge Function, just so we can complain straight away. */
   function validate(v) {
     if (!v.firstname || !v.surname) return "Enter the first name and surname.";
     if (!v.station) return "Enter the police station.";
@@ -504,7 +496,7 @@
     }
   });
 
-  // Change station
+  // change station
   const stationDialog = $("station-dialog");
   let editing = null;
 
@@ -540,7 +532,7 @@
     }
   });
 
-  // Remove admin
+  // remove admin
   const removeDialog = $("remove-dialog");
   let removing = null;
 
@@ -570,7 +562,7 @@
     }
   });
 
-  // Delete a closed case
+  // delete a closed case
   const caseDeleteDialog = $("case-delete-dialog");
   let deletingCase = null;
 
@@ -603,7 +595,7 @@
     }
   });
 
-  // ------------------------------------------------------------ start
+  // --- start
   sb.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_OUT" && !views.console.hidden) show("login");
   });

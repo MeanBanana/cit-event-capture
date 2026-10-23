@@ -1,18 +1,10 @@
-// overview.dart — System Administrator landing tab ("Overview").
+// The admin's Overview tab, the first thing they land on. Laid out like the
+// Figma "Admin Dashboard" screen: system status tiles, recent activity,
+// recently active investigators and recent submissions.
 //
-// Sections, top to bottom (from the Figma "Screen 2: Admin Dashboard"):
-//   1. SYSTEM STATUS — LIVE      four stat tiles
-//   2. RECENT ACTIVITY           latest events with a NEW / VER tag
-//   3. RECENT ACTIVE INVESTIGATORS
-//   4. RECENT SUBMISSIONS        with a View button
-//
-// Like the citizen pages, this file returns only a body. AdminDashboard
-// draws the Scaffold, header and tabs.
-//
-// Everything is live from Supabase: the SYSTEM STATUS numbers
-// (getAdminStats), RECENT ACTIVITY (getRecentActivity), the newest
-// investigators (getRecentInvestigators) and the newest submissions
-// (getRecentSubmissions). Pull down to refresh.
+// Like the citizen pages this only builds the body, AdminDashboard handles
+// the Scaffold, header and tabs. Everything comes live from Supabase and you
+// can pull down to refresh.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -27,28 +19,28 @@ import 'package:argus_shield/admin_screens/review_actions.dart';
 import 'package:argus_shield/admin_screens/submission_detail.dart';
 import 'package:argus_shield/app_settings.dart';
 
-/// Tab positions in AdminDashboard, used by the "see more" links.
-/// Keep these in step with the order of tabs in admin_dashboard.dart.
+/// Tab indexes in AdminDashboard, for the "see more" links. If you reorder
+/// the tabs in admin_dashboard.dart, update these too.
 const int _investigatorsTabIndex = 2;
 const int _submissionsTabIndex = 3;
 
 class AdminOverview extends StatefulWidget {
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
   const AdminOverview({super.key, this.service});
 
-  /// How many investigators the "Recent active investigators" section shows.
+  /// How many investigators to show under "Recent active investigators".
   static const int recentInvestigatorCount = 3;
 
-  /// How many submissions the "Recent submissions" section shows.
+  /// How many submissions to show under "Recent submissions".
   static const int recentSubmissionCount = 2;
 
-  /// How many events the "Recent activity" section shows.
+  /// How many items to show under "Recent activity".
   static const int recentActivityCount = 5;
 
-  /// How many events "see more" (ActivityLogPage) loads. The database's
-  /// recent_activity function returns at most 50.
+  /// How many items the full activity log loads. recent_activity caps out
+  /// at 50 anyway.
   static const int fullActivityCount = 50;
 
   @override
@@ -58,7 +50,7 @@ class AdminOverview extends StatefulWidget {
 class _AdminOverviewState extends State<AdminOverview> {
   late final SupabaseService _service = widget.service ?? SupabaseService();
 
-  // Live data. Null / empty while loading or if loading failed.
+  // null/empty while loading, or if it failed
   SystemStats? _stats;
   List<InvestigatorSummary> _investigators = const [];
   List<CrimeSceneSummary> _submissions = const [];
@@ -69,13 +61,12 @@ class _AdminOverviewState extends State<AdminOverview> {
   @override
   void initState() {
     super.initState();
-    // Loads every time the tab is opened (TabBarView rebuilds it), so the
-    // numbers are current whenever the admin comes back to Overview.
+    // TabBarView rebuilds this every time the tab is opened, so the numbers
+    // are fresh whenever the admin comes back here
     _fetch();
   }
 
-  /// Loads the stat numbers, activity feed, newest investigators and newest
-  /// submissions at the same time.
+  /// Load stats, activity, investigators and submissions all at once.
   Future<void> _fetch() async {
     try {
       final results = await Future.wait([
@@ -104,8 +95,8 @@ class _AdminOverviewState extends State<AdminOverview> {
     }
   }
 
-  /// Opens a submission's details page; reloads afterwards in case it was
-  /// accepted / rejected there.
+  /// Open a submission, and reload when they come back in case they
+  /// accepted/rejected it in there.
   Future<void> _openSubmission(CrimeSceneSummary s) async {
     await Navigator.push(
       context,
@@ -116,7 +107,7 @@ class _AdminOverviewState extends State<AdminOverview> {
     if (mounted) _fetch();
   }
 
-  /// Accept / Reject straight from the card, then reload the numbers.
+  /// Accept/Reject right from the card, then refresh the numbers.
   Future<void> _runReview(
       Future<bool> Function(BuildContext, SupabaseService, CrimeSceneSummary)
           action,
@@ -125,11 +116,11 @@ class _AdminOverviewState extends State<AdminOverview> {
     if (changed && mounted) _fetch();
   }
 
-  /// Switches AdminDashboard to another tab (used by "see more").
+  /// Jump AdminDashboard to another tab (for "see more").
   void _goToTab(BuildContext context, int index) =>
       DefaultTabController.maybeOf(context)?.animateTo(index);
 
-  /// "see more" under Recent activity: the full activity log.
+  /// "see more" under Recent activity opens the full log.
   Future<void> _openActivityLog() async {
     await Navigator.push(
       context,
@@ -140,20 +131,20 @@ class _AdminOverviewState extends State<AdminOverview> {
 
   @override
   Widget build(BuildContext context) {
-    final stats = _stats; // null shows "—" in the tiles
+    final stats = _stats; // tiles show "—" while this is null
 
-    // Pull down to refresh the live numbers.
+    // pull to refresh
     return ListenableBuilder(
       listenable: appSettings,
       builder: (context, _) => RefreshIndicator(
       onRefresh: _fetch,
       child: ListView(
-        // Same side margins as the other admin tabs, plus a little space
-        // under the last card so it isn't flush with the screen edge.
+        // same side margins as the other admin tabs, plus a bit of space
+        // under the last card so it doesn't sit right on the edge
         padding: AppSpacing.tab.copyWith(bottom: 12),
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          // 1. System status ----------------------------------------------
+          // system status
           _SectionHeading(appSettings.t('systemStatus')),
           if (_error != null) ...[
             Text(
@@ -179,7 +170,7 @@ class _AdminOverviewState extends State<AdminOverview> {
                   value: stats?.activeCases,
                   subtitle: appSettings.t('ongoing'),
                   color: AppColors.danger,
-                  animatedBorder: true, // red stripes run round the box
+                  animatedBorder: true, // red stripes running round the box
                 ),
               ),
             ],
@@ -207,7 +198,7 @@ class _AdminOverviewState extends State<AdminOverview> {
           ),
           const SizedBox(height: AppSpacing.large),
 
-          // 2. Recent activity (live) -------------------------------------
+          // recent activity
           _SectionHeading(appSettings.t('recentActivity')),
           if (_loading)
             const Padding(
@@ -227,7 +218,7 @@ class _AdminOverviewState extends State<AdminOverview> {
           _SeeMore(onTap: _openActivityLog),
           const SizedBox(height: AppSpacing.medium),
 
-          // 3. Recent active investigators (live) -------------------------
+          // recent active investigators
           _SectionHeading(appSettings.t('recentInvestigators')),
           if (_loading)
             const Padding(
@@ -244,7 +235,7 @@ class _AdminOverviewState extends State<AdminOverview> {
               ),
             ),
           for (final inv in _investigators) ...[
-            // PROFILE grows the card to show the investigator's full info.
+            // PROFILE expands the card to show their full details
             _InvestigatorMiniCard(
               key: ValueKey('overview-investigator-${inv.userId}'),
               investigator: inv,
@@ -254,7 +245,7 @@ class _AdminOverviewState extends State<AdminOverview> {
           _SeeMore(onTap: () => _goToTab(context, _investigatorsTabIndex)),
           const SizedBox(height: AppSpacing.medium),
 
-          // 4. Recent submissions (live) ----------------------------------
+          // recent submissions
           _SectionHeading(appSettings.t('recentSubmissions')),
           if (_loading)
             const Padding(
@@ -287,18 +278,16 @@ class _AdminOverviewState extends State<AdminOverview> {
   }
 }
 
-// =========================================================================
-// Building blocks
-// =========================================================================
+// --- building blocks
 
-/// Text on the page background. White in dark mode, dark in light mode.
+/// Text on the page background, white in dark mode and dark in light mode.
 Color _muted(BuildContext context) => Theme.of(context).brightness == Brightness.dark
     ? AppColors.neutral
     : Colors.black54;
 
 Color _onSurface(BuildContext context) => Theme.of(context).colorScheme.onSurface;
 
-/// Centred Courier heading above each section, e.g. "RECENT ACTIVITY".
+/// The centred Courier heading above each section, e.g. "RECENT ACTIVITY".
 class _SectionHeading extends StatelessWidget {
   final String text;
 
@@ -322,7 +311,7 @@ class _SectionHeading extends StatelessWidget {
   }
 }
 
-/// Small right-aligned "see more" link under a section.
+/// The little right-aligned "see more" link under a section.
 class _SeeMore extends StatelessWidget {
   final VoidCallback onTap;
 
@@ -346,13 +335,12 @@ class _SeeMore extends StatelessWidget {
   }
 }
 
-/// One of the four boxes under SYSTEM STATUS.
-/// [color] tints the border, title and number; null keeps it neutral.
-/// [animatedBorder] swaps the plain border for running stripes
-/// (AnimatedStripeBorder in theme/argus_widgets.dart).
+/// One of the four System status tiles. [color] tints the border, title and
+/// number (null keeps it neutral). [animatedBorder] swaps the plain border
+/// for running stripes (AnimatedStripeBorder in theme/argus_widgets.dart).
 class _StatTile extends StatelessWidget {
   final String title;
-  final int? value; // null while loading (or if loading failed) shows "—"
+  final int? value; // null shows "—" (still loading, or it failed)
   final String subtitle;
   final Color? color;
   final bool animatedBorder;
@@ -419,13 +407,13 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-/// One line of the Recent Activity feed: tag box, text, "2h ago".
+/// A line in the activity feed: tag, text and "2h ago".
 class _ActivityRow extends StatelessWidget {
   final ActivityItem item;
 
   const _ActivityRow({required this.item});
 
-  /// "just now", "45m ago", "2h ago", "3d ago".
+  /// "just now", "45m ago", "2h ago", "3d ago"
   static String _timeAgo(DateTime at) {
     final diff = DateTime.now().difference(at);
     if (diff.inMinutes < 1) return appSettings.t('justNow');
@@ -485,9 +473,8 @@ class _ActivityRow extends StatelessWidget {
   }
 }
 
-/// Compact investigator row: avatar, name, badge · unit, duty, PROFILE.
-/// Tapping PROFILE grows the card to show the investigator's full info
-/// (tap HIDE to shrink it again).
+/// Compact investigator row: avatar, name, badge and unit, duty, PROFILE.
+/// PROFILE expands it to show everything, HIDE collapses it again.
 class _InvestigatorMiniCard extends StatefulWidget {
   final InvestigatorSummary investigator;
 
@@ -500,7 +487,7 @@ class _InvestigatorMiniCard extends StatefulWidget {
 class _InvestigatorMiniCardState extends State<_InvestigatorMiniCard> {
   bool _expanded = false;
 
-  /// Database value → label and colour for the duty line.
+  /// Maps the duty value from the database to a label and colour.
   static (String, Color) _duty(String dutyStatus) {
     switch (dutyStatus) {
       case 'on_duty':
@@ -528,7 +515,7 @@ class _InvestigatorMiniCardState extends State<_InvestigatorMiniCard> {
         borderRadius: BorderRadius.circular(4),
       ),
       child: NavyText(
-        // AnimatedSize: the card grows / shrinks smoothly.
+        // AnimatedSize so it grows/shrinks smoothly
         child: AnimatedSize(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeInOut,
@@ -586,7 +573,7 @@ class _InvestigatorMiniCardState extends State<_InvestigatorMiniCard> {
             ),
           ),
           const SizedBox(width: AppSpacing.small),
-          // Smaller than the theme's big 30px button, so style it here.
+          // the theme's button is a chunky 30px, this needs to be smaller
           ElevatedButton(
             key: ValueKey('profile-${inv.userId}'),
             onPressed: () => setState(() => _expanded = !_expanded),
@@ -612,7 +599,7 @@ class _InvestigatorMiniCardState extends State<_InvestigatorMiniCard> {
   }
 }
 
-/// The investigator's full info, shown when PROFILE is tapped.
+/// The investigator's full details, shown when PROFILE is tapped.
 class _ProfileDetails extends StatelessWidget {
   final InvestigatorSummary investigator;
 
@@ -675,14 +662,12 @@ class _ProfileDetails extends StatelessWidget {
   }
 }
 
-// =========================================================================
-// Full activity log ("see more" under Recent activity)
-// =========================================================================
+// --- full activity log ("see more" under Recent activity)
 
-/// Every recent event (the newest [AdminOverview.fullActivityCount]),
-/// newest first, with chips to show only one kind (NEW, CASE, ASGN ...).
+/// All recent events (up to [AdminOverview.fullActivityCount]), newest
+/// first, with chips to filter down to one kind (NEW, CASE, ASGN...).
 class ActivityLogPage extends StatefulWidget {
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
   const ActivityLogPage({super.key, this.service});
@@ -697,7 +682,7 @@ class _ActivityLogPageState extends State<ActivityLogPage> {
   bool _loading = true;
   String? _error;
 
-  /// null = all kinds, otherwise a tag such as 'NEW'.
+  /// null for everything, otherwise a tag like 'NEW'.
   String? _tag;
 
   @override
@@ -727,7 +712,7 @@ class _ActivityLogPageState extends State<ActivityLogPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Only offer chips for the kinds that are actually in the list.
+    // only show chips for kinds that are actually in the list
     final tags = <String>{for (final i in _items) i.tag}.toList()..sort();
     final tag = tags.contains(_tag) ? _tag : null;
     final shown =
@@ -789,7 +774,7 @@ class _ActivityLogPageState extends State<ActivityLogPage> {
   }
 }
 
-/// A submission waiting for the admin: details plus a View button.
+/// A submission waiting on the admin, with a View button.
 class _SubmissionReviewCard extends StatelessWidget {
   final CrimeSceneSummary submission;
   final VoidCallback onView;
@@ -803,7 +788,7 @@ class _SubmissionReviewCard extends StatelessWidget {
     required this.onReject,
   });
 
-  /// 2026-09-28 / 14:35 — formatted without adding the intl package.
+  /// e.g. 2026-09-28 / 14:35. Done by hand so we don't need the intl package.
   static String _formatDateTime(DateTime d) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${d.year}-${two(d.month)}-${two(d.day)} / '
@@ -825,7 +810,7 @@ class _SubmissionReviewCard extends StatelessWidget {
         child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // The admin's review decision on this submission.
+          // the admin's review decision
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
@@ -873,8 +858,8 @@ class _SubmissionReviewCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // Pending: Reject · View · Accept (as in the wireframe).
-          // Already reviewed: only View, bottom-right.
+          // Pending ones get Reject / View / Accept like the wireframe,
+          // reviewed ones just get View in the bottom right.
           if (s.isPending)
             Row(
               children: [
@@ -924,7 +909,7 @@ class _SubmissionReviewCard extends StatelessWidget {
   }
 }
 
-/// Outlined button used for View.
+/// Outlined View button.
 class _OutlineAction extends StatelessWidget {
   final String label;
   final Color color;
@@ -943,7 +928,7 @@ class _OutlineAction extends StatelessWidget {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        // White text turns dark in light mode.
+        // white text needs to go dark in light mode
         foregroundColor: textColor == AppColors.textPrimary
             ? pageInk(context)
             : textColor ?? color,

@@ -1,58 +1,44 @@
--- =====================================================================
--- Argus Shield: suspect review (POPIA) and richer case cards
+-- Suspect review (POPIA) and richer case cards.
 --
--- Why: under POPIA a person seen in footage is not a suspect until an
--- investigator on the case has looked at them. So:
+-- Under POPIA someone who shows up in footage isn't a suspect until an
+-- investigator on the case has actually looked at them. So:
 --
--- 1. Every PERSON detection gets a suspect status:
---      possible   the AI saw a person; nobody has reviewed them yet
---      confirmed  an investigator confirmed them as a suspect
---                 (a public.suspect row exists for the detection)
---      dismissed  an investigator decided they are not a suspect
---                 (bystander, guard ...), with a reason
---    New person detections always start as 'possible'. The AI pipeline
---    (service key) cannot confirm or dismiss anyone.
--- 2. Only an INVESTIGATOR ACTIVELY ASSIGNED to the case can confirm or
---    dismiss (review_possible_suspect) and edit a confirmed suspect's
---    descriptions (update_suspect_details). Admins can no longer create,
---    edit or delete suspects. The admin, or an investigator on the case,
---    can undo a review (undo_suspect_review), with a reason; undoing
---    removes the suspect record (data minimisation) and puts the person
---    back to 'possible'.
--- 3. Every decision is written to the case history (caseevent) by a
---    trigger: who, when, what and why. Nothing in caseevent can be edited
---    or deleted from the app.
--- 4. Counts for the cards, using the same "most seen at once in one clip"
---    rule as the other AI counts:
---      list_submissions  + possiblesuspects, confirmedsuspects
---      list_cases        + possiblesuspects, confirmedsuspects (the
---                          highest of the case's submissions: A = 2,
---                          B = 1, C = 1 -> "about 2")
---    Only counts leave the database here; descriptions of possible
---    suspects are never shown on cards.
--- 5. case_card_suggestions: for a page of case cards, each case's best
---    suggested pending submission (the same scoring as
---    suggest_incidents_for_case) with its most relevant number plate.
+-- Every person detection now has a suspect status:
+--   possible   the AI saw a person, nobody has reviewed them
+--   confirmed  an investigator confirmed them (there's a suspect row)
+--   dismissed  an investigator ruled them out (bystander, guard...), with a
+--              reason
+-- New person detections always start as 'possible' and the AI pipeline can't
+-- confirm or dismiss anyone.
 --
--- Contents
---   1. Suspect status on detection     5. list_submissions
---   2. Suspect rules and RLS           6. list_cases
---   3. Review functions                7. case_card_suggestions
---   4. Case history                    8. Privileges
--- =====================================================================
+-- Only an investigator actively assigned to the case can confirm/dismiss or
+-- edit a confirmed suspect's descriptions. Admins can't create, edit or
+-- delete suspects any more. An admin or an investigator on the case can undo
+-- a review (with a reason), which deletes the suspect record (data
+-- minimisation) and puts the person back to 'possible'.
+--
+-- Every decision goes into the case history (caseevent) via a trigger, and
+-- nothing in caseevent can be changed from the app.
+--
+-- Case and submission cards get possible/confirmed suspect counts, using
+-- the same "most seen at once in one clip" rule as the other counts. For
+-- cases it's the highest of its submissions (A = 2, B = 1, C = 1 gives
+-- "about 2"). Only counts go out here, never descriptions of possible
+-- suspects.
+--
+-- case_card_suggestions gives each case card its best suggested pending
+-- submission and the most relevant plate in it.
 
 
--- ---------------------------------------------------------------------
--- 1. Suspect status on detection
--- ---------------------------------------------------------------------
+-- --- 1. suspect status on detection
 ALTER TABLE public.detection
   ADD COLUMN suspectstatus     varchar(20),
   ADD COLUMN suspectreviewedby integer REFERENCES public."User" (userid),
   ADD COLUMN suspectreviewedat timestamptz,
   ADD COLUMN suspectreviewnote text;
 
--- Existing data: person detections with a suspect row are confirmed,
--- every other person detection is still possible.
+-- Backfill: person detections that already have a suspect row are
+-- confirmed, the rest are possible.
 UPDATE public.detection d
    SET suspectstatus     = CASE WHEN s.suspectid IS NOT NULL THEN 'confirmed' ELSE 'possible' END,
        suspectreviewedby = s.confirmedby,
@@ -64,12 +50,12 @@ UPDATE public.detection d
    AND d.detectiontype = 'person';
 
 ALTER TABLE public.detection
-  -- only person detections have a suspect status, and they always have one
+  -- only people have a suspect status, and they always have one
   ADD CONSTRAINT detection_suspectstatus_type_check
     CHECK ((detectiontype = 'person') = (suspectstatus IS NOT NULL)),
   ADD CONSTRAINT detection_suspectstatus_check
     CHECK (suspectstatus IN ('possible', 'confirmed', 'dismissed')),
-  -- 'possible' = not reviewed: no reviewer, time or note
+  -- 'possible' means unreviewed, so no reviewer, time or note
   ADD CONSTRAINT detection_suspectreview_check
     CHECK (CASE WHEN suspectstatus = 'possible'
                 THEN suspectreviewedby IS NULL AND suspectreviewedat IS NULL
@@ -77,7 +63,7 @@ ALTER TABLE public.detection
                 WHEN suspectstatus IN ('confirmed', 'dismissed')
                 THEN suspectreviewedat IS NOT NULL
                 ELSE true END),
-  -- a dismissal always says why
+  -- you have to say why when dismissing
   ADD CONSTRAINT detection_suspectdismiss_check
     CHECK (suspectstatus IS DISTINCT FROM 'dismissed'
            OR NULLIF(trim(suspectreviewnote), '') IS NOT NULL),
@@ -85,15 +71,15 @@ ALTER TABLE public.detection
     CHECK (char_length(suspectreviewnote) <= 500);
 
 CREATE INDEX idx_detection_suspectreviewedby ON public.detection (suspectreviewedby);
--- counting possible / confirmed people per clip
+-- for counting possible/confirmed people per clip
 CREATE INDEX idx_detection_media_person
   ON public.detection (mediaid, suspectstatus) WHERE detectiontype = 'person';
 
--- New person detections start as 'possible'; other types never have a
--- status. Only the review functions below may change it: the app
--- (authenticated) and the AI pipeline (service_role) are refused. The
--- review functions are SECURITY DEFINER, so inside them current_user is
--- the function owner and this check lets them through.
+-- New person detections start as 'possible', other types never get a status.
+-- Only the review functions below can change it, both the app
+-- (authenticated) and the pipeline (service_role) get refused. Those
+-- functions are SECURITY DEFINER, so inside them current_user is the owner
+-- and they get through this check.
 CREATE OR REPLACE FUNCTION public.protect_detection_suspect()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -134,10 +120,8 @@ CREATE TRIGGER protect_detection_suspect
   FOR EACH ROW EXECUTE FUNCTION public.protect_detection_suspect();
 
 
--- ---------------------------------------------------------------------
--- 2. Suspect rules and RLS
--- ---------------------------------------------------------------------
--- A suspect must be a person detection from the same incident.
+-- --- 2. suspect rules and RLS
+-- a suspect has to be a person detection from the same incident
 CREATE OR REPLACE FUNCTION public.check_suspect()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -166,22 +150,20 @@ CREATE TRIGGER check_suspect
   BEFORE INSERT OR UPDATE OF detectionid, incidentid ON public.suspect
   FOR EACH ROW EXECUTE FUNCTION public.check_suspect();
 
--- Suspects are now written only by the functions below. Admins keep
--- read access (to oversee cases); investigators see their cases' suspects.
+-- Suspects are only written by the functions below from now on. Admins can
+-- still read them (oversight), investigators see the ones on their cases.
 DROP POLICY IF EXISTS "suspect_insert" ON public.suspect;
 DROP POLICY IF EXISTS "suspect_update" ON public.suspect;
 DROP POLICY IF EXISTS "suspect_delete" ON public.suspect;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.suspect FROM anon, authenticated;
 
 
--- ---------------------------------------------------------------------
--- 3. Review functions
---    SECURITY DEFINER: neither detection nor suspect can be written by
---    the app directly; these functions check who is asking instead.
--- ---------------------------------------------------------------------
+-- --- 3. review functions
+-- SECURITY DEFINER because the app can't write detection or suspect
+-- directly, these functions do the who-are-you checks instead.
 
--- Finds a person detection with its incident and case, locked for the
--- review. Raises when it is not a person detection.
+-- Fetch and lock a person detection along with its incident and case.
+-- Raises if it isn't a person.
 CREATE OR REPLACE FUNCTION public.person_detection_context(
   p_detectionid integer,
   OUT incidentid    integer,
@@ -210,12 +192,12 @@ BEGIN
 END;
 $$;
 
--- Confirm or dismiss a possible suspect. Only an investigator actively
--- assigned to the incident's case, and not on a closed case.
+-- Confirm or dismiss a possible suspect. Investigators actively assigned to
+-- the case only, and not on closed cases.
 --   p_decision  'confirmed' or 'dismissed'
---   p_note      why (required to dismiss, optional to confirm)
---   p_physical / p_clothing  descriptions for a confirmed suspect
--- Returns the new suspectid when confirmed, otherwise null.
+--   p_note      the reason, required for a dismissal
+--   p_physical / p_clothing  descriptions, for a confirmed suspect
+-- Returns the new suspectid when confirming, otherwise NULL.
 CREATE OR REPLACE FUNCTION public.review_possible_suspect(
   p_detectionid integer,
   p_decision    text,
@@ -280,8 +262,8 @@ BEGIN
 END;
 $$;
 
--- Edit a confirmed suspect's descriptions. Only an investigator on the
--- case (not closed). Only the values passed are changed.
+-- Edit a confirmed suspect's descriptions. Investigators on the case only,
+-- not on closed cases. Only the values you pass get changed.
 CREATE OR REPLACE FUNCTION public.update_suspect_details(
   p_suspectid integer,
   p_physical  text DEFAULT NULL,
@@ -320,11 +302,11 @@ BEGIN
 END;
 $$;
 
--- Undo a confirm or dismiss: the person goes back to 'possible'. A
--- confirmed suspect's record is removed (its descriptions are personal
--- information that is no longer needed); weapons point at nobody again
--- and AI links to it are rejected. The case history keeps who undid it,
--- when and why. Admins, or an investigator on the case, with a reason.
+-- Undo a confirm or dismiss and put the person back to 'possible'. For a
+-- confirmed suspect we delete the record, since their descriptions are
+-- personal info we no longer need. Weapons stop pointing at them and AI
+-- links to them get rejected. The case history keeps who undid it, when and
+-- why. Admins or an investigator on the case, reason required.
 CREATE OR REPLACE FUNCTION public.undo_suspect_review(
   p_detectionid integer,
   p_reason      text
@@ -362,11 +344,11 @@ BEGIN
      WHERE entitytype = 'suspect'
        AND v_suspectid IN (entityid_a, entityid_b)
        AND verificationstatus <> 'rejected';
-    DELETE FROM public.suspect WHERE suspectid = v_suspectid;  -- weapondetail.suspectid -> null
+    DELETE FROM public.suspect WHERE suspectid = v_suspectid;  -- sets weapondetail.suspectid to NULL
   END IF;
 
-  -- the reason travels to the history through the note; the trigger
-  -- reads it before the row is reset
+  -- the reason gets to the history via the note, the trigger reads it
+  -- before the row is reset
   PERFORM set_config('argus.undo_reason', v_reason, true);
   UPDATE public.detection
      SET suspectstatus     = 'possible',
@@ -379,9 +361,7 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 4. Case history: every review lands in caseevent
--- ---------------------------------------------------------------------
+-- --- 4. case history: every review ends up in caseevent
 ALTER TABLE public.caseevent DROP CONSTRAINT caseevent_eventtype_check;
 ALTER TABLE public.caseevent ADD CONSTRAINT caseevent_eventtype_check
   CHECK (eventtype IN (
@@ -389,10 +369,10 @@ ALTER TABLE public.caseevent ADD CONSTRAINT caseevent_eventtype_check
     'reopened', 'case_created', 'case_edited', 'status_changed', 'case_deleted',
     'assigned', 'unassigned', 'lead_changed',
     'detection_verified', 'detection_unverified',
-    'suspect_confirmed',      -- investigator confirmed a possible suspect
-    'suspect_dismissed',      -- investigator dismissed one (with a reason)
-    'suspect_review_undone',  -- back to possible (with a reason)
-    'suspect_edited'));       -- a confirmed suspect's descriptions changed
+    'suspect_confirmed',
+    'suspect_dismissed',      -- always has a reason
+    'suspect_review_undone',  -- back to possible, always has a reason
+    'suspect_edited'));
 
 CREATE OR REPLACE FUNCTION public.log_suspect_review_event()
   RETURNS trigger
@@ -431,8 +411,8 @@ CREATE TRIGGER log_suspect_review_event
   WHEN (NEW.suspectstatus IS DISTINCT FROM OLD.suspectstatus)
   EXECUTE FUNCTION public.log_suspect_review_event();
 
--- Description edits are logged without the descriptions themselves
--- (the history is about who changed what, not a copy of personal data).
+-- Edits get logged without the actual descriptions. The history is about who
+-- changed what, it shouldn't be a second copy of personal data.
 CREATE OR REPLACE FUNCTION public.log_suspect_edit_event()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -464,10 +444,8 @@ CREATE TRIGGER log_suspect_edit_event
   EXECUTE FUNCTION public.log_suspect_edit_event();
 
 
--- ---------------------------------------------------------------------
--- 5. list_submissions: same as before plus possiblesuspects and
---    confirmedsuspects (return type changed, so drop and recreate)
--- ---------------------------------------------------------------------
+-- --- 5. list_submissions, now with possiblesuspects/confirmedsuspects
+-- (the return type changes, so drop and recreate)
 DROP FUNCTION public.list_submissions(text, integer, text, integer, text, timestamptz, integer, text, integer[]);
 
 CREATE FUNCTION public.list_submissions(
@@ -504,14 +482,14 @@ CREATE FUNCTION public.list_submissions(
     aisummary       text,
     aisummarystatus varchar,
     aisummaryat     timestamptz,
-    vehiclecount    integer,   -- most vehicles seen in any one clip
-    personcount     integer,   -- most people seen in any one clip
-    weaponcount     integer,   -- most weapons seen in any one clip
-    plates          text[],    -- distinct number plates read, max 3
-    capturedat      timestamptz, -- earliest capture time in the footage's metadata
-    timemismatch    boolean,     -- capture time and typed time > 3 h apart
-    possiblesuspects  integer,   -- most unreviewed people in any one clip
-    confirmedsuspects integer    -- most confirmed suspects in any one clip
+    vehiclecount    integer,   -- max vehicles in any single clip
+    personcount     integer,   -- max people in any single clip
+    weaponcount     integer,   -- max weapons in any single clip
+    plates          text[],    -- up to 3 distinct plates
+    capturedat      timestamptz, -- earliest capture time from the footage
+    timemismatch    boolean,     -- capture time and typed time more than 3h apart
+    possiblesuspects  integer,   -- max unreviewed people in any single clip
+    confirmedsuspects integer    -- max confirmed suspects in any single clip
   )
   LANGUAGE sql STABLE SECURITY INVOKER
   SET search_path = ''
@@ -524,8 +502,8 @@ AS $$
            LEAST(GREATEST(COALESCE(p_limit, 30), 1), 100) AS lim
     FROM (SELECT NULLIF(trim(COALESCE(p_search, '')), '') AS raw) q
   ),
-  -- NOT MATERIALIZED: each page query below gets the filters pushed in
-  -- and can walk the (datereported, incidentid) index in order
+  -- NOT MATERIALIZED so the filters get pushed into each page query and it
+  -- can walk the (datereported, incidentid) index in order
   matches AS NOT MATERIALIZED (
     SELECT cs.*
     FROM public.crimescene cs CROSS JOIN t
@@ -537,7 +515,7 @@ AS $$
       AND (p_locationkey IS NULL OR cs.locationkey = p_locationkey)
       AND (p_ids IS NULL OR cs.incidentid = ANY (p_ids))
   ),
-  -- only one of these two runs (the other's WHERE is false up front)
+  -- only one of these two actually runs, the other's WHERE is false from the start
   page AS (
     (SELECT * FROM matches m
       WHERE COALESCE(p_order, 'newest') <> 'oldest'
@@ -605,10 +583,8 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 6. list_cases: same as before plus possiblesuspects and
---    confirmedsuspects (return type changed, so drop and recreate)
--- ---------------------------------------------------------------------
+-- --- 6. list_cases, now with possiblesuspects/confirmedsuspects
+-- (the return type changes, so drop and recreate)
 DROP FUNCTION public.list_cases(text, text, integer, integer, timestamptz, integer);
 
 CREATE FUNCTION public.list_cases(
@@ -628,13 +604,13 @@ CREATE FUNCTION public.list_cases(
     dateclosed    timestamptz,
     createdbyname text,
     incidentcount integer,
-    investigators jsonb,          -- [{assignmentid, userid, name, badgenumber, islead}] active only
+    investigators jsonb,          -- active assignments: [{assignmentid, userid, name, badgenumber, islead}]
     lastactivity  timestamptz,
     mediacount    integer,
     plates        text[],
-    preview       jsonb,          -- 3 newest: [{incidentid, location, datereported, reviewstatus, description, aisummary}]
-    possiblesuspects  integer,    -- highest possiblesuspects of the case's submissions
-    confirmedsuspects integer     -- highest confirmedsuspects of the case's submissions
+    preview       jsonb,          -- the 3 newest: [{incidentid, location, datereported, reviewstatus, description, aisummary}]
+    possiblesuspects  integer,    -- highest across the case's submissions
+    confirmedsuspects integer     -- same
   )
   LANGUAGE sql STABLE SECURITY INVOKER
   SET search_path = ''
@@ -715,7 +691,7 @@ AS $$
          COALESCE(sus.possible, 0), COALESCE(sus.confirmed, 0)
   FROM page b
   LEFT JOIN public."User" u ON u.userid = b.createdby
-  -- per clip, then the highest clip of any submission in the case
+  -- per clip first, then the highest clip across the case's submissions
   LEFT JOIN LATERAL (
     SELECT max(per_clip.possible)::integer  AS possible,
            max(per_clip.confirmed)::integer AS confirmed
@@ -732,29 +708,25 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 7. case_card_suggestions
+-- --- 7. case_card_suggestions
 --
--- For the Cases tab: each listed case's best suggested pending
--- submission (same scoring and order as suggest_incidents_for_case),
--- how many others were suggested, and the most relevant number plate
--- the AI read in that submission:
---   1. a plate that is also in the case (the same car)
---   2. otherwise one character off a plate in the case (an OCR misread)
---   3. otherwise the plate read with the highest confidence
--- Plates are AI reads: the app labels them as unconfirmed.
--- Closed cases are skipped (they don't take new submissions).
--- Called once per page of cards; at most 50 cases per call.
--- ---------------------------------------------------------------------
+-- For the Cases tab: each case's best suggested pending submission (same
+-- scoring as suggest_incidents_for_case), how many others got suggested,
+-- and the most useful plate the AI read in it. "Most useful" means a plate
+-- that's also in the case, else one that's a character off one in the case
+-- (probably a misread), else whichever read was most confident. The app
+-- marks these as unconfirmed AI reads.
+-- Skips closed cases since they can't take new submissions. Called once per
+-- page of cards, max 50 cases a call.
 CREATE OR REPLACE FUNCTION public.case_card_suggestions(p_caseids integer[])
   RETURNS TABLE (
     caseid       integer,
     incidentid   integer,     -- best suggested pending submission
     score        integer,
     reasons      text[],
-    othercount   integer,     -- other submissions also suggested for the case
-    plate        text,        -- most relevant plate in it (null when none read)
-    platematch   text         -- 'same' / 'similar' to a plate in the case, or null
+    othercount   integer,     -- how many others were suggested too
+    plate        text,        -- most relevant plate, NULL if none was read
+    platematch   text         -- 'same' / 'similar' to a plate in the case, or NULL
   )
   LANGUAGE plpgsql STABLE
   SET search_path = ''
@@ -820,10 +792,8 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 8. Privileges
--- ---------------------------------------------------------------------
--- internal helpers / trigger functions: not callable from the app
+-- --- 8. privileges
+-- internal helpers and trigger functions, not callable from the app
 REVOKE EXECUTE ON FUNCTION public.protect_detection_suspect()        FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.check_suspect()                    FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.log_suspect_review_event()         FROM PUBLIC, anon, authenticated;
@@ -837,8 +807,8 @@ REVOKE EXECUTE ON FUNCTION public.case_card_suggestions(integer[])              
 REVOKE EXECUTE ON FUNCTION public.list_submissions(text, integer, text, integer, text, timestamptz, integer, text, integer[]) FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.list_cases(text, text, integer, integer, timestamptz, integer) FROM PUBLIC, anon;
 
--- the AI pipeline (service_role) never reviews suspects (Supabase grants new
--- functions to it by default, so take that away explicitly)
+-- The pipeline (service_role) never reviews suspects. Supabase grants it new
+-- functions by default, so we have to revoke that explicitly.
 REVOKE EXECUTE ON FUNCTION public.review_possible_suspect(integer, text, text, text, text) FROM service_role;
 REVOKE EXECUTE ON FUNCTION public.update_suspect_details(integer, text, text)             FROM service_role;
 REVOKE EXECUTE ON FUNCTION public.undo_suspect_review(integer, text)                      FROM service_role;

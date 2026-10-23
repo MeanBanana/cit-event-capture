@@ -1,22 +1,20 @@
--- keep_only_n12_case.sql - ONE-OFF clean-up of test data (NOT a migration:
--- don't move it into supabase/migrations).
+-- One-off clean-up of test data. This is NOT a migration, don't move it into
+-- supabase/migrations.
 --
--- Keeps ONE case - the one whose title contains "N12" and "northbound" -
--- and the submissions in it. Deletes every other case and every other
--- submission (accepted, pending, rejected, duplicate), with their media
--- rows, AI detections, suspects, AI jobs and history. Users are kept.
+-- Keeps a single case (the one with "N12" and "northbound" in the title) and
+-- its submissions. Every other case and submission gets deleted, along with
+-- their media rows, detections, suspects, AI jobs and history. Users stay.
 --
--- Run in Supabase: Dashboard -> SQL Editor -> New query.
---   STEP 1: paste only the PREVIEW part, Run, check the lists.
---   STEP 2: paste the DELETE part, Run. It is one transaction: if anything
---           fails (or there isn't exactly one N12 northbound case) nothing
---           is deleted.
---   STEP 3: on the GPU PC:  python backend\cleanup_storage.py   (the files
---           in the bucket - Supabase doesn't allow deleting those from SQL)
--- This cannot be undone.
+-- Run it in the dashboard's SQL Editor in two goes:
+--   1. paste just the PREVIEW part and check the lists look right
+--   2. paste the DELETE part. It's one transaction, so if anything fails (or
+--      there isn't exactly one N12 northbound case) nothing gets deleted.
+--   3. then on the GPU PC run  python backend/cleanup_storage.py  to clear
+--      the bucket, since Supabase won't delete storage files from SQL.
+-- There's no undo.
 
 
--- =========================== PREVIEW (deletes nothing) ===================
+-- ---- PREVIEW (doesn't delete anything)
 SELECT c.caseid, c.title, c.status,
        CASE WHEN c.title ILIKE '%N12%' AND c.title ILIKE '%northbound%'
             THEN 'KEEP' ELSE 'delete' END AS action,
@@ -32,7 +30,7 @@ FROM public.crimescene cs
 ORDER BY action DESC, cs.incidentid;
 
 
--- =========================== DELETE ======================================
+-- ---- DELETE
 BEGIN;
 
 CREATE TEMP TABLE keep_case ON COMMIT DROP AS
@@ -59,18 +57,18 @@ CREATE TEMP TABLE gone_detection ON COMMIT DROP AS
     JOIN public.media m ON m.mediaid = d.mediaid
    WHERE m.incidentid IN (SELECT incidentid FROM gone_incident);
 
--- history of what goes
+-- history for the stuff that's going
 DELETE FROM public.caseevent
  WHERE caseid IN (SELECT caseid FROM gone_case)
     OR incidentid IN (SELECT incidentid FROM gone_incident);
 
--- a KEPT submission marked as a duplicate of one that goes: it stays in
--- the N12 case as an accepted submission
+-- a submission we're keeping that was marked a duplicate of one that's going
+-- stays in the N12 case as accepted
 UPDATE public.crimescene SET reviewstatus = 'accepted', duplicateof = NULL
  WHERE duplicateof IN (SELECT incidentid FROM gone_incident)
    AND incidentid NOT IN (SELECT incidentid FROM gone_incident);
 
--- AI / investigator rows of the deleted submissions' detections
+-- AI and investigator rows hanging off the deleted detections
 DELETE FROM public.weapondetail  WHERE detectionid IN (SELECT detectionid FROM gone_detection);
 DELETE FROM public.vehicledetail WHERE detectionid IN (SELECT detectionid FROM gone_detection);
 DELETE FROM public.correctionlog WHERE detectionid IN (SELECT detectionid FROM gone_detection);
@@ -86,17 +84,16 @@ DELETE FROM public.detection  WHERE detectionid IN (SELECT detectionid FROM gone
 DELETE FROM public.media      WHERE incidentid  IN (SELECT incidentid  FROM gone_incident);
 DELETE FROM public.crimescene WHERE incidentid  IN (SELECT incidentid  FROM gone_incident);
 
--- the cases (their assignments, AI people / vehicles / weapons and match
--- answers go with them)
+-- the cases themselves (assignments, AI entities and match answers go with them)
 DELETE FROM public.cases WHERE caseid IN (SELECT caseid FROM gone_case);
 
--- the "case deleted" history lines the line above just wrote
+-- and the "case deleted" history lines the delete above just wrote
 DELETE FROM public.caseevent
  WHERE eventtype = 'case_deleted' AND occurredat >= now();
 
 COMMIT;
 
--- what is left
+-- what's left
 SELECT 'cases' AS what, count(*) FROM public.cases
 UNION ALL SELECT 'submissions', count(*) FROM public.crimescene
 UNION ALL SELECT 'media files', count(*) FROM public.media

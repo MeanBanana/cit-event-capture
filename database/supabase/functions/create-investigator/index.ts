@@ -1,34 +1,18 @@
-// create-investigator — Supabase Edge Function
+// create-investigator: makes a login for a new investigator. The admin app's
+// "+ New investigator" form calls this (SupabaseService.createInvestigator).
 //
-// Called by the admin app's "+ New investigator" form
-// (SupabaseService.createInvestigator). Creates an investigator's login.
+// It lives here rather than in the app because creating someone else's
+// account and handing it the investigator role needs the service key, and
+// that key can do literally anything in the project. It stays on Supabase as
+// an env var and never ships in the app.
 //
-// Why this runs here and not in the app:
-//   Creating someone else's account and giving it the 'investigator' role
-//   needs the service key, which can do anything in the project. That key
-//   must never be inside the app, so the app calls this function instead and
-//   the key stays on Supabase's servers (as an environment variable).
+// The admin picks a temporary password and passes it on. On first login the
+// app forces the investigator to pick their own (must_change_password, which
+// the database clears once they change it, see 20261020100000).
 //
-// What it does:
-//   1. Checks the caller is logged in AND is an admin ("User".role).
-//   2. Validates the form values (same rules as the app).
-//   3. Checks the username and badge number aren't taken (clear messages).
-//   4. auth.admin.createUser with the temporary password the admin chose,
-//      and role 'investigator' + must_change_password in app_metadata (only
-//      the service key can set those). The on_auth_user_created trigger
-//      then creates the "User" and investigator rows from user_metadata.
-//   5. Makes sure the rows are investigator rows (see step 5 below), then
-//      returns { userid, email }.
-//
-// The admin gives the investigator their username and temporary password.
-// At their first log-in the app makes them choose their own password
-// (must_change_password; cleared by the database once the password changes,
-// see migration 20261020100000_must_change_password.sql).
-//
-// Deploy (from the database/ folder):
-//   supabase functions deploy create-investigator
-// verify_jwt is off in config.toml because this function checks the caller
-// itself (step 1), which also works with Supabase's newer JWT signing keys.
+// Deploy from database/:  supabase functions deploy create-investigator
+// verify_jwt is off in config.toml since we check the caller ourselves below,
+// which also copes with Supabase's newer JWT signing keys.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -39,7 +23,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** JSON response. Errors are always { error: "message for the admin" }. */
+/** JSON reply. Errors are always { error: "something the admin can read" }. */
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -50,15 +34,15 @@ function reply(status: number, body: Record<string, unknown>): Response {
 const fail = (status: number, message: string) =>
   reply(status, { error: message });
 
-/** Trimmed string, or "" for anything that isn't a string. */
+/** Trimmed string, or "" if it isn't a string at all. */
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-// Same rules as the app and the database.
-const USERNAME = /^[A-Za-z0-9_.]{3,30}$/; // "User"_username_format check
+// Keep these in line with the app and the database checks
+const USERNAME = /^[A-Za-z0-9_.]{3,30}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOCAL_PHONE = /^\d{9}$/; // the 9 digits after +27
 
-/** Rules for a temporary password, or null if it is fine. */
+/** What's wrong with the temporary password, or null if it's fine. */
 function passwordProblem(password: string): string | null {
   if (password.length < 8 || password.length > 72 ||
       !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
@@ -77,12 +61,12 @@ Deno.serve(async (req) => {
     return fail(500, "The server is not set up correctly (missing keys).");
   }
 
-  // The service-key client: bypasses RLS. Used only after the admin check.
+  // Service-key client, bypasses RLS. Don't use it for anything until we've checked the caller.
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ---- 1. Who is calling? Must be a logged-in admin. ----------------------
+  // 1. caller has to be a logged-in admin
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return fail(401, "Please log in again.");
 
@@ -99,7 +83,7 @@ Deno.serve(async (req) => {
     return fail(403, "Only a system administrator can add investigators.");
   }
 
-  // ---- 2. Validate the form. ----------------------------------------------
+  // 2. validate the form
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -111,12 +95,12 @@ Deno.serve(async (req) => {
   const surname = text(body.surname);
   const username = text(body.username);
   const email = text(body.email).toLowerCase();
-  const phone = text(body.phone); // optional, 9 digits after +27
+  const phone = text(body.phone); // optional
   const rank = text(body.rank); // optional
   const badgenumber = text(body.badgenumber).toUpperCase();
   const station = text(body.station);
   const unit = text(body.unit); // optional
-  // not trimmed: the password is used exactly as given
+  // don't trim the password, use it exactly as typed
   const password = typeof body.password === "string" ? body.password : "";
 
   if (!firstname || !surname) return fail(400, "Enter the first name and surname.");
@@ -141,8 +125,8 @@ Deno.serve(async (req) => {
   const badPassword = passwordProblem(password);
   if (badPassword) return fail(400, badPassword);
 
-  // ---- 3. Clear messages for the usual clashes. ---------------------------
-  // (The database still enforces both; these just explain it nicely.)
+  // 3. check for the usual clashes up front so we can give a decent message.
+  // The database enforces these anyway.
   const { data: free, error: usernameError } = await admin.rpc(
     "username_available",
     { p_username: username },
@@ -158,13 +142,12 @@ Deno.serve(async (req) => {
   if (badgeError) return fail(500, "Could not check the badge number. Try again.");
   if (badgeTaken) return fail(409, "That badge number is already in use.");
 
-  // ---- 4. Create the login. ------------------------------------------------
-  // The key names in user_metadata must match what handle_new_auth_user
-  // reads (see the user_role_tables migration).
+  // 4. create the login. The user_metadata keys have to match what
+  // handle_new_auth_user reads (user_role_tables migration).
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true, // the admin vouches for the address
+    email_confirm: true, // the admin is vouching for the address
     app_metadata: { role: "investigator", must_change_password: true },
     user_metadata: {
       username,
@@ -187,23 +170,22 @@ Deno.serve(async (req) => {
       return fail(400, "That temporary password is too weak. Generate a new one.");
     }
     if (createError?.message?.includes("Database error")) {
-      // The sign-up trigger refused the data (e.g. taken at the same moment).
+      // the sign-up trigger rejected it, most likely someone grabbed the name a moment ago
       return fail(409, "The username or badge number is already in use.");
     }
     console.error("createUser failed", createError);
     return fail(500, "The account could not be created. Try again.");
   }
 
-  // ---- 5. Make sure the rows are investigator rows. ------------------------
-  // Supabase Auth saves a new login in two steps: it INSERTs the auth.users
-  // row first and adds app_metadata (our role) a moment later. The sign-up
-  // trigger runs on the INSERT, sees no role yet and makes a CITIZEN. The
-  // on_auth_user_role_set trigger (migration 20261007120000) normally fixes
-  // that straight away; this step makes sure of it, so the account is right
-  // even if that migration has not been run on the database.
+  // 5. make sure it really is an investigator.
+  // Auth inserts the auth.users row first and only adds app_metadata (where
+  // our role lives) a moment later, so the sign-up trigger sees no role and
+  // makes a citizen. The on_auth_user_role_set trigger (20261007120000)
+  // normally fixes that right away, this is just a backstop in case that
+  // migration isn't on the database.
   const authId = created.user.id;
 
-  // Removes the half-made account so the admin can simply try again.
+  // Throw away the half-made account so the admin can just try again
   const undo = async (userid?: number) => {
     if (userid != null) await admin.from("User").delete().eq("userid", userid);
     await admin.auth.admin.deleteUser(authId);

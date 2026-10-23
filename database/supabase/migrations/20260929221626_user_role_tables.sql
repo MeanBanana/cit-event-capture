@@ -1,37 +1,28 @@
--- =====================================================================
--- Argus Shield: user roles as an enum + citizen / investigator sub-tables
+-- User roles become an enum, and citizens/investigators get their own tables.
 --
---   "User"       shared by everyone: username, first name, surname, email,
---                phone number, role (enum: citizen | investigator | admin)
---   citizen      extra citizen details      (residence)
---   investigator extra investigator details (rank, badge number, station,
---                unit, duty status)
---   Admins have no extra details, so they only need a "User" row.
+-- "User" holds what everyone has (username, names, email, phone, role).
+-- citizen adds residence, investigator adds rank, badge, station, unit and
+-- duty status. Admins don't need anything extra so they just have a "User" row.
 --
--- Passwords and login tokens are NOT stored here: Supabase Auth keeps them
--- in auth.users. "User".authid links each profile to its auth account.
+-- No passwords here, Supabase Auth keeps those in auth.users and
+-- "User".authid links the two.
 --
--- Account creation:
---   * Citizens register in the app (supabase.auth.signUp). A trigger creates
---     their "User" + citizen rows from the sign-up data. App sign-ups are
---     ALWAYS citizens.
---   * Investigators are created by an admin through the create-investigator
---     Edge Function (service key). The role is passed in app_metadata, which
---     only the service key can set, so no one can make themselves staff.
--- =====================================================================
+-- Citizens sign up in the app and a trigger builds their rows from the
+-- sign-up data. App sign-ups are always citizens. Investigators are created
+-- by an admin through the create-investigator Edge Function, which puts the
+-- role in app_metadata. Only the service key can write that, so nobody can
+-- promote themselves to staff.
 
 
--- ---------------------------------------------------------------------
--- 1. Role becomes an enum
---    The user_select policy reads the role column, and Postgres won't change
---    a column's type while a policy uses it: drop it, convert, recreate it
---    exactly as it was.
--- ---------------------------------------------------------------------
+-- --- 1. role becomes an enum
+-- Postgres won't change a column's type while a policy uses it, and
+-- user_select reads role. So drop the policy, convert, and put it back
+-- exactly as it was.
 CREATE TYPE public.user_role AS ENUM ('citizen', 'investigator', 'admin');
 
 DROP POLICY "user_select" ON public."User";
 
--- the enum now does the job of the old CHECK constraint
+-- the enum replaces the old CHECK constraint
 ALTER TABLE public."User" DROP CONSTRAINT "User_role_check";
 
 ALTER TABLE public."User"
@@ -42,21 +33,19 @@ CREATE POLICY "user_select" ON public."User"
   USING (
        authid = (SELECT auth.uid())
     OR (SELECT public.current_user_role()) = 'admin'
-    -- investigators can see fellow investigators (collaboration)
+    -- investigators can see each other, they need to work together
     OR ((SELECT public.current_user_role()) = 'investigator' AND role = 'investigator')
   );
 
 
--- ---------------------------------------------------------------------
--- 2. Shared fields on "User"
--- ---------------------------------------------------------------------
+-- --- 2. shared fields on "User"
 ALTER TABLE public."User"
   ADD COLUMN username    varchar(30),
   ADD COLUMN firstname   varchar(100),
   ADD COLUMN surname     varchar(100),
   ADD COLUMN phonenumber varchar(20);
 
--- Backfill rows that already exist (fullname is split on the first space)
+-- backfill existing rows, splitting fullname on the first space
 UPDATE public."User"
 SET username  = 'user_' || userid,
     firstname = split_part(fullname, ' ', 1),
@@ -67,21 +56,19 @@ ALTER TABLE public."User"
   ALTER COLUMN firstname SET NOT NULL,
   ALTER COLUMN surname   SET NOT NULL,
   ADD CONSTRAINT "User_username_format" CHECK (username ~ '^[A-Za-z0-9_.]{3,30}$'),
-  -- lets the sub-tables reference (userid, role), so a citizen row can only
-  -- belong to a citizen and an investigator row only to an investigator
+  -- lets the sub-tables reference (userid, role), which guarantees a citizen
+  -- row only ever belongs to a citizen, same for investigators
   ADD CONSTRAINT "User_userid_role_key" UNIQUE (userid, role);
 
--- usernames are unique ignoring case ("DeacsGNel" = "deacsgnel")
+-- usernames are unique regardless of case ("DeacsGNel" = "deacsgnel")
 CREATE UNIQUE INDEX "User_username_lower_key" ON public."User" (lower(username));
 
 
--- ---------------------------------------------------------------------
--- 3. Sub-tables: each row extends exactly one "User" row
--- ---------------------------------------------------------------------
+-- --- 3. sub-tables, each row extends exactly one "User" row
 CREATE TABLE public.citizen (
   userid    integer          PRIMARY KEY,
   role      public.user_role NOT NULL DEFAULT 'citizen' CHECK (role = 'citizen'),
-  residence text,          -- the registration screen should require this
+  residence text,          -- the registration screen should make this required
   CONSTRAINT citizen_user_fkey FOREIGN KEY (userid, role)
     REFERENCES public."User" (userid, role) ON DELETE CASCADE
 );
@@ -104,9 +91,7 @@ ALTER TABLE public.citizen      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.investigator ENABLE ROW LEVEL SECURITY;
 
 
--- ---------------------------------------------------------------------
--- 4. Move existing users into their sub-tables
--- ---------------------------------------------------------------------
+-- --- 4. move existing users into their sub-tables
 INSERT INTO public.citizen (userid)
   SELECT userid FROM public."User" WHERE role = 'citizen';
 
@@ -115,10 +100,8 @@ INSERT INTO public.investigator (userid, badgenumber, station)
   FROM public."User" WHERE role = 'investigator';
 
 
--- ---------------------------------------------------------------------
--- 5. "User" column protection no longer mentions badgenumber
---    (users may still edit their own username, name and phone number)
--- ---------------------------------------------------------------------
+-- --- 5. the "User" column protection trigger no longer mentions badgenumber
+-- (people can still edit their own username, name and phone)
 CREATE OR REPLACE FUNCTION public.protect_user_columns()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -140,19 +123,15 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 6. Drop the columns that were replaced (fullname) or moved (badgenumber)
--- ---------------------------------------------------------------------
+-- --- 6. drop columns we replaced (fullname) or moved (badgenumber)
 ALTER TABLE public."User"
   DROP COLUMN fullname,
   DROP COLUMN badgenumber;
 
 
--- ---------------------------------------------------------------------
--- 7. Sign-up trigger: creates "User" + the matching sub-table row
---    Role comes from raw_app_meta_data (service key only). App sign-ups
---    never have it there, so they always become citizens.
--- ---------------------------------------------------------------------
+-- --- 7. sign-up trigger: create "User" plus the matching sub-table row
+-- The role comes from raw_app_meta_data, which only the service key can set.
+-- App sign-ups never have it, so they always end up as citizens.
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
   RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER
@@ -191,18 +170,16 @@ BEGIN
             v_meta ->> 'station',
             NULLIF(trim(v_meta ->> 'unit'), ''));
   END IF;
-  -- admins: the "User" row is all they need
+  -- admins: the "User" row is enough
 
   RETURN NEW;
 END;
 $$;
--- on_auth_user_created (from 20260929114152_auth_and_rls.sql) already calls
--- this function, so the trigger itself does not need to be recreated.
+-- on_auth_user_created (from 20260929114152_auth_and_rls.sql) already points
+-- at this function, so no need to recreate the trigger.
 
 
--- ---------------------------------------------------------------------
--- 8. Keep "User".email in sync when someone changes their login email
--- ---------------------------------------------------------------------
+-- --- 8. keep "User".email in sync when someone changes their login email
 CREATE OR REPLACE FUNCTION public.handle_auth_email_change()
   RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER
@@ -223,9 +200,7 @@ CREATE TRIGGER on_auth_user_email_changed
   EXECUTE FUNCTION public.handle_auth_email_change();
 
 
--- ---------------------------------------------------------------------
--- 9. Investigators may change ONLY their own duty status
--- ---------------------------------------------------------------------
+-- --- 9. investigators can change their own duty status and nothing else
 CREATE OR REPLACE FUNCTION public.protect_investigator_columns()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -251,11 +226,10 @@ CREATE TRIGGER protect_investigator_columns
   FOR EACH ROW EXECUTE FUNCTION public.protect_investigator_columns();
 
 
--- ---------------------------------------------------------------------
--- 10. Username helpers for the login and registration screens
---     (callable before logging in, via supabase.rpc)
--- ---------------------------------------------------------------------
--- Login: username -> the email Supabase Auth needs to sign in
+-- --- 10. username helpers for the login and registration screens
+-- These have to work before you're logged in (supabase.rpc).
+--
+-- login: turn a username into the email Supabase Auth wants
 CREATE OR REPLACE FUNCTION public.email_for_username(p_username text)
   RETURNS text
   LANGUAGE sql STABLE SECURITY DEFINER
@@ -264,7 +238,7 @@ AS $$
   SELECT email::text FROM public."User" WHERE lower(username) = lower(trim(p_username))
 $$;
 
--- Registration: is this username still free?
+-- registration: is the username free?
 CREATE OR REPLACE FUNCTION public.username_available(p_username text)
   RETURNS boolean
   LANGUAGE sql STABLE SECURITY DEFINER
@@ -281,18 +255,14 @@ GRANT  EXECUTE ON FUNCTION public.email_for_username(text) TO anon, authenticate
 GRANT  EXECUTE ON FUNCTION public.username_available(text) TO anon, authenticated, service_role;
 
 
--- ---------------------------------------------------------------------
--- 11. Privileges: sub-table rows are only created by the sign-up trigger
--- ---------------------------------------------------------------------
+-- --- 11. privileges: sub-table rows only ever come from the sign-up trigger
 REVOKE ALL ON public.citizen, public.investigator FROM anon;
 REVOKE INSERT, DELETE, TRUNCATE, TRIGGER, REFERENCES
   ON public.citizen, public.investigator FROM authenticated;
 
 
--- ---------------------------------------------------------------------
--- 12. Policies
--- ---------------------------------------------------------------------
--- citizen: own details; admins see/edit all
+-- --- 12. policies
+-- citizen: you see your own row, admins see and edit everyone's
 CREATE POLICY "citizen_select" ON public.citizen
   FOR SELECT TO authenticated
   USING (userid = (SELECT public.current_user_id())
@@ -305,9 +275,9 @@ CREATE POLICY "citizen_update" ON public.citizen
   WITH CHECK (userid = (SELECT public.current_user_id())
               OR (SELECT public.current_user_role()) = 'admin');
 
--- investigator: investigators and admins see all investigators;
--- an investigator updates their own row (duty status only, see trigger);
--- admins update any row
+-- investigator: investigators and admins can see all investigators. You can
+-- update your own row (duty status only, see the trigger), admins can update
+-- anyone's.
 CREATE POLICY "investigator_select" ON public.investigator
   FOR SELECT TO authenticated
   USING ((SELECT public.current_user_role()) IN ('admin', 'investigator'));

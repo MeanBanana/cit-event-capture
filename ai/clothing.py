@@ -1,34 +1,33 @@
 """
-clothing.py - what a person is wearing: the colour of their top and bottom,
-or "none" (shown as "no clothing") when that part of the body is bare skin.
+Works out what colour someone's top and bottom are, or "none" if that bit
+is bare skin.
 
-  1. A pose model finds the body's joints (shoulders, hips, knees). The TOP
-     is the torso between shoulders and hips; the BOTTOM is the thighs
-     between hips and knees. A part whose joints aren't visible isn't judged
-     at all (no guessing from grass or a car behind the person).
-  2. Skin pixels are found (matched to the person's own face colour when
-     the face is visible, otherwise a general skin-colour rule). Mostly
-     skin = "none" (no shirt / bare legs); otherwise skin (arms, hands) is
-     left out before the colour is named.
-  3. The remaining pixels are grouped (k-means) and named in the CIELAB
-     colour space - which matches how people see colour much better than
-     the old HSV hue rules, which turned dark, noisy pixels into "red" or
-     "purple" and skin into "orange".
+We use a pose model to find shoulders, hips and knees, so the top is the
+torso and the bottom is the thighs. If the joints for a part aren't visible
+we just don't judge it, otherwise we end up naming the grass or the car
+behind them.
 
-Limits (colour only, no clothing-segmentation model): without a visible
-face or bare forearm, darker skin can't be told apart from brown clothing,
-so a shirtless person seen only from behind may get a colour instead of
-"no clothing". Votes over many frames smooth out single bad frames.
+Skin gets masked out first. If we can see their face we match against their
+actual skin tone, otherwise we fall back to a generic skin-colour rule. If a
+region is mostly skin we call it "none" (shirtless, shorts, etc).
+
+What's left gets clustered and named in CIELAB. We used to do HSV hue rules,
+but those turned dark noisy pixels into "red"/"purple" and skin into
+"orange", so we switched.
+
+Known gap: with no face or forearm to sample, darker skin and brown clothing
+look the same to us, so a shirtless person seen from behind might get a
+colour. Voting over lots of frames helps a bit.
 """
 
 import cv2
 import numpy as np
 
-NONE = "none"          # the stored value for bare skin
+NONE = "none"          # what we store for bare skin
 
 
 def clothing_word(value):
-    """How a stored clothing value reads: "black", "no clothing", "unsure"."""
+    """Human-readable version of a stored clothing value."""
     return "no clothing" if value == NONE else (value or "unsure")
 
 
@@ -36,8 +35,8 @@ def clothing_word(value):
 NOSE, L_EYE, R_EYE = 0, 1, 2
 L_SHOULDER, R_SHOULDER, L_HIP, R_HIP, L_KNEE, R_KNEE = 5, 6, 11, 12, 13, 14
 
-# Colour names: several reference swatches (sRGB) per name, so e.g. both
-# bright and dark blue are "blue". The nearest swatch in CIELAB wins.
+# A few reference colours per name so light and dark blue both come out as
+# "blue". We pick whichever swatch is closest in CIELAB.
 SWATCHES = {
     "black":  [(15, 15, 15), (35, 35, 38), (45, 42, 40)],
     "grey":   [(80, 80, 80), (115, 115, 118), (150, 150, 150), (95, 100, 105)],
@@ -66,7 +65,7 @@ _REF = np.vstack([_lab(cs) for cs in SWATCHES.values()])
 
 
 def lab_of(bgr_pixels):
-    """N x 3 uint8 BGR -> N x 3 CIELAB (L 0-100)."""
+    """BGR pixels (N x 3) to CIELAB."""
     px = bgr_pixels.reshape(-1, 1, 3).astype(np.float32) / 255
     return cv2.cvtColor(px, cv2.COLOR_BGR2LAB).reshape(-1, 3)
 
@@ -75,10 +74,13 @@ _CHROMATIC = np.array([n not in ("black", "grey", "white") for n in _NAMES])
 
 
 def name_lab(lab):
-    """Colour name for one CIELAB colour. Colourless ones by lightness
-    (clothes in shadow / sun vary a lot: black in daylight is often L 20-30,
-    a white shirt in shade L 70-80 and slightly blue); real colours by the
-    nearest reference swatch."""
+    """Name a CIELAB colour.
+
+    Greys/blacks/whites go by lightness alone. Lighting throws these around a
+    lot (black in sunlight is often L 20-30, white in shade can be L 70-80 and
+    a bit blue), hence the fairly loose cut-offs. Anything with real colour
+    goes to the nearest swatch.
+    """
     L, a, b = (float(v) for v in lab)
     chroma = float(np.hypot(a, b))
     if chroma < 12 or (L < 30 and chroma < 16):
@@ -91,9 +93,11 @@ def name_lab(lab):
 
 
 def generic_skin(bgr_pixels):
-    """True for pixels with a skin-like colour (any skin tone, roughly).
-    Strict on purpose: vivid orange / red clothing (safety vests!) is more
-    saturated than skin and must not count as skin."""
+    """Rough skin detector that works for any skin tone.
+
+    Deliberately strict, because hi-vis vests and other bright orange/red
+    clothing are close to skin and we really don't want those masked out.
+    """
     px = bgr_pixels.reshape(-1, 1, 3)
     ycc = cv2.cvtColor(px, cv2.COLOR_BGR2YCrCb).reshape(-1, 3).astype(int)
     hsv = cv2.cvtColor(px, cv2.COLOR_BGR2HSV).reshape(-1, 3).astype(int)
@@ -107,10 +111,12 @@ def generic_skin(bgr_pixels):
 
 
 def matches(bgr_pixels, ref_lab):
-    """True for pixels with the same colour as ref_lab (the person's skin).
-    Light changes skin a lot between face and body (sun, shade, the
-    camera), mostly in brightness and strength of colour, much less in hue -
-    so: a close colour, or the same hue with a similar strength."""
+    """Pixels that match this particular person's skin colour.
+
+    Skin between the face and the arms can look very different depending on
+    light, but mostly in brightness and saturation, not hue. So we accept
+    either a close colour or the same hue at a similar strength.
+    """
     lab = lab_of(bgr_pixels)
     ab, ref_ab = lab[:, 1:], ref_lab[1:]
     chroma, ref_chroma = np.hypot(ab[:, 0], ab[:, 1]), float(np.hypot(*ref_ab))
@@ -120,14 +126,13 @@ def matches(bgr_pixels, ref_lab):
     close = np.linalg.norm(ab - ref_ab, axis=1) < 10
     same_hue = ((hue_diff < 18) & (chroma > ref_chroma * 0.55)
                 & (chroma < ref_chroma * 1.45))
-    # skin always has some colour: grey / black / white cloth never matches
+    # skin always has some colour, so grey/black/white fabric can't match
     return (close | same_hue) & (chroma > 7) & (np.abs(lab[:, 0] - ref_lab[0]) < 35)
 
 
 def plausible_skin(lab):
-    """Could this CIELAB colour be skin at all (any tone, normal light)?
-    Rejects a face sample spoilt by deep shadow, a cap's shade, sunglasses or
-    a strong colour cast - better no reference than a wrong one."""
+    """Sanity check on a skin sample. Shadows, cap brims, sunglasses or a
+    strong colour cast can ruin it, and no reference beats a wrong one."""
     L, a, b = (float(v) for v in lab)
     chroma = float(np.hypot(a, b))
     hue = float(np.degrees(np.arctan2(b, a)))
@@ -135,14 +140,16 @@ def plausible_skin(lab):
 
 
 def skin_reference(frame, face_box=None, kp=None, min_conf=0.5):
-    """The person's own skin colour (CIELAB): from the middle of the face
-    when it's visible, else from a bare forearm (elbow -> wrist), else None.
-    face_box = (x, y, w, h) in frame pixels."""
+    """The person's own skin colour in CIELAB, or None.
+
+    Tries the middle of the face first, then a bare forearm. face_box is
+    (x, y, w, h).
+    """
     if face_box is not None:
-        # The face finder is sure this is a face, so its middle (cheeks,
-        # nose) is skin whatever the tone: no general skin rule needed,
-        # which fails for darker skin. Very dark (sunglasses, nostrils) and
-        # glare pixels are left out.
+        # We already know this is a face, so the cheeks/nose area is skin no
+        # matter the tone. That's better than the generic rule, which
+        # struggles with darker skin. Drop the really dark bits (sunglasses,
+        # nostrils) and glare.
         x, y, w, h = face_box
         patch = frame[max(0, y + int(h * 0.45)):y + int(h * 0.75),
                       max(0, x + int(w * 0.25)):x + int(w * 0.75)].reshape(-1, 3)
@@ -166,7 +173,7 @@ def skin_reference(frame, face_box=None, kp=None, min_conf=0.5):
                      1, max(2, int(length * 0.15)))
             px = frame[m.astype(bool)]
             skin = generic_skin(px)
-            if len(px) >= 30 and skin.mean() >= 0.6:         # a bare forearm
+            if len(px) >= 30 and skin.mean() >= 0.6:         # looks like a bare forearm
                 ref = np.median(lab_of(px[skin]), axis=0)
                 if plausible_skin(ref):
                     return ref
@@ -174,8 +181,7 @@ def skin_reference(frame, face_box=None, kp=None, min_conf=0.5):
 
 
 def skin_mask(bgr_pixels, skin_lab=None):
-    """True for skin pixels: matched to the person's own skin colour when
-    known (works for every skin tone), otherwise the strict general rule."""
+    """Skin pixels, using the person's own skin tone if we have it."""
     if skin_lab is None:
         return generic_skin(bgr_pixels)
     return matches(bgr_pixels, skin_lab)
@@ -188,16 +194,15 @@ def _quad_mask(shape, pts):
 
 
 def _shrink(pts, factor):
-    """Pull a polygon's corners towards its centre (keep away from edges /
-    background / arms)."""
+    """Pull a polygon in towards its centre so we stay clear of the edges,
+    background and arms."""
     pts = np.float32(pts)
     c = pts.mean(axis=0)
     return c + (pts - c) * factor
 
 
 def _band(a, b, start, end, width):
-    """A strip along the line a -> b (from start to end, as fractions of
-    the way) that is width pixels wide."""
+    """A strip `width` px wide along a->b, from `start` to `end` (fractions)."""
     a, b = np.float32(a), np.float32(b)
     d = b - a
     n = np.float32([-d[1], d[0]]) / (np.linalg.norm(d) + 1e-6) * width / 2
@@ -206,15 +211,13 @@ def _band(a, b, start, end, width):
 
 
 def body_regions(kp, box=None, min_conf=0.5):
-    """(torso polygon, thighs polygon) from 17 COCO keypoints [x, y, conf]
-    in frame pixels; either None when that part isn't visible.
+    """Torso and thigh polygons from COCO keypoints. Either can be None.
 
-    Best case both shoulders and hips (front / back view). Otherwise, for
-    side views and close-ups: one shoulder + hip on the same side, or just
-    the top of the upper arm below a shoulder (the sleeve - or bare skin);
-    one hip + knee for the thigh. When the knees aren't visible at all (cut
-    off by the picture's edge, a car door ...) the thighs are the part just
-    below the hips that is still inside the person's box [x1, y1, x2, y2].
+    Ideal case is both shoulders and both hips (front or back view). For
+    side views and close-ups we make do with one side, or failing that just
+    the upper arm (the sleeve tells us about the top). If the knees are out
+    of shot (cut off, behind a car door...) we take the bit just below the
+    hips that's still inside the person's box.
     """
     ok = lambda *ids: all(kp[i][2] >= min_conf for i in ids)
     pt = lambda i: np.float32(kp[i][:2])
@@ -222,16 +225,16 @@ def body_regions(kp, box=None, min_conf=0.5):
 
     if ok(L_SHOULDER, R_SHOULDER, L_HIP, R_HIP):
         ls, rs, lh, rh = (pt(i) for i in (L_SHOULDER, R_SHOULDER, L_HIP, R_HIP))
-        # a little below the shoulders (neck / collar) to just above the hips
+        # from just below the collar to just above the belt
         torso = _shrink([ls + (lh - ls) * 0.12, rs + (rh - rs) * 0.12,
                          rs + (rh - rs) * 0.92, ls + (lh - ls) * 0.92], 0.75)
     else:
         for sho, hip, elbow in ((L_SHOULDER, L_HIP, 7), (R_SHOULDER, R_HIP, 8)):
-            if ok(sho, hip):                       # side view: one side's flank
+            if ok(sho, hip):                       # side view
                 length = float(np.linalg.norm(pt(hip) - pt(sho)))
                 torso = _band(pt(sho), pt(hip), 0.15, 0.85, length * 0.3)
                 break
-            if ok(sho, elbow):                     # close-up: the sleeve
+            if ok(sho, elbow):                     # close-up, use the sleeve
                 length = float(np.linalg.norm(pt(elbow) - pt(sho)))
                 if length >= 15:
                     torso = _band(pt(sho), pt(elbow), 0.1, 0.4, length * 0.3)
@@ -239,12 +242,12 @@ def body_regions(kp, box=None, min_conf=0.5):
 
     if ok(L_HIP, R_HIP, L_KNEE, R_KNEE):
         lh, rh, lk, rk = (pt(i) for i in (L_HIP, R_HIP, L_KNEE, R_KNEE))
-        # upper 2/3 of the thighs (shorts still count as a bottom)
+        # top 2/3 of the thighs, so shorts still count as a bottom
         thighs = _shrink([lh + (lk - lh) * 0.08, rh + (rk - rh) * 0.08,
                           rh + (rk - rh) * 0.66, lh + (lk - lh) * 0.66], 0.8)
     else:
         for hip, knee in ((L_HIP, L_KNEE), (R_HIP, R_KNEE)):
-            if ok(hip, knee):                      # side view: one thigh
+            if ok(hip, knee):                      # side view
                 length = float(np.linalg.norm(pt(knee) - pt(hip)))
                 thighs = _band(pt(hip), pt(knee), 0.1, 0.66, length * 0.3)
                 break
@@ -253,7 +256,7 @@ def body_regions(kp, box=None, min_conf=0.5):
             down = np.float32([0.0, np.linalg.norm((lh + rh) / 2 - (ls + rs) / 2) * 0.45])
             hip_y = float(max(lh[1], rh[1]))
             bottom = min(float(box[3]), hip_y + float(down[1]))
-            if bottom - hip_y > down[1] * 0.6:     # enough of it is in view
+            if bottom - hip_y > down[1] * 0.6:     # only if enough of it is in shot
                 thighs = _shrink([lh + down * 0.15, rh + down * 0.15,
                                   np.float32([rh[0], bottom]), np.float32([lh[0], bottom])], 0.8)
     return torso, thighs
@@ -261,9 +264,9 @@ def body_regions(kp, box=None, min_conf=0.5):
 
 def describe_region(frame, polygon, skin_lab=None, min_pixels=150,
                     bare_share=0.6):
-    """("none", share) for bare skin, (colour, share) for clothing, or
-    (None, 0) when there's too little to judge. share = how much of the
-    region the answer covers (0-1)."""
+    """Name what's in the polygon: (colour, share), ("none", share) for bare
+    skin, or (None, 0) if there isn't enough to go on. share is how much of
+    the region that answer covers."""
     if polygon is None:
         return None, 0.0
     mask = _quad_mask(frame.shape, polygon)
@@ -291,16 +294,15 @@ def describe_region(frame, polygon, skin_lab=None, min_pixels=150,
 
 
 class PoseFinder:
-    """Body joints of one person (yolo26s-pose, downloaded by Ultralytics
-    the first time)."""
+    """Wrapper for the yolo26s-pose model."""
 
     def __init__(self, weights="yolo26s-pose.pt", device=None):
         from ultralytics import YOLO
-        self.model = YOLO(weights)          # downloads itself the first time
+        self.model = YOLO(weights)
         self.device = device
 
     def keypoints(self, frame, box, pad=0.1):
-        """17 x [x, y, conf] in frame pixels for the person in box, or None."""
+        """Keypoints (17 x [x, y, conf]) for the person in `box`, or None."""
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = box
         bw, bh = x2 - x1, y2 - y1
@@ -313,7 +315,7 @@ class PoseFinder:
                                device=self.device)[0]
         if r.keypoints is None or len(r.boxes) == 0:
             return None
-        # the person whose box best matches ours
+        # the pose model may find several people in the crop, take the one matching our box
         ours = np.array([x1 - cx1, y1 - cy1, x2 - cx1, y2 - cy1], float)
         boxes = r.boxes.xyxy.cpu().numpy()
         def iou(b):

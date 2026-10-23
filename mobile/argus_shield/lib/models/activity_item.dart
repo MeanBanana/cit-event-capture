@@ -1,11 +1,10 @@
-// activity_item.dart — one line in the admin Overview's RECENT ACTIVITY feed.
-// Rows come from the recent_activity database function.
+// One line in the admin Overview's Recent activity feed (recent_activity).
 class ActivityItem {
-  /// Short label in the box:
+  /// The short tag in the box:
   ///   NEW  citizen submission      CASE  case created
   ///   ASGN investigator assigned   CLSD  case closed
   ///   INV  investigator added      VER   suspect confirmed
-  ///   COR  AI detection corrected  DEL   investigator / admin removed
+  ///   COR  AI detection corrected  DEL   investigator/admin removed
   final String tag;
   final String text;
   final DateTime at;

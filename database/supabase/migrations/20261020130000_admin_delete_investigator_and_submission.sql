@@ -1,40 +1,29 @@
--- ============================================================================
--- Admins can delete an investigator's account and a rejected submission
--- ============================================================================
+-- Admins can delete an investigator's account, or a rejected submission.
 --
--- Both are called ONLY by Edge Functions (service key), after they have
--- checked the caller is an admin:
+-- Both are only ever called from Edge Functions using the service key, after
+-- the function has checked the caller is an admin:
+--   remove_investigator_account(userid)     from manage-investigator (delete)
+--   delete_rejected_submission(incidentid)  from delete-submission
+-- Deleting logins and footage needs the service key, and that can't live in
+-- the app.
 --
---   remove_investigator_account(userid)     <- manage-investigator  (delete)
---   delete_rejected_submission(incidentid)  <- delete-submission
+-- Removing an investigator ends all their active assignments (with a line in
+-- each case's history). If they never actually did anything (no chat,
+-- corrections, assignments...) we just delete the rows and the function
+-- deletes the login ('deleted'). If they did, that work has to stay on the
+-- case record, so we anonymise instead: name becomes "Former investigator",
+-- username deleted_<id>, placeholder email, phone and investigator row
+-- removed. The function then bans the login permanently and moves it to the
+-- placeholder email so the real email and username are free again
+-- ('anonymised').
 --
--- Deleting a login and the footage files needs the service key, which must
--- never be in the app; that's why these run behind Edge Functions.
---
--- 1. An investigator's account
---    * every active case assignment is ended (the case history says so)
---    * nothing they did yet (no chat, corrections, assignments ...):
---        the "User" + investigator rows are deleted, the function then
---        deletes the login                                  -> 'deleted'
---    * otherwise their work must stay in the case records (evidence trail),
---      so the account is ANONYMISED instead: name "Former investigator",
---      username deleted_<id>, a placeholder email, no phone, the
---      investigator row (badge, station ...) removed; the function blocks
---      the login for good and moves it to the placeholder email, so the
---      real email and username can be used again           -> 'anonymised'
---
--- 2. A rejected submission
---    Only 'rejected' ones (not pending, accepted or duplicates), and not
---    while another submission is marked as a duplicate of it. Removes the
---    submission, its files' rows, everything the AI found in them
---    (detections, vehicle / weapon details, possible suspects, corrections,
---    AI jobs) and its own history lines. The Edge Function then deletes the
---    files under <incidentid>/ in the 'submissions' bucket.
--- ============================================================================
+-- Deleting a submission only works on rejected ones (not pending, accepted or
+-- duplicates) and not while something else is marked as a duplicate of it.
+-- It takes out the submission, its media rows, everything the AI found
+-- (detections, details, possible suspects, corrections, jobs) and its own
+-- history lines. The Edge Function then deletes the files from the bucket.
 
--- ---------------------------------------------------------------------------
--- 1. remove_investigator_account
--- ---------------------------------------------------------------------------
+-- --- 1. remove_investigator_account
 CREATE OR REPLACE FUNCTION public.remove_investigator_account(p_userid integer)
   RETURNS jsonb
   LANGUAGE plpgsql
@@ -54,7 +43,7 @@ BEGIN
   END IF;
   v_name := trim(v_user.firstname || ' ' || v_user.surname);
 
-  -- end their active assignments, with a line in each case's history
+  -- end their active assignments, with a history line on each case
   FOR v_case IN
     UPDATE public.caseassignment
        SET assignmentstatus = 'closed', dateunassigned = now(), islead = false
@@ -79,7 +68,7 @@ BEGIN
     OR EXISTS (SELECT 1 FROM public.cases              WHERE createdby = p_userid);
 
   IF NOT v_history THEN
-    DELETE FROM public."User" WHERE userid = p_userid;     -- investigator row cascades
+    DELETE FROM public."User" WHERE userid = p_userid;     -- investigator row goes with it
     RETURN jsonb_build_object('mode', 'deleted', 'authid', v_user.authid, 'name', v_name);
   END IF;
 
@@ -96,9 +85,7 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 2. delete_rejected_submission
--- ---------------------------------------------------------------------------
+-- --- 2. delete_rejected_submission
 CREATE OR REPLACE FUNCTION public.delete_rejected_submission(p_incidentid integer)
   RETURNS jsonb
   LANGUAGE plpgsql
@@ -140,11 +127,11 @@ BEGIN
   DELETE FROM public.media WHERE incidentid = p_incidentid;
   GET DIAGNOSTICS v_files = ROW_COUNT;
 
-  -- its own history lines (submitted / rejected ...); lines that are part
-  -- of a case's history stay there (incidentid becomes NULL)
+  -- its own history lines (submitted, rejected...). Lines that belong to a
+  -- case's history stay put, their incidentid just goes NULL.
   DELETE FROM public.caseevent WHERE incidentid = p_incidentid AND caseid IS NULL;
 
-  DELETE FROM public.crimescene WHERE incidentid = p_incidentid;   -- AI jobs cascade
+  DELETE FROM public.crimescene WHERE incidentid = p_incidentid;   -- AI jobs go with it
 
   RETURN jsonb_build_object('incidentid', p_incidentid, 'files', v_files);
 END;

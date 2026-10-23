@@ -28,7 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              // RadioGroup holds the selected language for the three options
+              // RadioGroup tracks which of the three languages is picked
               RadioGroup<String>(
                 groupValue: appSettings.language,
                 onChanged: (value) {

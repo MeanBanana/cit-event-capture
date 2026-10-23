@@ -1,32 +1,28 @@
-// submissions.dart — System Administrator view of every reported incident.
+// The admin's Submissions tab, every incident citizens have reported.
 //
-// A "submission" is an incident a citizen reported (public.crimescene).
-// Cases (public.cases) group submissions into one investigation; they have
-// their own tab and page.
+// A submission is one reported incident (crimescene). Cases group several
+// submissions into one investigation and have their own tab.
 //
-// The page has a search bar and a row of views:
-//   Newest / Oldest  every submission by date reported
-//   Location         grouped by location ("N1, Midrand" + "n1 midrand"
-//                    together); tap a group to see its submissions
-//   Status           filtered by the admin's review decision
-//                    (Pending / In a case / Rejected / Duplicates)
-//   Case             each case with a preview of its submissions;
-//                    "View case" opens the case page
-//   Linked           submissions the AI linked through the same vehicle
-//                    or suspect; add them to a case together
+// There's a search bar and a row of views:
+//   Newest / Oldest  everything by date reported
+//   Location         grouped by location ("N1, Midrand" and "n1 midrand"
+//                    end up together), tap a group to see what's in it
+//   Status           by review decision (pending, in a case, rejected,
+//                    duplicates)
+//   Case             each case with a preview, "View case" opens it
+//   Linked           submissions the AI tied together through the same
+//                    vehicle or suspect, which you can add to a case in one go
 //
-// Every list loads 30 rows at a time and fetches more as you scroll
-// (PagedList), so the page stays fast however many submissions there are.
+// All the lists load 30 at a time and fetch more as you scroll (PagedList),
+// so it stays quick no matter how many submissions there are.
 //
-// Above the list, a bar shows how many pending submissions the database
-// thinks belong to existing cases; it opens SuggestedMatchesPage, where the
-// admin reviews them and accepts the ticked ones in one tap.
+// Above the list there's a bar saying how many pending submissions look like
+// they belong to an existing case. It opens SuggestedMatchesPage where the
+// admin can tick through them and accept in one tap.
 //
-// Each submission card shows the citizen's description AND the AI's
-// summary of the footage, plus chips for what the AI saw (vehicles,
-// people, weapons, number plates). Pending cards have Reject · View ·
-// Accept (see review_actions.dart); tapping a card opens
-// SubmissionDetailPage.
+// Cards show both the citizen's description and the AI's summary, plus chips
+// for what the AI saw. Pending cards get Reject / View / Accept (see
+// review_actions.dart), and tapping a card opens SubmissionDetailPage.
 
 import 'dart:async';
 
@@ -46,24 +42,24 @@ import 'package:argus_shield/admin_screens/cases.dart';
 import 'package:argus_shield/admin_screens/suggested_matches.dart';
 import 'package:argus_shield/app_settings.dart';
 
-// Other screens (e.g. overview.dart) import CrimeSceneSummary from here.
+// other screens (overview.dart etc) get CrimeSceneSummary through this file
 export 'package:argus_shield/models/crime_scene_summary.dart';
 
-/// The ways the Submissions tab can show its list.
+/// The different ways the tab can show its list.
 enum SubmissionView { newest, oldest, location, status, cases, linked }
 
-/// Body of the Submissions tab. Like the citizen pages, it has no Scaffold
-/// or header of its own — AdminDashboard draws those.
+/// Body of the Submissions tab. AdminDashboard draws the Scaffold and
+/// header, like it does for the citizen pages.
 class AdminSubmissions extends StatefulWidget {
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
   const AdminSubmissions({super.key, this.service});
 
-  /// How long to wait after the last key press before searching.
+  /// Debounce before searching after the last key press.
   static const searchDelay = Duration(milliseconds: 400);
 
-  /// The view chips: label → view.
+  /// View chips, label -> view.
   static const views = <(String, SubmissionView)>[
     ('Newest', SubmissionView.newest),
     ('Oldest', SubmissionView.oldest),
@@ -73,7 +69,7 @@ class AdminSubmissions extends StatefulWidget {
     ('Linked', SubmissionView.linked),
   ];
 
-  /// The Status view's chips: label → review status passed to the database.
+  /// Status chips, label -> review status we send to the database.
   static const statuses = <(String, String)>[
     ('Pending', 'pending'),
     ('In a case', 'accepted'),
@@ -91,11 +87,11 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
   Timer? _searchTimer;
 
   SubmissionView _view = SubmissionView.newest;
-  String _review = 'pending'; // the Status view's chip
-  String _query = ''; // what's typed in the search bar
-  String _activeQuery = ''; // what the list was loaded with
+  String _review = 'pending'; // selected Status chip
+  String _query = ''; // what's in the search box right now
+  String _activeQuery = ''; // what the list was actually loaded with
 
-  /// Bumped to reload the list from the top (after an action).
+  /// Bump this to reload the list from the top, e.g. after an action.
   int _generation = 0;
 
   @override
@@ -137,7 +133,7 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
     _reload();
   }
 
-  // ---- actions --------------------------------------------------------------
+  // --- actions
 
   Future<void> _openDetails(CrimeSceneSummary s) async {
     await Navigator.push(
@@ -146,7 +142,7 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
         builder: (_) => SubmissionDetailPage(submission: s, service: _service),
       ),
     );
-    if (mounted) _reload(); // the review may have changed
+    if (mounted) _reload(); // they might have reviewed it in there
   }
 
   Future<void> _runReview(ReviewAction action, CrimeSceneSummary s) async {
@@ -179,7 +175,7 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
     if (mounted) _reload();
   }
 
-  // ---- page -------------------------------------------------------------------
+  // --- page
 
   String get _searchHint => switch (_view) {
         SubmissionView.location => appSettings.t('searchLocations'),
@@ -226,7 +222,7 @@ class _AdminSubmissionsState extends State<AdminSubmissions> {
               style: bodyOnPage(context),
               textInputAction: TextInputAction.search,
               onChanged: _onSearchChanged,
-              onSubmitted: (_) => _reload(), // search now, don't wait
+              onSubmitted: (_) => _reload(), // enter searches straight away
               decoration: InputDecoration(
                 hintText: _searchHint,
                 hintStyle: mutedOnPage(context),
@@ -397,17 +393,15 @@ class _NotInCaseTile extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// Cards
-// =============================================================================
+// --- cards
 
-/// One incident's details: reference, review decision, where and when, the
-/// citizen's and the AI's descriptions, and chips for what the AI saw.
+/// One incident: reference, review decision, where and when, both
+/// descriptions, and chips for what the AI saw.
 ///
-/// Tapping the card calls [onTap] (opens the details page). For a pending
-/// submission, passing [onAccept] / [onReject] adds the wireframe's
-/// Reject · View · Accept buttons; for a rejected one, [onDelete] adds
-/// View · Delete. [menu] (e.g. a ⋮ button) goes top right.
+/// Tapping calls [onTap] (opens the details). For pending ones, passing
+/// [onAccept]/[onReject] adds the Reject / View / Accept buttons, and for
+/// rejected ones [onDelete] adds View / Delete. [menu] goes in the top
+/// right corner, e.g. a ⋮ button.
 class CrimeSceneCard extends StatelessWidget {
   final CrimeSceneSummary submission;
   final VoidCallback? onTap;
@@ -416,7 +410,7 @@ class CrimeSceneCard extends StatelessWidget {
   final VoidCallback? onDelete;
   final Widget? menu;
 
-  /// Shorter descriptions (3 lines each); the details page shows them all.
+  /// Cap the descriptions at 3 lines, the details page shows the rest.
   final bool compact;
 
   const CrimeSceneCard({
@@ -443,7 +437,7 @@ class CrimeSceneCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Reference + review decision (+ menu)
+          // reference, review decision and the menu
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -559,9 +553,9 @@ class CrimeSceneCard extends StatelessWidget {
   }
 }
 
-/// When it happened: "Filmed ..." from the footage's metadata when there
-/// is a capture time, otherwise "Happened ..." as the citizen typed it.
-/// Warns when the two are more than 3 hours apart.
+/// When it happened. "Filmed ..." if the footage has a capture time,
+/// otherwise "Happened ..." from what the citizen typed. Warns if the two
+/// are more than 3 hours apart.
 class WhenLines extends StatelessWidget {
   final CrimeSceneSummary submission;
 
@@ -591,7 +585,7 @@ class WhenLines extends StatelessWidget {
   }
 }
 
-/// Chips for what the AI saw in a submission's footage.
+/// Chips for what the AI saw.
 class AiFactChips extends StatelessWidget {
   final CrimeSceneSummary submission;
 
@@ -609,9 +603,9 @@ class AiFactChips extends StatelessWidget {
               icon: Icons.directions_car_outlined),
         for (final plate in s.plates)
           FactChip(plate, icon: Icons.pin_outlined, color: AppColors.accent),
-        // People: as suspects once there is something to review or
-        // confirmed (only investigators on the case decide, POPIA);
-        // otherwise just how many people were seen.
+        // Only call people suspects once there's something to review or
+        // they've been confirmed (POPIA, only investigators on the case get
+        // to decide). Otherwise just say how many people were seen.
         if (s.confirmedSuspects > 0)
           FactChip(plural(s.confirmedSuspects, 'confirmed suspect'),
               icon: Icons.person_outline, color: AppColors.danger),
@@ -631,7 +625,7 @@ class AiFactChips extends StatelessWidget {
   }
 }
 
-/// One location on the Location view.
+/// One location in the Location view.
 class LocationGroupCard extends StatelessWidget {
   final LocationGroup group;
   final VoidCallback onTap;
@@ -674,8 +668,8 @@ class LocationGroupCard extends StatelessWidget {
   }
 }
 
-/// Submissions the AI linked together, with their members listed and
-/// actions to put the pending ones in a case.
+/// A group of submissions the AI linked, listing the members, with actions
+/// to put the pending ones into a case.
 class LinkedGroupCard extends StatefulWidget {
   final LinkedGroup group;
   final SupabaseService service;
@@ -697,8 +691,8 @@ class LinkedGroupCard extends StatefulWidget {
 }
 
 class _LinkedGroupCardState extends State<LinkedGroupCard> {
-  // The members load when the card is first built (only cards on screen
-  // are built), with one call for the whole group.
+  // Members load the first time the card gets built (so only for cards on
+  // screen), in one call for the whole group.
   late Future<List<CrimeSceneSummary>> _members = _load();
 
   Future<List<CrimeSceneSummary>> _load() => widget.service.listSubmissionsPage(
@@ -818,7 +812,7 @@ class _LinkedGroupCardState extends State<LinkedGroupCard> {
 }
 
 /// A one-line submission inside a group or case card: reference, place,
-/// date and review tag. Tap to open it.
+/// date and review tag. Tap to open.
 class SubmissionRow extends StatelessWidget {
   final CrimeSceneSummary submission;
   final VoidCallback? onTap;
@@ -862,12 +856,10 @@ class SubmissionRow extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// SubmissionListPage — one location's (or any filter's) submissions
-// =============================================================================
+// --- SubmissionListPage: the submissions for one location (or any filter)
 
-/// Full page with a paged list of submissions, e.g. everything reported at
-/// one location.
+/// Full page with a paged list of submissions, e.g. everything at one
+/// location.
 class SubmissionListPage extends StatefulWidget {
   final String title;
   final String? subtitle;
@@ -948,8 +940,8 @@ class _SubmissionListPageState extends State<SubmissionListPage> {
   }
 }
 
-/// Opens the panel to put several submissions in a case (new or existing),
-/// e.g. a linked group. True when something changed.
+/// Opens the panel for putting several submissions in a case (new or
+/// existing), e.g. a linked group. Returns true if anything changed.
 Future<bool> addSubmissionsToCase(BuildContext context, SupabaseService service,
     List<CrimeSceneSummary> submissions) {
   return acceptSubmissions(context, service, submissions);

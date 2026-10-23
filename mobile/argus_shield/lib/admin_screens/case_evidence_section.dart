@@ -1,5 +1,5 @@
-// case_evidence_section.dart — the AI SUMMARY of a case or a submission,
-// laid out like the pipeline's console output:
+// The AI SUMMARY block for a case or a submission, laid out like the
+// pipeline's console output:
 //
 //   AI SUMMARY
 //   ✦ 2 submissions, filmed 11 Oct 14:00 to 14:40. AI found ...
@@ -9,12 +9,10 @@
 //   [pic] Vehicle 1: white Toyota car · plate ND123456        [View crops]
 //   [pic] Weapon 1: long gun · held by Person 1               [View crops]
 //
-// On the CASE page every person / vehicle / weapon combines all the case's
-// submissions (ai/case_matcher.py: same face / look / plate = one entry) and
-// the summary is the whole case's. On the SUBMISSION page it is that one
-// submission (SubmissionEvidenceSource), one entry per clip.
-// "View crops" opens all of that entry's pictures (3 per row, tap to enlarge,
-// Download).
+// On a case each entry is merged across all its submissions (case_matcher:
+// same look or plate = one entry) and the summary covers the whole case. On
+// a submission it's just that submission, one entry per clip
+// (SubmissionEvidenceSource). View crops opens all of an entry's pictures.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -24,30 +22,30 @@ import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/entity_crops_page.dart';
 
 class CaseEvidenceSection extends StatefulWidget {
-  /// The case id (case page) or incident id (submission page).
+  /// Case id on the case page, incident id on the submission page.
   final int caseId;
 
-  /// Optional so tests can pass in a fake; the app uses the standard one.
+  /// Tests pass a fake in here, the app uses the standard one.
   final CaseEvidenceSource? source;
 
   /// Section heading.
   final String title;
 
-  /// The summary text to show. Null = the case's AI summary from [source]
-  /// (the submission page passes the submission's own summary).
+  /// Summary text to show. Null means use the case's AI summary from
+  /// [source] (the submission page passes its own).
   final String? summary;
 
-  /// A small grey line under the summary, e.g. "Still analysing 1 file".
+  /// Small grey line under the summary, e.g. "Still analysing 1 file".
   final String? summaryNote;
 
-  /// Shown under the summary, e.g. the submission's fact chips.
+  /// Goes under the summary, e.g. the submission's fact chips.
   final Widget? belowSummary;
 
-  /// True on the submission page: entries say which clip they are from
-  /// instead of how many submissions.
+  /// True on the submission page, where entries say which clip they're from
+  /// rather than how many submissions.
   final bool perSubmission;
 
-  /// Shown when the AI found nothing (yet).
+  /// Shown when the AI hasn't found anything (yet).
   final String emptyText;
 
   const CaseEvidenceSection({
@@ -104,7 +102,7 @@ class _CaseEvidenceSectionState extends State<CaseEvidenceSection> {
         ),
       ),
     );
-    if (mounted) await _load(); // answers may have moved pictures
+    if (mounted) await _load(); // answering may have moved pictures around
   }
 
   @override

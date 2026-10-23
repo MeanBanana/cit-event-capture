@@ -4,10 +4,9 @@ import {clamp, easeOutCubic, pinProgress, range} from '../lib/math';
 import {onFrame} from '../lib/scroll';
 
 /**
- * Phone → case file, drawn as you scroll. The section pins while the four
- * legs of a report's journey ink themselves one after another, a pulse
- * riding the leg being drawn; the frames-analysed counter ticks up while the
- * AI leg is drawn.
+ * Phone to case file, drawn as you scroll. The section pins while the four
+ * legs of the journey draw themselves one at a time, with a pulse riding the
+ * current leg. The frames-analysed counter ticks up during the AI leg.
  */
 
 const SECTION_VH = 380;
@@ -19,13 +18,13 @@ const AI = {cx: 860, cy: 350};
 const CASE = {cx: 1075, cy: 175};
 
 const LEGS = [
-  // Capture: the witness films — a lap round the phone.
+  // capture: the witness films, a lap around the phone
   `M${PHONE.cx} ${PHONE.cy - 118} a118 118 0 1 1 -0.1 0 a118 118 0 0 1 98 52`,
-  // Upload to Argus.
+  // upload to Argus
   `M${PHONE.cx + 98} ${PHONE.cy - 66} C 330 190, 400 160, ${CLOUD.cx - 82} ${CLOUD.cy + 6}`,
-  // Analyse: down to the AI, then a full scan round it.
+  // analyse: down to the AI, then a full scan around it
   `M${CLOUD.cx + 82} ${CLOUD.cy + 6} C 700 170, 800 160, ${AI.cx} ${AI.cy - 108} a108 108 0 1 1 -0.1 0.2 a108 108 0 0 1 96 50`,
-  // Case: the findings are filed for the investigators.
+  // case: findings get filed for the investigators
   `M${AI.cx + 96} ${AI.cy - 58} C 1010 270, 1060 270, ${CASE.cx} ${CASE.cy + 62}`,
 ];
 
@@ -98,7 +97,7 @@ export function Pipeline() {
               </radialGradient>
             </defs>
 
-            {/* Faint grid, like a camera's framing guides. */}
+            {/* Faint grid like a camera's framing guides. */}
             <g stroke="#fff" strokeOpacity="0.04">
               {Array.from({length: 13}, (_, i) => (
                 <line key={`v${i}`} x1={i * 100} y1="0" x2={i * 100} y2="600" />
@@ -124,7 +123,7 @@ export function Pipeline() {
             />
             <path d={`M${CLOUD.cx} ${CLOUD.cy + 14} v-24 m-9 9 l9 -9 l9 9`} fill="none" stroke="#ffab40" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
-            {/* The AI: an eye — Argus, the hundred-eyed watchman. */}
+            {/* The AI is an eye. Argus was the hundred-eyed watchman. */}
             <circle cx={AI.cx} cy={AI.cy} r="80" fill="url(#eye-glow)" />
             <path d={`M${AI.cx - 52} ${AI.cy} Q ${AI.cx} ${AI.cy - 44} ${AI.cx + 52} ${AI.cy} Q ${AI.cx} ${AI.cy + 44} ${AI.cx - 52} ${AI.cy} z`} fill="#0e1626" stroke="#c9ced8" strokeWidth="2" />
             <circle cx={AI.cx} cy={AI.cy} r="15" fill="#4cc3ff" />
@@ -141,7 +140,7 @@ export function Pipeline() {
             />
             <path d={`M${CASE.cx - 24} ${CASE.cy + 6} h48 M${CASE.cx - 24} ${CASE.cy + 18} h32`} stroke="#ffab40" strokeWidth="2.5" strokeLinecap="round" />
 
-            {/* Ghost of the whole route, then the inked legs over it. */}
+            {/* Faint outline of the whole route, with the drawn legs on top. */}
             {LEGS.map((d, i) => (
               <path key={`g${i}`} d={d} fill="none" stroke="#fff" strokeOpacity="0.08" strokeWidth="1.5" strokeDasharray="3 6" />
             ))}
@@ -176,7 +175,7 @@ export function Pipeline() {
           </svg>
         </div>
 
-        {/* Current leg. */}
+        {/* Leg currently being drawn. */}
         <div className="grid gap-4 border-t border-white/10 pt-5 md:grid-cols-[auto_1fr_auto] md:items-end md:gap-10">
           <p className="font-mono text-label text-signal uppercase">
             {current.step} · Step {leg + 1}/{pipeline.legs.length}

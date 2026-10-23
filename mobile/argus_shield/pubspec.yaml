@@ -32,15 +32,15 @@ dependencies:
     sdk: flutter
   flutter_markdown_plus: ^1.0.12
   supabase_flutter: ^2.17.2
-  # Remembers the last user's email/phone on the device (forgot password form).
-  # Already installed as part of supabase_flutter; listed so we can import it.
+  # Remembers the last user's email/phone for the forgot password form.
+  # supabase_flutter already pulls it in, it's listed so we can import it.
   shared_preferences: ^2.5.5
   image_picker: ^1.1.2
-  # saves case pictures to the phone's gallery (Download button)
+  # Download button on case pictures, saves to the gallery
   gal: ^2.3.0
-  # the phone's GPS for a citizen's report (only if they agree)
+  # phone GPS for a citizen's report, only if they agree
   geolocator: ^14.0.0
-  # plays submitted videos on the admin's submission page
+  # video playback on the admin's submission page
   video_player: ^2.10.0
 
 
@@ -85,7 +85,7 @@ flutter:
 # To add assets to your application, add an assets section, like this:
   assets:
     - assets/splash.png
-    # sample AI case evidence (until Supabase stores it): case_evidence_source.dart
+    # sample case data for demos without a worker, see case_evidence_source.dart
     - assets/sample_case/
 
 

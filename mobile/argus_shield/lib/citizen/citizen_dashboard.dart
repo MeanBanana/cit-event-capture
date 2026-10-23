@@ -1,4 +1,4 @@
-// citizen_dashboard.dart — holds navigation and creates the three subpage widgets.
+// The citizen's main screen: header plus the Upload, Submissions and Profile tabs.
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
@@ -11,10 +11,8 @@ import 'upload_page.dart';
 import 'submissions_page.dart';
 import 'profile_page.dart';
 
-/// Displays the Argus header and the Upload, Submissions, and Profile tabs.
-/// Colours and fonts come from the app theme (theme/app_theme.dart).
+/// Argus header with the Upload, Submissions and Profile tabs.
 class CitizenDashboard extends StatelessWidget {
-  // Constructor injection: the app provides the shared store to this screen.
   final CitizenStore store;
 
   const CitizenDashboard({
@@ -24,14 +22,14 @@ class CitizenDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Three tab labels correspond to three children in TabBarView.
+    // the three tabs here have to line up with the three TabBarView children
     return ListenableBuilder(
       listenable: appSettings,
       builder: (context, _) {
         return DefaultTabController(
       length: 3,
       child: Scaffold(
-        // Same header as the login and register pages, plus the role and tabs.
+        // same header as login/register, plus the role and the tabs
         appBar: ArgusAppBar(
           roleLabel: appSettings.t('citizenRole'),
           actions: [
@@ -49,7 +47,7 @@ class CitizenDashboard extends StatelessWidget {
             ),
             const SignOutButton(),
           ],
-          // Tabs sit on the navy header, so the words stay white in both modes.
+          // tabs sit on the navy header, so keep the labels white in both modes
           bottom: TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
@@ -61,7 +59,7 @@ class CitizenDashboard extends StatelessWidget {
             ],
           ),
         ),
-        // Each page lives in its own Dart file and receives the same store.
+        // each page is its own file and gets the same store
         body: TabBarView(
           children: [
             UploadPage(store: store),

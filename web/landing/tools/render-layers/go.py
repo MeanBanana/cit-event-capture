@@ -19,7 +19,7 @@ with sync_playwright() as p:
     for n in (1,2,4):
         img(pg.evaluate(f"still({n})")).convert('RGB').save(f"{OUT}/media/cards/s{n}.webp",quality=84)
     b.close()
-# card 3: the witness view, cut from the mobile composite
+# card 3 is the witness view, cropped out of the mobile composite
 m=comp['m'].convert('RGB'); W,H=m.size; ch=int(W*4/3); top=H-ch-int(H*0.0)
 m.crop((0,H-ch,W,H)).resize((840,1120),Image.LANCZOS).save(f"{OUT}/media/cards/s3.webp",quality=84)
 comp['d'].convert('RGB').resize((1200,679),Image.LANCZOS).crop((0,25,1200,655)).save(f"{OUT}/media/og.jpg",quality=85)

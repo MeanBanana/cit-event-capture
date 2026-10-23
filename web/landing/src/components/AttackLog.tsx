@@ -4,9 +4,9 @@ import {clamp, pinProgress, range} from '../lib/math';
 import {onFrame} from '../lib/scroll';
 
 /**
- * The attack, as a reel of stills. The section pins and the reel slides
- * sideways with the scroll; the frame nearest the focus line is sharp, the
- * rest dim back, and each picture drifts against its frame.
+ * The attack as a reel of stills. The section pins and the reel slides
+ * sideways as you scroll. Whichever frame is nearest the focus line is
+ * sharp, the others dim, and each picture drifts a little inside its frame.
  */
 
 const SECTION_VH = 340;
@@ -32,8 +32,8 @@ export function AttackLog() {
 
       const vw = window.innerWidth;
       const k = range(p, 0.04, 0.96);
-      // offsetLeft is the untransformed layout position, so this is stable
-      // while the track itself is being translated.
+      // offsetLeft ignores transforms, so it doesn't move while we're
+      // translating the track
       const travel = Math.max(0, track.offsetLeft + track.scrollWidth - vw * 0.94);
       track.style.transform = `translate3d(${-k * travel}px, 0, 0)`;
 
@@ -41,7 +41,7 @@ export function AttackLog() {
       let best = Infinity;
       cardRefs.current.forEach((card, i) => {
         const r = card.getBoundingClientRect();
-        const off = (r.left + r.width / 2 - vw * 0.62) / vw; // focus line right of centre
+        const off = (r.left + r.width / 2 - vw * 0.62) / vw; // focus line sits a bit right of centre
         const a = clamp(Math.abs(off) * 1.6);
         card.style.opacity = String(1 - a * 0.55);
         card.style.transform = `scale(${1 - a * 0.07})`;

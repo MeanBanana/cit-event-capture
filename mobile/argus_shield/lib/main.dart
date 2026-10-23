@@ -9,15 +9,14 @@ import 'theme/argus_widgets.dart';
 import 'app_settings.dart';
 import 'connection_status.dart';
 
-// The app starts on the login page. After logging in, login.dart sends each
-// user to their own dashboard: citizens to CitizenHome, admins to
-// AdminDashboard. To test the admin screens, log in with an admin account
-// (see database/README.md, "Creating an admin").
+// Everyone starts on the login page, and login.dart sends them on to their
+// own dashboard (CitizenHome or AdminDashboard). To poke at the admin screens
+// you need an admin account, see "Creating an admin" in database/README.md.
 
-/// Lets code outside the widget tree (the auth listener below) open screens.
+/// So code outside the widget tree (the auth listener below) can open screens.
 final navigatorKey = GlobalKey<NavigatorState>();
 
-/// Lets the auth listener show messages without a BuildContext.
+/// So the auth listener can show messages without a BuildContext.
 final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 Future<void> main() async {
@@ -26,9 +25,9 @@ Future<void> main() async {
     url: 'https://tnydrlxptqegzhbvwpcq.supabase.co',
     publishableKey: 'sb_publishable_qyDg3_F69Cy2rpoWDvR-7A_Z3AXR8h3',
   );
-  // Shows a friendly message whenever there is no internet or the server is
-  // not answering (connection_status.dart). Not awaited: the app opens
-  // straight away and the message appears if the first check fails.
+  // Warns when there's no internet or the server isn't answering
+  // (connection_status.dart). Not awaited, the app opens straight away and
+  // the warning just appears if the first check fails.
   connection.start();
   runApp(const RootApp());
 }
@@ -46,12 +45,12 @@ class _RootAppState extends State<RootApp> {
   @override
   void initState() {
     super.initState();
-    // Rebuild the app when language or theme changes.
+    // rebuild when the language or theme changes
     appSettings.addListener(() => setState(() {}));
-    // Password reset: when the user taps the link in the reset email, the
-    // phone opens this app (argusshield://reset-password). supabase_flutter
-    // checks the link with Supabase and fires passwordRecovery; we then show
-    // the "New Password" screen in place of whatever was open.
+    // Password reset: tapping the link in the email opens the app via
+    // argusshield://reset-password. supabase_flutter checks it with Supabase
+    // and fires passwordRecovery, and we swap in the "New Password" screen
+    // over whatever was open.
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen(
       (data) {
         if (data.event == AuthChangeEvent.passwordRecovery) {
@@ -61,7 +60,7 @@ class _RootAppState extends State<RootApp> {
           );
         }
       },
-      // An old or already-used link ends up here instead.
+      // old or already-used links end up here
       onError: (Object error) {
         scaffoldMessengerKey.currentState?.showSnackBar(
           const SnackBar(
@@ -89,12 +88,12 @@ class _RootAppState extends State<RootApp> {
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,
-      // All colours, fonts and widget styles come from theme/app_theme.dart
+      // colours, fonts and widget styles all live in theme/app_theme.dart
       theme: buildArgusLightTheme(),
       darkTheme: buildArgusTheme(),
       themeMode: appSettings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      // keeps every page above the phone's navigation buttons, with the
-      // "No internet" / "Server not responding" strip at the top
+      // keeps pages above the phone's nav buttons, and puts the "No internet"
+      // / "Server not responding" strip at the top
       builder: (context, child) =>
           ConnectionBanner(child: keepAboveSystemBars(context, child)),
       home: const LoginPage(),

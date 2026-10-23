@@ -1,13 +1,12 @@
-// case_summary.dart — one case as the admin screens need it.
-// Rows come from the list_cases database function.
+// One case as the admin screens see it, from list_cases.
 
-/// An investigator actively assigned to a case (from list_cases).
+/// An investigator actively assigned to a case.
 class CaseInvestigator {
   final int userId;
   final String name; // e.g. 'Sgt. Thabo Mokoena'
   final String? badgeNumber;
   final int? assignmentId;
-  final bool isLead; // the case's lead investigator
+  final bool isLead;
 
   const CaseInvestigator({
     required this.userId,
@@ -28,14 +27,14 @@ class CaseInvestigator {
   }
 }
 
-/// One of the newest submissions in a case, shown on the case card so the
-/// admin can see what's inside without opening it.
+/// One of a case's newest submissions, shown on the card so the admin can
+/// see what's in it without opening it.
 class CasePreviewItem {
   final int incidentId;
   final String location;
   final DateTime? dateReported;
   final String reviewStatus; // 'accepted' or 'duplicate'
-  final String? description; // the citizen's
+  final String? description; // the citizen's own description
   final String? aiSummary;
 
   const CasePreviewItem({
@@ -59,7 +58,7 @@ class CasePreviewItem {
     );
   }
 
-  /// 42 → "INC-0042".
+  /// 42 -> "INC-0042"
   String get reference => 'INC-${incidentId.toString().padLeft(4, '0')}';
 }
 
@@ -72,17 +71,16 @@ class CaseSummary {
   final DateTime? dateClosed;
   final String? createdByName;
   final int incidentCount; // submissions in the case
-  final List<CaseInvestigator> investigators; // active assignments, lead first
-  final DateTime? lastActivity; // newest event on the case
-  final int mediaCount; // clips / photos across all its submissions
-  final List<String> plates; // number plates the AI read, max 3
+  final List<CaseInvestigator> investigators; // active only, lead first
+  final DateTime? lastActivity; // most recent event on the case
+  final int mediaCount; // clips/photos across all submissions
+  final List<String> plates; // up to 3 plates the AI read
   final List<CasePreviewItem> preview; // the 3 newest submissions
 
-  /// People the AI saw that no investigator has reviewed yet, and people
-  /// an investigator on the case confirmed as suspects. Each is the
-  /// highest of the case's submissions (most seen at once in one clip),
-  /// so A = 2, B = 1, C = 1 gives 2. Counts only: under POPIA nothing
-  /// about a possible suspect is shown until an investigator confirms them.
+  /// Unreviewed people the AI saw, and people an investigator on the case
+  /// confirmed. Each is the highest across the case's submissions (max seen
+  /// at once in one clip), so A = 2, B = 1, C = 1 gives 2. Just counts,
+  /// under POPIA nothing about a possible suspect shows until they're confirmed.
   final int possibleSuspects;
   final int confirmedSuspects;
 
@@ -132,12 +130,12 @@ class CaseSummary {
     );
   }
 
-  /// Display reference, e.g. case 3 → "CASE-0003".
+  /// e.g. case 3 -> "CASE-0003"
   String get reference => caseReference(caseId);
 
   bool get isClosed => status == 'closed';
 
-  /// The lead investigator, or null when there is none.
+  /// The lead investigator, or null if there isn't one.
   CaseInvestigator? get lead {
     for (final i in investigators) {
       if (i.isLead) return i;
@@ -146,5 +144,5 @@ class CaseSummary {
   }
 }
 
-/// 3 → "CASE-0003".
+/// 3 -> "CASE-0003"
 String caseReference(int caseId) => 'CASE-${caseId.toString().padLeft(4, '0')}';

@@ -1,14 +1,11 @@
-// submission_detail.dart — full page for one submission (opened with View
-// or by tapping a submission card).
+// Full page for one submission, opened with View or by tapping a card.
 //
-// Shows everything about the incident: the citizen's description, the
-// AI SUMMARY with each person / vehicle / weapon the AI found under it
-// (each with View crops -> its pictures), each clip with what the AI saw in it (View -> play
-// the video / open the photo), and the admin's review, with the actions that
-// fit its review status:
-//   pending            Reject · Duplicate · Accept
-//   accepted (in case) Open case · Move to another case · Remove from case
-//   rejected           Reopen for review · Delete (for good)
+// Shows the citizen's description, the AI summary with every person/vehicle/
+// weapon it found (each with View crops), each clip with what the AI saw in
+// it, and the review section. Which review actions show depends on status:
+//   pending            Reject / Duplicate / Accept
+//   accepted           Open case / Move to another case / Remove from case
+//   rejected           Reopen for review / Delete
 //   duplicate          Reopen for review
 
 import 'package:flutter/material.dart';
@@ -29,12 +26,12 @@ import 'package:argus_shield/submission_evidence_source.dart';
 class SubmissionDetailPage extends StatefulWidget {
   final CrimeSceneSummary submission;
 
-  /// Optional so tests can pass in a fake; the app uses the real service.
+  /// Tests pass a fake in here, the app just uses the real one.
   final SupabaseService? service;
 
-  /// Where the AI's people / vehicles / weapons of this submission come
-  /// from. The app uses SubmissionEvidenceSource; a test that passes a FAKE
-  /// service gets no AI section unless it passes a source here too.
+  /// Where this submission's AI people/vehicles/weapons come from. The app
+  /// uses SubmissionEvidenceSource. Tests with a fake service don't get an AI
+  /// section unless they pass one of these too.
   final CaseEvidenceSource? evidenceSource;
 
   const SubmissionDetailPage({
@@ -54,33 +51,33 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
   late final CaseEvidenceSource? _evidence = widget.evidenceSource ??
       (usesRealDatabase(widget.service) ? SubmissionEvidenceSource() : null);
 
-  /// Changes after a refresh, so the AI section loads again.
+  /// Bumped on refresh so the AI section reloads.
   int _evidenceVersion = 0;
 
-  /// Fetches this incident again after an action changed it.
+  /// Fetch the incident again after an action changed it.
   Future<void> _refresh() async {
     try {
       final fresh = await _service.getSubmission(_s.incidentId);
       if (mounted && fresh != null) {
         setState(() {
           _s = fresh;
-          _evidenceVersion++; // reload the clips and what the AI found
+          _evidenceVersion++; // reload clips and AI findings too
         });
       }
     } catch (_) {
-      // keep showing the old details; the list reloads when going back
+      // just keep showing what we had, the list reloads when they go back
     }
   }
 
-  /// Runs one of the review actions (each shows its own panel / dialog
-  /// and message), then refreshes the page.
+  /// Run a review action (each brings up its own panel/dialog and message),
+  /// then refresh.
   Future<void> _act(ReviewAction action) async {
     final changed = await action(context, _service, _s);
     if (changed) await _refresh();
   }
 
-  /// Deletes a rejected submission for good, then leaves this page (the
-  /// list reloads when it shows again).
+  /// Delete a rejected submission for good and leave the page. The list
+  /// reloads when it comes back into view.
   Future<void> _delete() async {
     final deleted = await deleteSubmission(context, _service, _s);
     if (deleted && mounted) Navigator.pop(context);
@@ -95,7 +92,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
         builder: (_) => CaseDetailPage(caseId: caseId, service: _service),
       ),
     );
-    await _refresh(); // the case page may have moved / removed it
+    await _refresh(); // they may have moved or removed it on the case page
   }
 
   Future<void> _openOriginal() async {
@@ -148,7 +145,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
                 style: AppText.caption.copyWith(fontSize: 13)),
           ],
 
-          // ---- The incident ----------------------------------------------
+          // the incident
           const SectionLabel('Incident'),
           DetailLine(icon: Icons.location_on_outlined, text: s.location),
           WhenLines(submission: s),
@@ -170,9 +167,9 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
                   '${s.longitude!.toStringAsFixed(5)}',
             ),
 
-          // ---- What the citizen reported --------------------------------------
+          // what the citizen reported
           if (_evidence == null) ...[
-            // (tests with a fake service: the plain descriptions)
+            // tests with a fake service just get the plain descriptions
             const SectionLabel('Descriptions'),
             SubmissionDescriptions(
               citizen: s.description,
@@ -192,8 +189,8 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
               showAi: false,
             ),
 
-            // ---- AI summary: the text, then each person / vehicle / weapon
-            //      with View crops (like the pipeline's console output) -------
+            // AI summary text, then each person/vehicle/weapon with View crops
+            // (laid out like the pipeline's console output)
             CaseEvidenceSection(
               key: ValueKey('evidence-${s.incidentId}-$_evidenceVersion'),
               caseId: s.incidentId,
@@ -211,7 +208,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
             ),
           ],
 
-          // ---- Each clip, with View (play the video / open the photo) -------
+          // each clip, with View to play/open it
           if (s.mediaCount > 0) ...[
             const SectionLabel('Footage'),
             FootageList(
@@ -222,7 +219,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
             ),
           ],
 
-          // ---- The review --------------------------------------------------
+          // the review
           const SectionLabel('Review'),
           ..._reviewDetails(s),
 
@@ -233,7 +230,7 @@ class _SubmissionDetailPageState extends State<SubmissionDetailPage> {
     );
   }
 
-  /// "AI analysis in progress… · Written 12 Oct 2026 19:42" (null if none).
+  /// e.g. "AI analysis in progress… · Written 12 Oct 2026 19:42", null if there's nothing to say.
   String? _aiNote(CrimeSceneSummary s) {
     final parts = [
       aiStatusNote(s.aiSummaryStatus,

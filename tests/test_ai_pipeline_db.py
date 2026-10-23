@@ -1,29 +1,21 @@
 """
-Tests for the AI pipeline in Supabase (SUPABASE_AI_PIPELINE.md), migrations
-  20261012100000_ai_pipeline_tables.sql
-  20261012100100_ai_pipeline_functions.sql
-  20261012100200_case_suggestion_rule.sql
+Database tests for the AI pipeline (the 20261012100000/100100/100200
+migrations). These follow the checklist in the AI pipeline doc, and also run
+the real ai/case_matcher.py against the database (load, merge, save) to make
+sure get_case_evidence() returns exactly what case_view() would.
 
-They cover the checklist in section 11 of SUPABASE_AI_PIPELINE.md, and run the
-real ai/case_matcher.py against the database (load -> merge -> save) to check
-that get_case_evidence() returns exactly what case_matcher.case_view() gives.
+Talks straight to your local Supabase Postgres, so no API keys. Each test
+runs in its own transaction that gets rolled back, so nothing sticks around.
+Every call switches to the role the app or worker would really have
+(authenticated + user id for people, service_role for the worker), which
+means RLS and grants are what's actually being tested.
 
-Runs against the LOCAL Supabase database directly (no API keys needed). Every
-test runs inside its own transaction that is rolled back at the end, so
-nothing is left behind. Each call switches to the same database role the app
-or worker would have (citizen / admin / investigator = 'authenticated' with
-their user id, worker = 'service_role'), so RLS and grants are what decide.
+    cd database && supabase start && supabase db reset && cd ..
+    pip install "psycopg[binary]" numpy opencv-python
+    python tests/test_ai_pipeline_db.py                  # everything
+    python tests/test_ai_pipeline_db.py merge question   # only tests with these in the name
 
-    cd database
-    supabase start
-    supabase db reset            # applies all migrations
-    cd ..
-    pip install "psycopg[binary]" numpy opencv-python   (opencv: ai/appearance.py)
-    python tests/test_ai_pipeline_db.py                  (all tests)
-    python tests/test_ai_pipeline_db.py merge question   (only names containing these)
-
-Database URL (default = `supabase start`):
-    ARGUS_TEST_DB   postgresql://postgres:postgres@127.0.0.1:54322/postgres
+Set ARGUS_TEST_DB if your database isn't on the default local URL.
 """
 
 import json
@@ -48,20 +40,18 @@ import case_matcher as cm  # noqa: E402
 
 DB_URL = os.environ.get("ARGUS_TEST_DB", "postgresql://postgres:postgres@127.0.0.1:54322/postgres")
 RUN_TIME = datetime(2026, 10, 12, 10, 0, tzinfo=timezone.utc)
-SANDTON = (-26.1076, 28.0567)            # 300 m east of here = ~0.0030 degrees longitude
+SANDTON = (-26.1076, 28.0567)            # 0.0030 deg of longitude here is about 300m
 
 
 class Rollback(Exception):
-    """Raised at the end of every test so its transaction is rolled back."""
+    """Thrown at the end of every test so the transaction rolls back."""
 
 
 class DbError(AssertionError):
     pass
 
 
-# ---------------------------------------------------------------------------
-# Database session: one transaction per test, switching roles per call
-# ---------------------------------------------------------------------------
+# --- database session: one transaction per test, role switched per call
 
 class Db:
     def __init__(self, conn):
@@ -82,9 +72,9 @@ class Db:
         self.cur.execute(f"SET LOCAL ROLE {role}")
 
     def rows(self, sql, params=None, who="postgres"):
-        """Run SQL as `who`; returns the rows as dicts. Errors -> DbError."""
+        """Run SQL as `who` and get the rows back as dicts. Errors become DbError."""
         try:
-            with self.conn.transaction():            # savepoint: an error doesn't end the test
+            with self.conn.transaction():            # savepoint, so one failed query doesn't kill the test
                 self._become(who)
                 self.cur.execute(sql, params)
                 result = self.cur.fetchall() if self.cur.description else []
@@ -102,7 +92,7 @@ class Db:
         return None if r is None else next(iter(r.values()))
 
     def rpc(self, fn, who="service", **params):
-        """Call public.<fn>(name => value, ...) like supabase.rpc() does."""
+        """public.<fn>(name => value, ...), same as supabase.rpc()."""
         args = ", ".join(f"{k} => %({k})s" for k in params)
         values = {k: (Jsonb(v) if isinstance(v, dict) else v) for k, v in params.items()}
         return self.val(f"SELECT public.{fn}({args}) AS r", values, who)
@@ -129,9 +119,7 @@ def session():
             pass
 
 
-# ---------------------------------------------------------------------------
-# Test data
-# ---------------------------------------------------------------------------
+# --- test data
 
 def make_user(db, role, **meta):
     authid = str(uuid.uuid4())
@@ -149,7 +137,7 @@ def make_user(db, role, **meta):
 
 def report(db, citizen, files=2, lat=None, lon=None, location="Rivonia Rd, Sandton",
            when=RUN_TIME):
-    """A citizen reports an incident and uploads `files` files (as the app does)."""
+    """Citizen reports an incident and uploads `files` files, like the app."""
     inc = db.val("INSERT INTO public.crimescene (location, datetime, reportedby, latitude, longitude, gpssource) "
                  "VALUES (%s, %s, %s, %s, %s, %s) RETURNING incidentid",
                  [location, when, citizen["userid"], lat, lon,
@@ -162,7 +150,7 @@ def report(db, citizen, files=2, lat=None, lon=None, location="Rivonia Rd, Sandt
 
 
 def vec(base, cos, seed):
-    """A unit vector whose cosine with `base` is exactly `cos`."""
+    """Unit vector with a cosine of exactly `cos` against `base`."""
     rng = np.random.default_rng(seed)
     noise = rng.normal(size=base.shape)
     noise -= noise @ base * base
@@ -181,7 +169,7 @@ PERSON_B = (base_vector(512, 3), base_vector(96, 4))
 
 
 def look(person, cos, seed):
-    """Appearance fingerprint of `person` as seen in another clip (similarity = cos)."""
+    """`person`'s fingerprint as if seen in another clip, with similarity `cos`."""
     return {"embedding": vec(person[0], cos, seed), "colour_hist": vec(person[1], cos, seed + 1),
             "views": 3}
 
@@ -225,8 +213,8 @@ def weapon(track, held_by, kind="long_gun", seen=(2.0, 5.0)):
 
 
 def results(inc, media, files, location=None, capture=RUN_TIME, run="20261012T100000"):
-    """A results.json as backend/upload_results.py uploads it: picture paths are
-    bucket paths in the incident's ai/ folder and each file has its mediaid."""
+    """A results.json the way upload_results.py leaves it: crop paths point into
+    the incident's ai/ folder in the bucket and every file has its mediaid."""
     out = []
     for i, (mediaid, dets) in enumerate(zip(media, files), start=1):
         folder = f"{inc}/ai/{run}/{i}_clip{i}"
@@ -253,11 +241,10 @@ def results(inc, media, files, location=None, capture=RUN_TIME, run="20261012T10
             "storage_folder": f"{inc}/ai/{run}"}
 
 
-# ---------------------------------------------------------------------------
-# A reference worker: what the AI worker does per job (section 10), with the
-# real case_matcher.py. The real worker also downloads footage, runs the
-# pipeline and uploads crops; here the results.json is given.
-# ---------------------------------------------------------------------------
+# --- a stand-in worker
+#
+# Does what the real worker does for case jobs, using the real case_matcher.
+# We skip the download/pipeline/upload part and just hand it a results.json.
 
 def worker_analyse(db, inc, result, worker="test-worker", summary="AI saw 1 person, 1 vehicle."):
     job = claim(db, worker)
@@ -276,7 +263,7 @@ def save_case(db, case):
 
 
 def place_member(case, member):
-    """Put one member into the best entity (or a new one) - the rematch step."""
+    """Rematch: put one member in its best entity, or a new one."""
     person_entity_of = {m["key"]: e["entity_id"] for e in case["entities"]
                         if e["kind"] == "person" for m in e["members"]}
     found = cm._candidates(member, case["entities"], case, person_entity_of)
@@ -292,8 +279,8 @@ def place_member(case, member):
 
 
 def run_case_jobs(db, worker="test-worker"):
-    """Process every queued merge / rematch / summary job. Returns the last
-    case dict the worker saved (for comparing with get_case_evidence)."""
+    """Run all queued merge/rematch/summary jobs. Returns the last case the
+    worker saved so tests can compare it with get_case_evidence()."""
     case = None
     while True:
         job = claim(db, worker)
@@ -336,7 +323,7 @@ def entity(view, label):
 
 
 class World:
-    """Users every test needs (made inside the test's transaction)."""
+    """The users most tests need, created inside the test's transaction."""
 
     def __init__(self, db):
         self.admin = make_user(db, "admin")
@@ -347,8 +334,8 @@ class World:
 
 
 def analysed_case(db, w):
-    """Submission 1 (person A with a long gun, white Toyota ND123456) analysed
-    and accepted into a new case, merged by the worker."""
+    """Submission 1 (person A with a long gun, white Toyota ND123456),
+    analysed, accepted into a new case and merged by the worker."""
     inc, media = report(db, w.citizen, files=1, lat=SANDTON[0], lon=SANDTON[1])
     db.rpc("submit_for_analysis", who=w.citizen, p_incidentid=inc)
     worker_analyse(db, inc, results(inc, media, [[person(1, look(PERSON_A, 0.97, 10)),
@@ -360,9 +347,7 @@ def analysed_case(db, w):
     return inc, media, case_id, case
 
 
-# ---------------------------------------------------------------------------
-# 1. Job queue
-# ---------------------------------------------------------------------------
+# --- 1. job queue
 
 def test_submit_with_two_files_makes_one_job(db, w):
     inc, media = report(db, w.citizen, files=2)
@@ -428,7 +413,7 @@ def test_dead_worker_job_requeued_then_failed(db, w):
         worker = f"gpu-{attempt}"
         job = claim(db, worker)
         assert job and job["jobid"] == jobid and job["attempts"] == attempt, (attempt, job)
-        # the worker dies: no finish_job, no more heartbeats; 61 minutes pass
+        # simulate the worker dying: no finish_job, no heartbeats, 61 minutes go by
         db.rows("UPDATE public.aijob SET startedat = now() - interval '61 minutes' WHERE jobid = %s", [jobid])
         db.rows("UPDATE public.aiworker SET lastseen = now() - interval '5 minutes' WHERE workerid = %s",
                 [worker])
@@ -514,9 +499,7 @@ def test_worker_functions_are_service_key_only(db, w):
             db.fails(db.rows, sql, who=who, contains="permission denied")
 
 
-# ---------------------------------------------------------------------------
-# 2. Analysis results in the tables
-# ---------------------------------------------------------------------------
+# --- 2. analysis results in the tables
 
 def test_analysis_is_saved_in_the_tables(db, w):
     inc, media = report(db, w.citizen, files=2, lat=-26.0, lon=28.0)
@@ -576,7 +559,7 @@ def test_rerun_replaces_instead_of_duplicating(db, w):
     ids = {r["trackid"]: r["detectionid"] for r in db.rows(
         "SELECT trackid, detectionid FROM public.detection WHERE mediaid = %s", [media[0]])}
 
-    # an investigator already confirmed track 2 as a suspect -> it must survive a re-run
+    # an investigator already confirmed track 2 as a suspect, so a re-run mustn't touch it
     db.rows("UPDATE public.detection SET suspectstatus = 'confirmed', suspectreviewedat = now() "
             "WHERE detectionid = %s", [ids[2]])
     db.rows("INSERT INTO public.suspect (detectionid, incidentid) VALUES (%s, %s)", [ids[2], inc])
@@ -591,7 +574,7 @@ def test_rerun_replaces_instead_of_duplicating(db, w):
     assert rows[0]["attributes"]["upper_clothing"] == "red"          # updated in place
     assert db.val("SELECT licenceplatenumber FROM public.vehicledetail WHERE detectionid = %s", [ids[3]]) == "CA1"
 
-    # a third run without track 1: an unreviewed row is removed
+    # third run without track 1: unreviewed rows like that get removed
     db.rpc("submit_for_analysis", who=w.citizen, p_incidentid=inc)
     stats = worker_analyse(db, inc, results(inc, media, [[vehicle(3)]], run="20261012T120000"))
     assert stats["removed"] == 1, stats
@@ -640,9 +623,7 @@ def test_weapon_types_from_the_model_are_accepted(db, w):
     assert kinds == ["long_gun", "machete", "other"], kinds
 
 
-# ---------------------------------------------------------------------------
-# 3. Suggestions (match_incidents' new rule)
-# ---------------------------------------------------------------------------
+# --- 3. case suggestions
 
 def _suggest(db, w, inc):
     return db.rows("SELECT * FROM public.suggest_cases_for_incident(%s, 10)", [inc], who=w.admin)
@@ -702,12 +683,10 @@ def test_suggestion_mentions_a_look_alike_person(db, w):
     assert hit and "alike" in hit[0], reasons
 
 
-# ---------------------------------------------------------------------------
-# 4. Cases: merge, questions, remove
-# ---------------------------------------------------------------------------
+# --- 4. cases: merge, questions, remove
 
 def _normalise(view):
-    """case_view() / get_case_evidence() with lists in a fixed order."""
+    """case_view()/get_case_evidence() with lists sorted so they compare."""
     view = json.loads(json.dumps(view))
     view["submissions"].sort(key=lambda s: s["submission"])
     for group in ("people", "vehicles", "weapons"):
@@ -750,7 +729,7 @@ def test_second_submission_joins_the_same_people_and_vehicles(db, w):
     inc, media, case_id, _ = analysed_case(db, w)
     two, media2 = report(db, w.citizen, files=1, lat=SANDTON[0], lon=SANDTON[1])
     db.rpc("submit_for_analysis", who=w.citizen, p_incidentid=two)
-    # same person (very alike, same clothes), same car with a plate, and a new person
+    # same person (very alike, same clothes), same car with a plate, plus someone new
     worker_analyse(db, two, results(two, media2, [[person(1, look(PERSON_A, 0.95, 30)),
                                                    person(2, look(PERSON_B, 0.99, 31), upper="red"),
                                                    vehicle(3, plate="ND123456")]],
@@ -816,7 +795,7 @@ def test_answer_no_is_never_asked_again(db, w):
     assert view["counts"]["people"] == 2 and view["open_questions"] == 0, view
     assert entity(view, "Person 2")["crops"][0]["submission"] == two
     assert_same_as_case_matcher(db, w, case_id, case)
-    # a summary re-run (and any later merge) never links that pair again
+    # neither a summary re-run nor a later merge should ever link that pair again
     db.rpc("queue_ai_job", who="postgres", p_kind="summary", p_caseid=case_id)
     stale = db.rpc("ai_load_case", p_caseid=case_id)
     p1 = next(e for e in stale["entities"] if e["entity_id"] == "p1")

@@ -1,6 +1,6 @@
-// admin_dashboard.dart — holds navigation and creates the admin subpage widgets.
-// Works exactly like citizen/citizen_dashboard.dart: this file builds the
-// Scaffold, header and tabs; each page file only returns its body.
+// The admin's main screen. Same setup as citizen/citizen_dashboard.dart: this
+// file builds the Scaffold, header and tabs, and each tab's file just returns
+// its body.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -13,24 +13,22 @@ import 'package:argus_shield/settings_screen.dart';
 import 'package:argus_shield/app_settings.dart';
 import 'package:argus_shield/sign_out_button.dart';
 
-/// Displays the Argus header and the admin tabs.
-/// Colours and fonts come from the app theme (theme/app_theme.dart).
+/// The Argus header plus the admin tabs.
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // length must equal the number of Tabs AND the number of TabBarView
-    // children, and both lists must be in the same order.
-    // If you reorder tabs, update the tab indexes at the top of overview.dart
-    // (used by its "see more" links).
+    // length has to match both the Tabs and the TabBarView children, in the
+    // same order. If you reorder them, fix the tab indexes at the top of
+    // overview.dart too (the "see more" links use them).
     return ListenableBuilder(
       listenable: appSettings,
       builder: (context, _) {
         return DefaultTabController(
           length: 4,
           child: Scaffold(
-            // Same two-line header as the citizen pages, with a diamond for admin.
+            // same two-line header as the citizen pages, diamond marker for admin
             appBar: RoleAppBar(
               roleLabel: appSettings.t('systemAdministrator'),
               marker: RoleMarker.diamond,
@@ -48,11 +46,10 @@ class AdminDashboard extends StatelessWidget {
                 ),
                 const SignOutButton(),
               ],
-              // Four tabs share a phone's width, so the labels are a little
-              // smaller than the app default and the padding around them is
-              // narrow. _TabLabel shrinks a word further only if it still
-              // wouldn't fit (very small phones, large system text), so no
-              // label is ever cut off.
+              // Four tabs on a phone's width, so the labels are a little
+              // smaller than default with narrow padding. _TabLabel shrinks a
+              // word further only if it still won't fit (tiny phones, big
+              // system text), so nothing ever gets cut off.
               bottom: TabBar(
                 labelPadding: const EdgeInsets.symmetric(horizontal: 4),
                 labelStyle: const TextStyle(
@@ -68,13 +65,13 @@ class AdminDashboard extends StatelessWidget {
                 tabs: [
                   Tab(child: _TabLabel(appSettings.t('overview'))),
                   Tab(child: _TabLabel(appSettings.t('cases'))),
-                  // _TabLabel shrinks "Investigators" slightly if needed.
+                  // _TabLabel shrinks "Investigators" a bit if it has to
                   Tab(child: _TabLabel(appSettings.t('investigators'))),
                   Tab(child: _TabLabel(appSettings.t('submissions'))),
                 ],
               ),
             ),
-            // Each page lives in its own Dart file and returns only its body.
+            // each page is its own file and only returns its body
             body: TabBarView(
               children: [
                 AdminOverview(),
@@ -90,7 +87,7 @@ class AdminDashboard extends StatelessWidget {
   }
 }
 
-/// A tab's word on one line, scaled down (never cut off) when space is short.
+/// A tab label on one line, scaled down (never cut off) if space is tight.
 class _TabLabel extends StatelessWidget {
   final String text;
 

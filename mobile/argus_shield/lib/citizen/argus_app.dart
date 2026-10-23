@@ -1,5 +1,5 @@
-// argus_app.dart — runs the citizen screens on their own (without logging in),
-// handy for working on the citizen UI. The real app starts at main.dart.
+// Runs the citizen screens on their own without logging in, handy when
+// working on the citizen UI. The real entry point is main.dart.
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
@@ -15,9 +15,9 @@ class ArgusApp extends StatelessWidget {
       title: 'Argus Shield',
       debugShowCheckedModeBanner: false,
       theme: buildArgusTheme(),
-      // keeps every page above the phone's navigation buttons
+      // keeps pages above the phone's nav buttons
       builder: keepAboveSystemBars,
-      // CitizenHome owns the shared CitizenStore for the three tabs.
+      // CitizenHome owns the CitizenStore the three tabs share
       home: const CitizenHome(),
     );
   }

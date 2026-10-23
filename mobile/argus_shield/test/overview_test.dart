@@ -1,8 +1,8 @@
-// Tests for the admin Overview tab: the SYSTEM STATUS numbers and the
-// recent investigators come from Supabase (a fake here), not sample data.
+// The admin Overview tab: the System status numbers and recent investigators
+// should come from Supabase (faked here), not hard-coded sample data.
 //
-// Note: the Active tile's border animates forever, so these tests use
-// pump() instead of pumpAndSettle().
+// The Active tile's border animates forever, so these use pump() rather than
+// pumpAndSettle().
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -99,7 +99,7 @@ class FakeSupabaseService extends SupabaseService {
 }
 
 void main() {
-  // A tall phone screen so the whole Overview list is built.
+  // tall phone screen so the whole Overview list gets built
   setUp(() {
     final view =
         TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;

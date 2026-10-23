@@ -1,10 +1,10 @@
-// admin_fake_service.dart — an in-memory stand-in for SupabaseService used
-// by the case / review tests. It keeps submissions, cases and assignments
-// in lists and changes them like the database functions do, so a test can
-// tap through a whole flow (accept -> case -> assign ...) without Supabase.
+// In-memory stand-in for SupabaseService for the case/review tests. Keeps
+// submissions, cases and assignments in lists and updates them the way the
+// database functions would, so a test can click through a whole flow
+// (accept, case, assign...) without Supabase.
 //
-// Every call is recorded in [calls], e.g. 'reject:42:Not CIT'.
-// (No "_test" in the file name, so `flutter test` doesn't run it on its own.)
+// Every call gets logged in [calls], e.g. 'reject:42:Not CIT'. The file name
+// has no "_test" so `flutter test` doesn't try to run it on its own.
 
 import 'package:argus_shield/supabase_service.dart';
 import 'package:argus_shield/models/crime_scene_summary.dart';
@@ -73,17 +73,17 @@ class AdminFakeService extends SupabaseService {
   final List<CaseAssignmentInfo> assignments = [];
   final List<String> calls = [];
 
-  /// What the suggestion functions return (tests fill these in).
+  /// What the suggestion functions return. Tests fill these in.
   List<IncidentSuggestion> incidentSuggestions = [];
   List<CaseSuggestion> caseSuggestions = [];
   List<LinkedGroup> linkedGroups = [];
   List<SuggestedMatch> suggestedMatches = [];
   List<CaseCardSuggestion> caseCardSuggestions = [];
 
-  /// Makes getCaseCardSuggestions throw (the cards must still show).
+  /// Make getCaseCardSuggestions throw (the cards should still show).
   bool failCaseCardSuggestions = false;
 
-  // ---- helpers ---------------------------------------------------------------
+  // --- helpers
 
   void _setReview(int incidentId,
       {required String status, int? caseId, int? duplicateOf, String? note}) {
@@ -106,7 +106,7 @@ class AdminFakeService extends SupabaseService {
     _recount();
   }
 
-  /// Keeps each case's submission count, preview and investigators in step.
+  /// Keep each case's submission count, preview and investigators in sync.
   void _recount() {
     for (var i = 0; i < cases.length; i++) {
       final c = cases[i];
@@ -163,7 +163,7 @@ class AdminFakeService extends SupabaseService {
         isLead: isLead ?? a.isLead,
       );
 
-  // ---- submissions -------------------------------------------------------------
+  // --- submissions
 
   List<CrimeSceneSummary> _subs(String? review, [String query = '']) {
     final q = query.trim().toLowerCase();
@@ -328,7 +328,7 @@ class AdminFakeService extends SupabaseService {
     _setReview(incidentId, status: 'pending');
   }
 
-  // ---- cases -------------------------------------------------------------------
+  // --- cases
 
   @override
   Future<int> createCase({
@@ -443,7 +443,7 @@ class AdminFakeService extends SupabaseService {
       status: 'active',
       dateAssigned: DateTime(2026, 10, 5, 11),
       caseId: caseId,
-      isLead: !hasLead, // the first investigator becomes lead
+      isLead: !hasLead, // first investigator on the case becomes lead
     ));
     _recount();
     return id;
@@ -472,7 +472,7 @@ class AdminFakeService extends SupabaseService {
     _recount();
   }
 
-  // ---- investigators (for the assign picker) -----------------------------------
+  // --- investigators (for the assign picker)
 
   @override
   Future<List<InvestigatorSummary>> getRecentInvestigators(

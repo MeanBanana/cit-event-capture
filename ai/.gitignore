@@ -1,16 +1,16 @@
-# Model files that download by themselves on the first run (too big for Git:
-# GitHub refuses files over 100 MB, and mobileclip2_b.ts is ~250 MB)
+# Models that download themselves on first run. Too big for git anyway,
+# GitHub caps files at 100 MB and mobileclip2_b.ts is about 250 MB.
 /yolo*.pt
 /yoloe*.pt
 /mobileclip*.ts
 
-# Output of test runs
+# output from test runs
 /crops/
 /cases/
 /output_detections.json
 __pycache__/
 
-# Test videos and photos (evidence-type footage never goes to GitHub)
+# test footage, this kind of material should never end up on GitHub
 *.mp4
 *.MP4
 *.mov

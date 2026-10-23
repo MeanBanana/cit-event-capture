@@ -1,12 +1,12 @@
 import {useEffect, useRef} from 'react';
 
 /**
- * Watches every `[data-reveal]` element inside the returned ref's element and
- * adds `.is-in` the first time each one is seen.
+ * Watches every `[data-reveal]` element inside the ref and adds `.is-in` the
+ * first time it scrolls into view.
  *
- * Each section owns its own observer (rather than one page-level query at
- * mount) so elements that mount later — or re-mount on hot reload — are
- * never left stuck in their hidden state.
+ * Each section has its own observer rather than one page-wide query on
+ * mount, so things that mount later (or remount on hot reload) don't get
+ * stuck hidden.
  */
 export function useReveals<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -30,7 +30,7 @@ export function useReveals<T extends HTMLElement>() {
       root.querySelectorAll('[data-reveal]:not(.is-in)').forEach((el) => io.observe(el));
     watch();
 
-    // Pick up anything React adds later.
+    // catch anything React adds later
     const mo = new MutationObserver(watch);
     mo.observe(root, {childList: true, subtree: true});
 

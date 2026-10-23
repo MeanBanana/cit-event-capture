@@ -1,7 +1,5 @@
-// Basic smoke tests for the Argus Shield screens.
-//
-// These only build the screens - they do not talk to Supabase, so they can run
-// without a network connection.
+// Basic smoke tests that just build the screens. Nothing talks to Supabase,
+// so they run offline.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

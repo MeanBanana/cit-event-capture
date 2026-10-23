@@ -1,30 +1,24 @@
 """
-people.py - what the pipeline records about each PERSON, for investigators.
+What we keep track of for each person: their best face shot and their
+clothing colours.
 
-For every tracked person this collects, over all the frames they appear in:
-  * their clearest picture with a face close-up, if their face is visible and
-    big enough for an investigator to look at (roughly: within ~5 m on normal
-    phone video). Without a clear face, detector.py still saves the clearest
-    body view (clothing is evidence too), with no face close-up.
-  * their upper and lower clothing colours (AI-suggested, voted over frames),
-    or "none" when that part of the body is bare skin - see clothing.py
+For the face we want the clearest frame where it's big enough for an
+investigator to actually look at (roughly within 5m on normal phone video).
+If we never get a decent face, detector.py still saves the best body shot.
+Clothing colours are voted across frames, see clothing.py.
 
-Privacy (POPIA): this module only FINDS where a face is in the picture so we
-can choose a good frame. It never identifies anyone - no face recognition, no
-comparing faces, no face data stored apart from the picture an investigator
-reviews. (appearance.py compares clothing / overall look between submissions,
-never faces, and only to SUGGEST a match an admin confirms.) Every person is only a "possible suspect" until an investigator on
-the case decides (see database/README.md, "Suspects and POPIA").
+POPIA: we only find where a face is so we can pick a good frame. There's no
+face recognition, no comparing faces, nothing stored apart from the picture
+the investigator looks at. Everyone is just a "possible suspect" until the
+investigator on the case says otherwise (database/README.md has more).
 
-Face finding uses YuNet (MIT licence, from OpenCV's model zoo,
-https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet),
-saved in people_models/.
+Face detection is YuNet from the OpenCV model zoo (MIT licence):
+https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
 
-How big is "big enough"?  Distance can't be measured from one camera, but
-the face's size in pixels is a good stand-in. On normal 1080p phone video a
-face about 5 metres away is roughly 35-40 px tall, so the default is 36 px.
-Shared (WhatsApp) videos are shrunk, so faces there are often too small:
-that is correct - a 15 px face is no use to an investigator.
+About the 36px default: we can't measure distance with one camera, but face
+height in pixels is a decent stand-in. At 1080p a face 5m away is about
+35-40px. WhatsApp shrinks videos so faces there are often too small, and
+that's fine, a 15px face is no use to anyone.
 """
 
 from collections import Counter
@@ -39,14 +33,14 @@ MODELS = Path(__file__).parent / "people_models"
 FACE_MODEL = MODELS / "face_detection_yunet_2026may.onnx"
 
 def _sharpness(bgr):
-    """Variance of the Laplacian (higher = sharper), on a fixed-size copy."""
+    """Laplacian variance on a fixed-size copy. Higher is sharper."""
     grey = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     grey = cv2.resize(grey, (112, 112))
     return float(cv2.Laplacian(grey, cv2.CV_64F).var())
 
 
 def _clip(box, frame):
-    """Box [x1, y1, x2, y2] as whole pixels inside the frame, or None."""
+    """Round the box to pixels and clamp it to the frame. None if it's empty."""
     height, width = frame.shape[:2]
     x1, y1, x2, y2 = (int(round(v)) for v in box)
     x1, y1, x2, y2 = max(0, x1), max(0, y1), min(width, x2), min(height, y2)
@@ -54,13 +48,13 @@ def _clip(box, frame):
 
 
 class FaceFinder:
-    """Finds faces (where they are, how big, how sure). Never identifies."""
+    """Finds faces. Only where they are, never who they are."""
 
     def __init__(self, model=FACE_MODEL, min_score=0.8):
         self.detector = cv2.FaceDetectorYN.create(str(model), "", (320, 320), min_score)
 
     def biggest_face(self, bgr):
-        """(x, y, w, h, score) of the biggest face in the picture, or None."""
+        """Biggest face in the image as (x, y, w, h, score), or None."""
         h, w = bgr.shape[:2]
         if h < 20 or w < 20:
             return None
@@ -73,18 +67,16 @@ class FaceFinder:
 
 
 def clothing_colours(frame, box, pose=None, face_box=None, known_skin=None):
-    """(upper, lower, skin) of a person in box [x1, y1, x2, y2]: upper /
-    lower are a colour word, "none" (bare skin) or None (not visible / can't
-    tell); skin is the person's skin colour found in THIS frame (from the
-    face or a bare forearm), or None. See clothing.py.
+    """Clothing colours for the person in `box`.
 
-    known_skin: the person's skin colour from earlier frames, used when this
-    frame shows neither face nor forearm (e.g. filmed from behind).
+    Returns (upper, lower, skin). upper/lower are a colour, "none" for bare
+    skin, or None if we can't tell. skin is whatever skin tone we managed to
+    sample in this frame. known_skin is what we got from earlier frames, for
+    when this one only shows their back.
 
-    With the pose model, the torso and thighs are found from the body's
-    joints. Without it (model missing) the box is split by fixed fractions
-    (torso 22-48% down, legs 58-85%), which is much less reliable in
-    close-ups, so that is only a fallback.
+    Without the pose model we fall back to fixed slices of the box (torso
+    22-48% down, legs 58-85%). That's pretty unreliable on close-ups, so it's
+    really just a last resort.
     """
     clipped = _clip(box, frame)
     if clipped is None:
@@ -97,7 +89,7 @@ def clothing_colours(frame, box, pose=None, face_box=None, known_skin=None):
         return (describe_region(frame, torso, skin)[0],
                 describe_region(frame, thighs, skin)[0], found)
     if pose is not None:
-        return None, None, found     # the pose model saw no body: don't guess
+        return None, None, found     # pose model found no body, so don't guess
     x1, y1, x2, y2 = clipped
     w, h = x2 - x1, y2 - y1
     left, right = x1 + w * 0.3, x1 + w * 0.7
@@ -107,38 +99,38 @@ def clothing_colours(frame, box, pose=None, face_box=None, known_skin=None):
 
 
 class PersonRecord:
-    """Everything collected about one tracked person across frames."""
+    """Everything we collect about one tracked person."""
 
     def __init__(self):
-        self.upper_votes = Counter()     # colour -> weight
+        self.upper_votes = Counter()     # colour -> summed weight
         self.lower_votes = Counter()
         self.clothing_views = 0
-        self.skin_seen = []              # this person's skin colour (CIELAB) per frame it was visible
-        self.face_views = 0              # frames where a big-enough face was seen
+        self.skin_seen = []              # CIELAB skin samples, one per frame we got one
+        self.face_views = 0
         self.biggest_face_px = 0
         self._best_quality = -1.0
-        self.best_person_image = None    # whole person, clearest face frame
-        self.best_face_image = None      # head close-up from that frame
+        self.best_person_image = None    # full body from the best face frame
+        self.best_face_image = None
         self.best_face_time = None
 
     def add_view(self, frame, box, confidence, frame_time, faces,
                  min_face_px=36, min_face_sharpness=40, pose=None):
-        """Learn from one frame where this person is clearly visible.
-        pose = clothing.PoseFinder (None: fallback clothing regions)."""
+        """Take in one frame of this person. pose is a clothing.PoseFinder, or
+        None to use the rough fallback regions."""
         clipped = _clip(box, frame)
         if clipped is None:
             return
         x1, y1, x2, y2 = clipped
         height = y2 - y1
 
-        # --- face: look in the top half of the person (where the head is)
+        # the face has to be in the top half of the box
         face = None
         if faces is not None:
             head_area = frame[y1:y1 + max(1, int(height * 0.5)), x1:x2]
             face = faces.biggest_face(head_area)
 
-        # --- clothing: bigger, surer views count more. The face (if any)
-        # tells what this person's skin looks like (bare chest / legs).
+        # Bigger and more confident views count for more. If we found a face
+        # it also tells us their skin tone, which helps spot bare skin.
         weight = min(1.0, height / 300) * confidence
         face_box = None if face is None else (x1 + face[0], y1 + face[1], face[2], face[3])
         known = np.median(self.skin_seen, axis=0) if self.skin_seen else None
@@ -158,19 +150,19 @@ class PersonRecord:
         self.biggest_face_px = max(self.biggest_face_px, fh)
         if fh < min_face_px:
             return                       # too far away to be useful
-        fx, fy = fx + x1, fy + y1        # back to whole-frame coordinates
+        fx, fy = fx + x1, fy + y1        # crop coords -> frame coords
 
-        # head close-up: the face plus a margin around it
+        # head shot = face plus some margin
         face_box = _clip((fx - fw * 0.6, fy - fh * 0.6, fx + fw * 1.6, fy + fh * 1.5), frame)
         if face_box is None:
             return
         face_image = frame[face_box[1]:face_box[3], face_box[0]:face_box[2]]
         sharp = _sharpness(face_image)
         if sharp < min_face_sharpness:
-            return                       # face too blurry to recognise by eye
+            return                       # too blurry for anyone to recognise
         self.face_views += 1
 
-        # keep the best frame: biggest, surest, sharpest face
+        # keep whichever frame has the biggest, surest, sharpest face
         quality = fh * score * min(1.0, sharp / 150)
         if quality > self._best_quality:
             self._best_quality = quality
@@ -182,7 +174,7 @@ class PersonRecord:
             self.best_face_time = frame_time
 
     def result(self, min_share=0.4):
-        """The person's summary (clothing colours are AI suggestions)."""
+        """Summary dict for this person."""
         def winner(votes):
             total = sum(votes.values())
             if total <= 0:
@@ -197,10 +189,10 @@ class PersonRecord:
         lower, lower_share, lower_top = winner(self.lower_votes)
         return {
             "face_visible": self.best_face_image is not None,
-            "face_size_px": self.biggest_face_px,     # biggest face seen (0 = none)
+            "face_size_px": self.biggest_face_px,     # 0 means we never saw a face
             "face_views": self.face_views,
             "best_face_time_seconds": self.best_face_time,
-            "upper_clothing": upper,                  # colour, "none" = bare skin, None = unsure / not seen
+            "upper_clothing": upper,                  # colour, "none" for bare skin, or None if unsure
             "upper_clothing_confidence": upper_share,
             "upper_clothing_top3": upper_top,
             "lower_clothing": lower,
@@ -210,8 +202,8 @@ class PersonRecord:
         }
 
     def save_images(self, folder, track_id):
-        """Saves person_<id>.png (whole person) and face_<id>.png (close-up,
-        enlarged to at least 200 px tall). Returns the two paths, or Nones."""
+        """Write person_<id>.png and face_<id>.png. The face gets upscaled to at
+        least 200px tall so it's easier to look at. Returns both paths."""
         if self.best_person_image is None:
             return None, None
         folder = Path(folder)

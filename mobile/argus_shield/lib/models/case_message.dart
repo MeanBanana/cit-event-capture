@@ -1,16 +1,15 @@
-// case_message.dart — one message in a case's investigator chat (the
-// "Chat" tab of the investigator case page). Rows come from the database
-// functions list_case_messages / send_case_message.
+// One message in a case's investigator chat (list_case_messages /
+// send_case_message).
 
 class CaseMessage {
   final int messageId;
   final int caseId;
   final int senderId;
 
-  /// "Alice Mokoena"
+  /// e.g. "Alice Mokoena"
   final String senderName;
 
-  /// Sent by the signed-in investigator (shown on the right).
+  /// Sent by whoever's signed in, so it goes on the right.
   final bool isMine;
   final String body;
   final DateTime sentAt;

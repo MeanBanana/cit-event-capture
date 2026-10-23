@@ -1,7 +1,5 @@
-// Tests for the "New Password" screen opened by the password reset link.
-//
-// A fake SupabaseService stands in for the real one, so these tests run
-// without a network connection or a Supabase project.
+// The "New Password" screen opened by the reset link. Uses a fake
+// SupabaseService so no network or Supabase project is needed.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +8,7 @@ import 'package:argus_shield/login.dart';
 import 'package:argus_shield/reset_password.dart';
 import 'package:argus_shield/supabase_service.dart';
 
-/// Returns a canned updatePassword result instead of calling Supabase.
+/// Hands back a canned updatePassword result instead of calling Supabase.
 class FakeResetService extends SupabaseService {
   FakeResetService([this.result = const {
     "success": true,
@@ -34,7 +32,7 @@ class FakeResetService extends SupabaseService {
 }
 
 void main() {
-  // A phone-sized screen (360 x 800 logical pixels) so the form fits.
+  // phone-sized screen (360 x 800 logical pixels) so the form fits
   setUp(() {
     final view = TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
     view.physicalSize = const Size(1080, 2400);
@@ -56,7 +54,7 @@ void main() {
     await tester.pump();
   }
 
-  /// Lets the loading screen's 3 seconds pass and the login page open.
+  /// Let the loading screen's 3 seconds pass and the login page open.
   Future<void> finishLoading(WidgetTester tester) async {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(seconds: 3));

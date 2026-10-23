@@ -1,9 +1,9 @@
 import Lenis from 'lenis';
 
 /**
- * One rAF loop for the whole page. Lenis advances first, then every
- * scroll-driven component reads its own rect and writes styles directly —
- * nothing here goes through React state, so scrolling never re-renders.
+ * A single rAF loop for the whole page. Lenis ticks first, then each
+ * scroll-driven component reads its own rect and writes styles directly.
+ * None of it goes through React state, so scrolling never triggers a render.
  */
 
 type Tick = (time: number) => void;

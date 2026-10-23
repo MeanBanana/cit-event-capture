@@ -1,15 +1,12 @@
 """
-cleanup_storage.py - delete the files of submissions that no longer exist
-from the 'submissions' bucket (after deleting test data with
-database/oneoff/keep_only_n12_case.sql; Supabase doesn't allow deleting
-bucket files from SQL).
+Deletes bucket files for submissions that no longer exist.
 
-Each submission's files are in  submissions/<incidentid>/...  (its media and
-the AI's crops). A folder whose incident id is no longer in crimescene is
-removed. Run on the GPU PC (needs the service key in backend/.env):
+Mostly for after wiping test data (database/oneoff/keep_only_n12_case.sql),
+since Supabase won't let you delete storage objects from SQL. Any top-level
+folder whose incident id isn't in crimescene any more gets removed.
 
-    python backend\\cleanup_storage.py          (shows what it would delete)
-    python backend\\cleanup_storage.py --yes    (deletes it - can't be undone)
+    python backend/cleanup_storage.py          dry run, just lists
+    python backend/cleanup_storage.py --yes    actually deletes (no undo!)
 """
 
 import argparse
@@ -23,13 +20,13 @@ from worker import BUCKET, make_client  # noqa: E402
 
 
 def list_files(storage, folder):
-    """Every file path under folder (recursively)."""
+    """All file paths under `folder`, recursively."""
     paths, offset = [], 0
     while True:
         page = storage.list(folder, {"limit": 1000, "offset": offset})
         for item in page:
             path = f"{folder}/{item['name']}" if folder else item["name"]
-            if item.get("id") is None:          # a folder
+            if item.get("id") is None:          # folders come back without an id
                 paths += list_files(storage, path)
             else:
                 paths.append(path)

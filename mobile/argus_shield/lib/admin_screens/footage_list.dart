@@ -1,7 +1,6 @@
-// footage_list.dart — the clips / photos of one submission, each with what
-// the AI saw in it and a View button (play the video / open the photo, with
-// Download). Used on the admin's submission page and on the investigator's
-// case page (investigators assigned to the case may see the files).
+// A submission's clips/photos, each with what the AI saw in it and a View
+// button. Used on the admin's submission page and the investigator's case
+// page.
 
 import 'package:flutter/material.dart';
 import 'package:argus_shield/theme/app_theme.dart';
@@ -10,9 +9,9 @@ import 'package:argus_shield/models/submission_groups.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/admin_screens/media_viewer_page.dart';
 
-/// True when [service] is the real database (the app always passes one in),
-/// false for the fake services in the widget tests, which get no AI
-/// pictures / footage sections because those read Supabase directly.
+/// True if [service] is the real database. The widget tests' fakes return
+/// false and skip the AI pictures and footage, since those hit Supabase
+/// directly.
 bool usesRealDatabase(SupabaseService? service) =>
     service == null || service.runtimeType == SupabaseService;
 
@@ -20,10 +19,10 @@ class FootageList extends StatefulWidget {
   final SupabaseService service;
   final int incidentId;
 
-  /// "INC-0057", for the viewer's title ("INC-0057 · Clip 2").
+  /// e.g. "INC-0057", used in the viewer title ("INC-0057 · Clip 2").
   final String reference;
 
-  /// Shown in the viewer's top bar.
+  /// For the viewer's top bar.
   final String roleLabel;
 
   const FootageList({
@@ -89,12 +88,12 @@ class _FootageListState extends State<FootageList> {
   }
 }
 
-/// One clip / photo and what the AI saw in it.
+/// One clip/photo and what the AI saw in it.
 class ClipCard extends StatelessWidget {
   final int number;
   final MediaItem clip;
 
-  /// Opens the video / photo (null hides the View button).
+  /// Opens it. Null hides the View button.
   final VoidCallback? onView;
 
   const ClipCard(
@@ -148,8 +147,8 @@ class ClipCard extends StatelessWidget {
               ],
             ],
           ),
-          // own line: a long tag ("Waiting for analysis") plus the View
-          // button don't fit next to the title on a phone
+          // its own line, because a long tag like "Waiting for analysis" plus
+          // the View button won't fit beside the title on a phone
           const SizedBox(height: 6),
           StatusTag(label: statusText, color: statusColor),
           const SizedBox(height: 6),

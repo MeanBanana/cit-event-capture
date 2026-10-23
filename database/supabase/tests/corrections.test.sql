@@ -1,17 +1,15 @@
--- =====================================================================
--- pgTAP tests for 20261013100000_crime_scenes_and_corrections.sql
--- (structure and privileges; behaviour is in tests/test_corrections_db.py)
+-- pgTAP tests for 20261013100000_crime_scenes_and_corrections.sql. Only
+-- structure and privileges here, the behaviour tests are in
+-- tests/test_corrections_db.py.
 --
---     supabase start
---     supabase test db
--- =====================================================================
+--     supabase start && supabase test db
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
 SELECT plan(29);
 
--- Structure
+-- structure
 SELECT has_column('public', 'correctionlog', 'fieldname', 'correctionlog.fieldname');
 SELECT has_column('public', 'correctionlog', 'note', 'correctionlog.note');
 SELECT has_column('public', 'detection', 'corrections', 'detection.corrections');
@@ -28,7 +26,7 @@ SELECT has_function('public', 'get_crime_scene', ARRAY['integer']);
 SELECT has_trigger('public', 'detection', 'detection_keep_dismissed_out',
                    'dismissed detections are kept out of case entities');
 
--- Corrections only through correct_detection()
+-- corrections can only go through correct_detection()
 SELECT policies_are('public', 'correctionlog', ARRAY['correctionlog_select'],
                     'correctionlog: read policy only');
 SELECT policies_are('public', 'vehicledetail', ARRAY['vehicledetail_select'],
@@ -44,7 +42,7 @@ SELECT ok(NOT has_table_privilege('authenticated', 'public.vehicledetail', 'UPDA
 SELECT ok(NOT has_table_privilege('authenticated', 'public.weapondetail', 'UPDATE'),
           'app users cannot update weapondetail directly');
 
--- Functions
+-- functions
 SELECT function_privs_are('public', 'correct_detection', ARRAY['integer', 'text', 'text', 'text'],
                           'authenticated', ARRAY['EXECUTE'], 'app users can correct (it checks who)');
 SELECT function_privs_are('public', 'correct_detection', ARRAY['integer', 'text', 'text', 'text'],
@@ -54,7 +52,7 @@ SELECT function_privs_are('public', 'get_crime_scene', ARRAY['integer'], 'anon',
 SELECT function_privs_are('public', 'crime_scene_analysis', ARRAY['integer'], 'authenticated',
                           ARRAY[]::text[], 'crime_scene_analysis is internal');
 
--- Helpers
+-- helpers
 SELECT is(public.correctable_fields('weapon'), ARRAY['weapon_type', 'dismissed'],
           'weapons: type and dismissed');
 SELECT is(public.detection_value('{"plate": "nd 123-456"}'::jsonb, '{}'::jsonb, 'plate'), 'ND123456',

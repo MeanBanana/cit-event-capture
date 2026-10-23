@@ -6,9 +6,9 @@
 body{margin:0;background:#222}
 </style></head><body>
 <script>
-// Paints the Argus landing-page hero layers and reel stills.
-// paintLayer(name, cut) -> dataURL (PNG, transparent where nothing is drawn)
-// window.BOXES[cut] collects where each detection sits, as fractions of the layer.
+// Draws the hero layers and reel stills for the landing page. go.py drives it.
+// paintLayer(name, cut) gives back a PNG data URL, transparent wherever
+// nothing's drawn, and window.BOXES[cut] collects where each detection ended up.
 const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
 window.BOXES={d:[],m:[]};
 let BOXLOG=null;

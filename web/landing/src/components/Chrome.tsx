@@ -10,12 +10,12 @@ function go(e: MouseEvent<HTMLAnchorElement>, then?: () => void) {
   scrollToHash(hash);
 }
 
-/** The Argus shield: the mark. */
+/** The Argus shield logo mark. */
 export function Mark({className = ''}: {className?: string}) {
   return <img src="/logo.svg" alt="" aria-hidden="true" className={className} />;
 }
 
-/** Lock icon for the admin login button. */
+/** Lock icon on the admin login button. */
 function Lock({className = ''}: {className?: string}) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -45,7 +45,7 @@ export function Header() {
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="menu" className="font-mono text-label uppercase md:hidden">
             {open ? 'Close' : 'Menu'}
           </button>
-          {/* Far top-right: the root admin's console (web/admin-console). */}
+          {/* Top right corner: link to the root admin's console. */}
           <a
             href={brand.adminHref}
             className="flex items-center gap-2 rounded-[4px] bg-signal px-3.5 py-2.5 font-mono text-label text-void uppercase transition-colors hover:bg-white md:px-4"

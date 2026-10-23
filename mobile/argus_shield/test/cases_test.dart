@@ -1,5 +1,4 @@
-// Tests for the Cases tab and the case details page.
-// Uses AdminFakeService, which keeps everything in memory.
+// The Cases tab and the case details page, against AdminFakeService.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

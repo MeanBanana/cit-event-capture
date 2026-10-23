@@ -1,29 +1,23 @@
 """
-End-to-end tests for the 'submissions' storage bucket
-(migration 20261009090000_submissions_bucket.sql) and backend/upload_results.py.
+End-to-end tests for the 'submissions' bucket
+(20261009090000_submissions_bucket.sql) and backend/upload_results.py.
 
-No pytest needed. Needs supabase, python-dotenv, requests and pillow (all already in
-ai/requirements.txt); boto3 only for the optional S3 test.
+Plain script, no pytest. Needs supabase, python-dotenv, requests and pillow,
+which are all in ai/requirements.txt already. boto3 is only for the optional
+S3 test.
 
-Runs against a LOCAL Supabase only (it creates users and data):
+Local Supabase only, it creates real users and data:
 
-    cd database
-    supabase start
-    supabase db reset          # applies all migrations
-    cd ..
+    cd database && supabase start && supabase db reset && cd ..
     python tests/test_submissions_storage.py
 
-Defaults match `supabase start`. If `supabase status` shows different keys,
-set them first (PowerShell: $env:ARGUS_TEST_SERVICE_KEY = "...").
-    ARGUS_TEST_URL           http://127.0.0.1:54321
-    ARGUS_TEST_ANON_KEY      anon key          (from `supabase status`)
-    ARGUS_TEST_SERVICE_KEY   service_role key  (from `supabase status`)
-    ARGUS_TEST_S3_KEY / ARGUS_TEST_S3_SECRET   S3 access keys (S3 test skipped without them)
+The defaults match `supabase start`. If `supabase status` shows different
+keys, set ARGUS_TEST_URL / ARGUS_TEST_ANON_KEY / ARGUS_TEST_SERVICE_KEY.
+The S3 test only runs if ARGUS_TEST_S3_KEY and ARGUS_TEST_S3_SECRET are set.
 
-Every check goes through the same Auth / Storage / REST APIs the app uses:
-accounts are created with the Auth admin API (like create-investigator) and
-then SIGN IN with email + password, so the bucket's RLS policies are what
-decides each result.
+Unlike the other DB tests this goes through the real Auth/Storage/REST APIs:
+accounts get created with the Auth admin API, then actually sign in with
+email and password, so it's the bucket's RLS policies deciding every result.
 """
 
 import io
@@ -46,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 import upload_results as uploader  # noqa: E402
 
-# Default local keys printed by `supabase start` (public demo keys, not secrets)
+# The well-known local demo keys `supabase start` prints, not real secrets
 DEMO_ANON = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6"
              "ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0")
 DEMO_SERVICE = ("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6"
@@ -56,10 +50,10 @@ URL = os.environ.get("ARGUS_TEST_URL", "http://127.0.0.1:54321")
 ANON_KEY = os.environ.get("ARGUS_TEST_ANON_KEY", DEMO_ANON)
 SERVICE_KEY = os.environ.get("ARGUS_TEST_SERVICE_KEY", DEMO_SERVICE)
 BUCKET = "submissions"
-RUN = uuid.uuid4().hex[:8]          # keeps re-runs apart
+RUN = uuid.uuid4().hex[:8]          # so repeated runs don't collide
 PASSWORD = "Test-password-123!"
 
-# Never run this against a hosted project
+# Safety net, this must never point at a hosted project
 if urlparse(URL).hostname not in ("127.0.0.1", "localhost"):
     sys.exit(f"Refusing to run against {URL}: these tests create users and data. Local Supabase only.")
 
@@ -70,7 +64,7 @@ class Skip(Exception):
 
 
 def expect_error(fn, contains=None):
-    """The call must be refused. Returns the error text."""
+    """Expect the call to be refused, and return the error text."""
     try:
         fn()
     except Exception as e:  # noqa: BLE001
@@ -88,7 +82,7 @@ _clients = {}
 
 
 def client_for(user):
-    """A Supabase client signed in as that user, like the app after login."""
+    """Client signed in as that user, same as the app after login."""
     if user["email"] not in _clients:
         c = create_client(URL, ANON_KEY)
         c.auth.sign_in_with_password({"email": user["email"], "password": PASSWORD})
@@ -97,9 +91,9 @@ def client_for(user):
 
 
 def make_user(name, role, meta=None):
-    """Create a login through the Auth admin API (role in app_metadata, like
-    the create-investigator Edge Function). The database's sign-up trigger
-    makes the "User" row."""
+    """Make a login via the Auth admin API, putting the role in app_metadata
+    the way create-investigator does. The sign-up trigger creates the
+    "User" row."""
     email = f"{name}.{RUN}@test.local"
     res = service().auth.admin.create_user({
         "email": email, "password": PASSWORD, "email_confirm": True,
@@ -127,7 +121,7 @@ VIDEO = b"\x00\x00\x00\x18ftypmp42" + os.urandom(2048)   # mp4 header + filler
 
 
 def report_incident(user):
-    """Citizen reports an incident through the REST API, as the app does."""
+    """Citizen reports an incident through the REST API, like the app."""
     return client_for(user).table("crimescene").insert({
         "location": "N1, Midrand", "datetime": "2026-10-08T18:30:00+02:00",
         "reportedby": user["userid"], "description": "test"}).execute().data[0]["incidentid"]
@@ -151,7 +145,7 @@ def names_in(client, folder):
 
 # ------------------------------------------------------------------ setup
 SUBMISSION = 7
-PROCESSED_AT = "2026-10-08T17:01:55.918215"      # ai/main.py writes local time, no zone
+PROCESSED_AT = "2026-10-08T17:01:55.918215"      # main.py writes local time with no zone
 
 
 def pic(folder, name):
@@ -159,8 +153,8 @@ def pic(folder, name):
 
 
 def make_submission(tmp, processed_at=PROCESSED_AT, second_file_error=False):
-    """A results.json in the ai/main.py submission format (2 files), with a
-    small picture for every path it mentions, in ai/crops/submission N/."""
+    """A two-file results.json in main.py's format, plus a tiny image for every
+    path it mentions, under ai/crops/submission N/."""
     clip = {
         "source_path": "C:\\Users\\someone\\Videos\\clip1.mp4", "source_type": "video",
         "crops_folder": f"crops\\submission {SUBMISSION}\\1_clip1",
@@ -215,8 +209,8 @@ def picture_names(result):
 
 
 def build_world(tmp):
-    """Two citizens with one incident each, two investigators, an admin,
-    alice's two files uploaded and one AI run stored by the pipeline."""
+    """Fixture: two citizens with an incident each, two investigators, an admin,
+    alice's two files uploaded and one AI run stored."""
     w = {
         "alice": make_user("alice", "citizen"),
         "bob": make_user("bob", "citizen"),
@@ -239,7 +233,7 @@ def build_world(tmp):
                                            [w["media_a"], w["media_a2"]], client=service())
     w["ai_folder"] = w["ai_json"].rsplit("/", 1)[0]
 
-    # admin puts incident A in a case and assigns ivan (ian stays unassigned)
+    # admin puts incident A in a case and assigns ivan, ian stays unassigned
     adm = client_for(w["admin"])
     w["case"] = adm.rpc("create_case", {"p_title": f"Test {RUN}",
                                         "p_incidentids": [w["inc_a"]]}).execute().data
@@ -318,9 +312,9 @@ def test_media_row_must_point_into_own_incident(w):
 
 def test_app_users_cannot_set_ai_pointer(w):
     before = media_row(w["media_a"])["airesultpath"]
-    # citizens may not update media rows at all: the update matches nothing
+    # citizens can't update media rows at all, the update just matches nothing
     client_for(w["alice"]).table("media").update({"airesultpath": "x"}).eq("mediaid", w["media_a"]).execute()
-    # admins may update media rows, but not the AI fields
+    # admins can update media rows, just not the AI fields
     expect_error(lambda: client_for(w["admin"]).table("media").update({"airesultpath": "x"})
                  .eq("mediaid", w["media_a"]).execute(), "analysis pipeline only")
     assert media_row(w["media_a"])["airesultpath"] == before
@@ -359,7 +353,7 @@ def test_pipeline_sets_media_pointers(w):
         row = media_row(mid)
         assert row["airesultpath"] == w["ai_json"]
         assert row["processingstatus"] == "completed"
-        # the run's local time, stored as the right moment (not shifted)
+        # the run's local time should be stored as the right moment, not shifted
         assert datetime.fromisoformat(row["airesultat"]) == datetime.fromisoformat(PROCESSED_AT).astimezone()
 
 
@@ -376,7 +370,7 @@ def test_rerun_keeps_old_result_and_marks_failed_file(w):
 
 
 def test_uploader_refuses_wrong_media(w):
-    # one media id per file
+    # need one media id per file
     expect_error(lambda: uploader.upload_results(w["result"], w["json_path"], w["inc_a"],
                                                  [w["media_a"]], client=service()), "one per file")
     # bob's file is not part of alice's incident
@@ -431,7 +425,7 @@ def test_command_line_upload(w):
     assert ok.returncode == 0, ok.stderr
     assert f"Uploaded to Supabase Storage: {BUCKET}/{w['inc_a']}/ai/" in ok.stdout, ok.stdout
 
-    # the copy main.py writes next to itself (ai/output_detections.json) works too
+    # the copy main.py drops next to itself (ai/output_detections.json) works too
     copy_path = json_path.parents[2] / "output_detections.json"
     copy_path.write_text(json_path.read_text(encoding="utf-8"), encoding="utf-8")
     ok2 = subprocess.run([sys.executable, script, str(copy_path), "--incident", str(w["inc_a"]),

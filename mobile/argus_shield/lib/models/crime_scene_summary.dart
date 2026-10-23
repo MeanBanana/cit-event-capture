@@ -1,70 +1,63 @@
-// crime_scene_summary.dart — one reported incident (a "submission") as the
-// admin screens need it.
+// One reported incident (a "submission") as the admin screens see it.
 
-/// Field names follow public.crimescene (incidentid, location, datetime,
-/// attacktype, status, description, reportedby, datereported, caseid,
-/// reviewstatus, reviewedat, reviewnote, duplicateof, latitude, longitude,
-/// locationkey, aisummary, aisummarystatus, aisummaryat). The
-/// reporter's name comes from public."User" via reportedby, the media
-/// count from public.media, and the vehicle / person / weapon counts and
-/// plates from the AI's detections. Rows come from the list_submissions
-/// database function (see SupabaseService.listSubmissionsPage).
+/// Fields mirror public.crimescene. On top of that we get the reporter's name
+/// from "User", the media count, and the AI's vehicle/person/weapon counts
+/// and plates. Rows come from list_submissions (see
+/// SupabaseService.listSubmissionsPage).
 class CrimeSceneSummary {
   final int incidentId;
   final String location;
-  final DateTime dateTime; // when the incident happened
+  final DateTime dateTime; // when it happened
   final String? attackType; // nullable in the database
   final String status; // 'open' | 'under_review' | 'closed'
   final String? description; // nullable in the database
   final int reportedBy; // User.userid
   final String reporterName; // User.firstname + surname
-  final int mediaCount; // rows in media for this incident
-  final DateTime? dateReported; // when it was reported (submitted)
-  final int? caseId; // the case it belongs to; null = not in a case yet
-  final String? caseTitle; // title of that case
+  final int mediaCount; // number of media rows
+  final DateTime? dateReported; // when it was submitted
+  final int? caseId; // null if it's not in a case yet
+  final String? caseTitle;
 
-  /// The admin's decision: 'pending' (not reviewed yet), 'accepted' (in a
-  /// case), 'rejected', or 'duplicate' (of [duplicateOf]).
+  /// The admin's decision: 'pending', 'accepted' (it's in a case),
+  /// 'rejected', or 'duplicate' (of [duplicateOf]).
   final String reviewStatus;
   final DateTime? reviewedAt;
-  final String? reviewNote; // e.g. why it was rejected
+  final String? reviewNote; // e.g. why it got rejected
   final int? duplicateOf; // incidentid of the original
 
-  final double? latitude; // from the phone's GPS, when it was shared
+  final double? latitude; // phone GPS, if they shared it
   final double? longitude;
 
-  /// The location in a standard form ("N1, Midrand" -> "n1 midrand"),
-  /// used to group submissions by location.
+  /// Normalised location ("N1, Midrand" -> "n1 midrand") for grouping.
   final String? locationKey;
 
-  /// The AI's short summary of all this submission's footage (null until
-  /// the AI pipeline has written one).
+  /// The AI's short summary of the footage. Null until the pipeline writes one.
   final String? aiSummary;
 
-  /// 'none' (not analysed), 'processing', 'ready', 'outdated' (new footage
-  /// added since the summary) or 'failed'.
+  /// 'none' (not analysed), 'processing', 'ready', 'outdated' (footage added
+  /// since) or 'failed'.
   final String aiSummaryStatus;
   final DateTime? aiSummaryAt;
 
-  /// What the AI saw: the most vehicles / people / weapons in any one clip,
-  /// and up to 3 number plates it read.
+  /// What the AI saw: max vehicles/people/weapons in any one clip, and up to
+  /// 3 plates.
   final int vehicleCount;
   final int personCount;
   final int weaponCount;
   final List<String> plates;
 
-  /// People the AI saw that no investigator has reviewed yet (most in one
-  /// clip), and people an investigator on the case confirmed as suspects.
-  /// Under POPIA only these counts are shown until someone is confirmed.
+  /// Unreviewed people the AI saw (max in one clip) and people an
+  /// investigator confirmed. Under POPIA we only show counts until someone's
+  /// confirmed.
   final int possibleSuspects;
   final int confirmedSuspects;
 
-  /// Earliest capture time in the footage's own metadata (null when no
-  /// clip has one). Better evidence than the time the citizen typed.
+  /// Earliest capture time from the footage itself, null if no clip has
+  /// one. More trustworthy than what the citizen typed.
   final DateTime? capturedAt;
 
-  /// True when [capturedAt] and the typed [dateTime] are more than 3 hours
-  /// apart: the admin should check which one is right.
+  /// True if [capturedAt] and the typed [dateTime] are more than 3 hours
+  /// apart, so the admin should check which is right.
   final bool timeMismatch;
 
   const CrimeSceneSummary({
@@ -100,9 +93,8 @@ class CrimeSceneSummary {
     this.timeMismatch = false,
   });
 
-  /// Builds one from a row returned by list_submissions
-  /// (keys are the database column names). Times are converted to the
-  /// phone's local time for display.
+  /// Build one from a list_submissions row (keys are the column names).
+  /// Times get converted to the phone's local time for display.
   factory CrimeSceneSummary.fromMap(Map<String, dynamic> row) {
     DateTime? time(String key) => row[key] == null
         ? null
@@ -116,7 +108,7 @@ class CrimeSceneSummary {
       status: row['status'] as String,
       description: row['description'] as String?,
       reportedBy: (row['reportedby'] as num).toInt(),
-      // null when the signed-in user may not see the reporter's profile
+      // null if the user isn't allowed to see the reporter's profile
       reporterName: (row['reportername'] as String?) ?? 'Unknown',
       mediaCount: (row['mediacount'] as num?)?.toInt() ?? 0,
       dateReported: time('datereported'),
@@ -143,17 +135,17 @@ class CrimeSceneSummary {
     );
   }
 
-  /// numeric columns arrive as a number, or as text for large precision
+  /// numeric columns can come back as a number, or as a string for big precision
   static double? _toDouble(Object? value) => switch (value) {
         num n => n.toDouble(),
         String s => double.tryParse(s),
         _ => null,
       };
 
-  /// Display reference, e.g. incident 42 → "INC-0042".
+  /// e.g. incident 42 -> "INC-0042"
   String get reference => incidentReference(incidentId);
 
-  /// "CASE-0003" when in a case, otherwise null.
+  /// "CASE-0003" if it's in a case, otherwise null.
   String? get caseReference =>
       caseId == null ? null : 'CASE-${caseId.toString().padLeft(4, '0')}';
 
@@ -164,11 +156,10 @@ class CrimeSceneSummary {
 
   bool get hasGps => latitude != null && longitude != null;
 
-  /// The best time we have for when it happened: the footage's capture
-  /// time, otherwise the time the citizen typed.
+  /// Best guess at when it happened: capture time, or else the typed time.
   DateTime get bestTime => capturedAt ?? dateTime;
 
-  /// True when the AI found anything worth showing as a chip.
+  /// True if the AI found anything worth a chip.
   bool get hasAiFacts =>
       vehicleCount > 0 ||
       personCount > 0 ||
@@ -178,6 +169,6 @@ class CrimeSceneSummary {
       confirmedSuspects > 0;
 }
 
-/// 42 → "INC-0042".
+/// 42 -> "INC-0042"
 String incidentReference(int incidentId) =>
     'INC-${incidentId.toString().padLeft(4, '0')}';

@@ -1,11 +1,11 @@
-// crime_scene_fake_service.dart — an in-memory stand-in for SupabaseService
-// for the crime scene / corrections tests. It keeps each crime scene as the
-// JSON get_crime_scene returns and applies corrections the way
-// correct_detection does (value, "corrected" flag, log entry), so a test can
-// correct something and see the page update.
+// In-memory stand-in for SupabaseService for the crime scene/corrections
+// tests. Each scene is kept as the JSON get_crime_scene would return, and
+// corrections get applied the way correct_detection does them (value,
+// corrected flag, log entry), so a test can correct something and watch the
+// page update.
 //
-// Every call is recorded in [calls], e.g. 'correct:12:plate:ND654321:Clear'.
-// (No "_test" in the file name, so `flutter test` doesn't run it on its own.)
+// Every call gets logged in [calls], e.g. 'correct:12:plate:ND654321:Clear'.
+// No "_test" in the name so `flutter test` doesn't run it on its own.
 
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
@@ -14,7 +14,7 @@ import 'package:argus_shield/models/case_summary.dart';
 import 'package:argus_shield/models/crime_scene.dart';
 import 'package:argus_shield/models/submission_groups.dart';
 
-/// One detection as get_crime_scene returns it.
+/// A detection, shaped like get_crime_scene returns it.
 Map<String, dynamic> fakeDetection(
   int id,
   String kind,
@@ -44,8 +44,8 @@ Map<String, dynamic> fakeDetection(
       'correction_count': 0,
     };
 
-/// A crime scene as get_crime_scene returns it. [status]: 'done',
-/// 'pending', 'analysing', 'failed', 'no_footage'.
+/// A crime scene shaped like get_crime_scene returns it. [status] is one of
+/// 'done', 'pending', 'analysing', 'failed', 'no_footage'.
 Map<String, dynamic> fakeScene(
   int incidentId, {
   int caseId = 3,
@@ -106,7 +106,7 @@ Map<String, dynamic> fakeScene(
   };
 }
 
-/// One card row as list_case_crime_scenes returns it.
+/// A card row, shaped like list_case_crime_scenes returns it.
 Map<String, dynamic> fakeCardRow(
   int incidentId, {
   String status = 'done',
@@ -148,10 +148,10 @@ class CrimeSceneFakeService extends SupabaseService {
   final String caseStatus;
   final List<String> calls = [];
 
-  /// Makes correctDetection fail with this database message.
+  /// Make correctDetection fail with this database message.
   String? failWith;
 
-  /// How many of the next getCrimeScene calls fail (e.g. no network).
+  /// How many of the next getCrimeScene calls should fail (e.g. no network).
   int failLoads = 0;
 
   @override

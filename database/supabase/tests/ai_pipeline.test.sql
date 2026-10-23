@@ -1,23 +1,15 @@
--- =====================================================================
 -- pgTAP tests for the AI pipeline migrations (20261012100000/100100/100200).
--- Run with the Supabase CLI from the database folder:
+-- From database/:  supabase start && supabase test db
 --
---     supabase start
---     supabase test db
---
--- Everything happens in one transaction that is rolled back.
--- The full end-to-end tests (worker + ai/case_matcher.py) are in
--- tests/test_ai_pipeline_db.py.
--- =====================================================================
+-- Runs in a single transaction that gets rolled back. The proper end-to-end
+-- tests (worker + case_matcher) are in tests/test_ai_pipeline_db.py.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
 SELECT plan(43);
 
--- ---------------------------------------------------------------------
--- Structure
--- ---------------------------------------------------------------------
+-- --- structure
 SELECT has_table('public', 'aijob', 'job queue table exists');
 SELECT has_table('public', 'aiworker', 'worker heartbeat table exists');
 SELECT has_table('public', 'caseentity', 'case people / vehicles / weapons table exists');
@@ -38,9 +30,7 @@ SELECT ok((SELECT bool_and(relrowsecurity) FROM pg_class
 SELECT policies_are('public', 'caseentity', ARRAY['caseentity_select'], 'caseentity: read policy only');
 SELECT policies_are('public', 'aijob', ARRAY[]::name[], 'aijob: no policies (service key only)');
 
--- ---------------------------------------------------------------------
--- Privileges
--- ---------------------------------------------------------------------
+-- --- privileges
 SELECT function_privs_are('public', 'claim_next_job', ARRAY['text'], 'authenticated', ARRAY[]::text[],
                           'app users cannot claim jobs');
 SELECT function_privs_are('public', 'claim_next_job', ARRAY['text'], 'service_role', ARRAY['EXECUTE'],
@@ -60,9 +50,7 @@ SELECT function_privs_are('public', 'queue_ai_job', ARRAY['text', 'integer', 'in
 SELECT table_privs_are('public', 'aijob', 'authenticated', ARRAY[]::text[], 'app users have no access to aijob');
 SELECT table_privs_are('public', 'caseentity', 'authenticated', ARRAY['SELECT'], 'app users can only read caseentity');
 
--- ---------------------------------------------------------------------
--- Test data: an admin, a citizen and an incident with two files
--- ---------------------------------------------------------------------
+-- --- test data: an admin, a citizen, and an incident with two files
 INSERT INTO auth.users (id, email, raw_user_meta_data, raw_app_meta_data) VALUES
   ('11111111-1111-1111-1111-111111111111', 'tap_admin@example.com',
    '{"username": "tap_admin", "firstname": "Tap", "surname": "Admin"}', '{"role": "admin"}'),
@@ -81,9 +69,7 @@ UPDATE t SET inc = (SELECT max(incidentid) FROM public.crimescene);
 INSERT INTO public.media (incidentid, uploadedby, mediatype, storagepath)
 SELECT inc, citizen, 'video', inc || '/media/clip' || n || '.mp4' FROM t, generate_series(1, 2) n;
 
--- ---------------------------------------------------------------------
--- Queue: submit twice as the citizen -> one job
--- ---------------------------------------------------------------------
+-- --- queue: citizen submits twice, we should still get one job
 DO $$ BEGIN PERFORM set_config('request.jwt.claims', '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}', true); END $$;
 SET LOCAL ROLE authenticated;
 CREATE TEMP TABLE submitted ON COMMIT DROP AS
@@ -103,9 +89,7 @@ SELECT throws_ok('SELECT * FROM public.claim_next_job(''app'')', '42501', NULL,
 SELECT is((SELECT count(*)::integer FROM public.caseentity), 0, 'a citizen sees no case entities');
 RESET ROLE;
 
--- ---------------------------------------------------------------------
--- Worker: claim, second claim gets nothing, save, finish
--- ---------------------------------------------------------------------
+-- --- worker: claim, a second claim gets nothing, save, finish
 SET LOCAL ROLE service_role;
 SELECT is((SELECT kind::text FROM public.claim_next_job('tap-worker')), 'analyse', 'the worker gets the job');
 SELECT is((SELECT count(*)::integer FROM public.claim_next_job('tap-worker-2')), 0,
@@ -146,9 +130,7 @@ SELECT is((SELECT array_agg(processingstatus::text ORDER BY mediaid) FROM public
             WHERE incidentid = (SELECT inc FROM t)),
           ARRAY['completed', 'failed'], 'the broken file is marked failed');
 
--- ---------------------------------------------------------------------
--- Accept into a case -> merge job; the admin can't fake AI output
--- ---------------------------------------------------------------------
+-- --- accepting into a case queues a merge, and the admin can't fake AI output
 DO $$ BEGIN PERFORM set_config('request.jwt.claims', '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}', true); END $$;
 SET LOCAL ROLE authenticated;
 CREATE TEMP TABLE made ON COMMIT DROP AS
@@ -166,13 +148,11 @@ SELECT is((SELECT array_agg(kind::text) FROM public.aijob
             WHERE caseid = (SELECT caseid FROM made) AND status = 'queued'),
           ARRAY['merge'], 'accepting queues a merge');
 
--- ---------------------------------------------------------------------
--- Suggestion rule (match_incidents)
--- ---------------------------------------------------------------------
+-- --- suggestion rule (match_incidents)
 INSERT INTO public.crimescene (location, datetime, reportedby, latitude, longitude)
-SELECT 'Near', '2026-10-12 10:20+00'::timestamptz, citizen, -26.1076, 28.0597 FROM t       -- ~300 m, 20 min
+SELECT 'Near', '2026-10-12 10:20+00'::timestamptz, citizen, -26.1076, 28.0597 FROM t       -- about 300m away, 20 min later
 UNION ALL
-SELECT 'Far',  '2026-10-12 10:20+00', citizen, -25.7500, 28.1900 FROM t;     -- ~45 km
+SELECT 'Far',  '2026-10-12 10:20+00', citizen, -25.7500, 28.1900 FROM t;     -- about 45km away
 
 SELECT is((SELECT count(*)::integer FROM public.match_incidents(
              ARRAY[(SELECT incidentid FROM public.crimescene WHERE location = 'Near')],
@@ -181,9 +161,7 @@ SELECT is((SELECT count(*)::integer FROM public.match_incidents(
              ARRAY[(SELECT incidentid FROM public.crimescene WHERE location = 'Far')],
              ARRAY[(SELECT inc FROM t)])), 0, '45 km apart, no plate -> not suggested');
 
--- ---------------------------------------------------------------------
--- Deleting a case that has AI work still works
--- ---------------------------------------------------------------------
+-- --- deleting a case with AI work on it still works
 SELECT lives_ok(format('DELETE FROM public.cases WHERE caseid = %s', (SELECT caseid FROM made)),
                 'a case can still be deleted');
 

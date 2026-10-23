@@ -1,9 +1,5 @@
--- =====================================================================
--- Argus Shield: remove suspect.behaviouralindicators
---
--- Not used by the app or any policy. Weapons now have their own table
--- (weapondetail), and physical/clothing descriptions stay on suspect.
--- Any text already stored in this column is deleted.
--- =====================================================================
+-- Drop suspect.behaviouralindicators. Nothing in the app or the policies
+-- uses it, weapons have their own table now, and physical/clothing
+-- descriptions stay on suspect. Whatever was in the column is gone.
 
 ALTER TABLE public.suspect DROP COLUMN behaviouralindicators;

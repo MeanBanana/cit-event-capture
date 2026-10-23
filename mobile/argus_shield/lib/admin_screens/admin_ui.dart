@@ -1,12 +1,12 @@
-// admin_ui.dart — small pieces shared by the admin screens: date formats,
-// status tags, error messages, snackbars and confirm dialogs.
+// Small bits the admin screens share: date formatting, status tags, error
+// messages, snackbars and confirm dialogs.
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/connection_status.dart';
 
-/// 28/09/2026 14:35 — formatted without adding the intl package.
+/// 28/09/2026 14:35. Done by hand so we don't need the intl package.
 String formatDateTime(DateTime d) {
   String two(int n) => n.toString().padLeft(2, '0');
   return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
@@ -18,8 +18,7 @@ String formatDate(DateTime d) {
   return '${two(d.day)}/${two(d.month)}/${d.year}';
 }
 
-/// Incident or case status ('open' / 'under_review' / 'closed') → label
-/// and colour.
+/// Case/incident status ('open' / 'under_review' / 'closed') -> label and colour.
 (String, Color) statusStyle(String status) {
   switch (status) {
     case 'open':
@@ -33,7 +32,7 @@ String formatDate(DateTime d) {
   }
 }
 
-/// The admin's review decision on a submission → label and colour.
+/// Review decision -> label and colour.
 (String, Color) reviewStyle(String reviewStatus) {
   switch (reviewStatus) {
     case 'pending':
@@ -49,7 +48,7 @@ String formatDate(DateTime d) {
   }
 }
 
-/// Small outlined label, e.g. "OPEN" or "PENDING REVIEW".
+/// Small outlined label like "OPEN" or "PENDING REVIEW".
 class StatusTag extends StatelessWidget {
   final String label;
   final Color color;
@@ -72,7 +71,7 @@ class StatusTag extends StatelessWidget {
   }
 }
 
-/// Icon + text line used on cards and detail pages.
+/// Icon + text line for cards and detail pages.
 class DetailLine extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -108,7 +107,7 @@ class DetailLine extends StatelessWidget {
   }
 }
 
-/// Courier heading for a section of a detail page, e.g. "INVESTIGATORS".
+/// Courier section heading on a detail page, e.g. "INVESTIGATORS".
 class SectionLabel extends StatelessWidget {
   final String text;
   final Widget? trailing;
@@ -134,7 +133,7 @@ class SectionLabel extends StatelessWidget {
   }
 }
 
-/// Small outlined action button (Reject / View / Accept ...).
+/// Small outlined action button (Reject / View / Accept etc).
 class SmallActionButton extends StatelessWidget {
   final String label;
   final Color color;
@@ -149,7 +148,7 @@ class SmallActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // White ("neutral") buttons turn dark in light mode.
+    // white ("neutral") buttons need to go dark in light mode
     final color =
         this.color == AppColors.textPrimary ? pageInk(context) : this.color;
     return OutlinedButton(
@@ -167,15 +166,15 @@ class SmallActionButton extends StatelessWidget {
   }
 }
 
-/// A readable message for an error thrown by SupabaseService. Messages
-/// raised by our database functions (e.g. "Case 5 is closed ...") are
-/// shown as they are.
+/// Turn an error from SupabaseService into something readable. Messages our
+/// own database functions raise (like "Case 5 is closed ...") are shown
+/// as-is.
 String errorText(Object error) {
-  // No internet / server not answering: a friendly sentence instead of the
-  // raw exception (and the strip at the top of the screen appears).
+  // No internet or the server isn't answering: show a friendly line instead
+  // of the raw exception (the connection strip at the top shows up too).
   if (isNetworkError(error)) return networkErrorText(error);
   if (error is PostgrestException) return error.message;
-  // Edge Functions (e.g. create-investigator) answer { "error": "..." }.
+  // Edge Functions reply with { "error": "..." }
   if (error is FunctionException) {
     final details = error.details;
     if (details is Map && details['error'] is String) {
@@ -194,7 +193,7 @@ void showSnack(BuildContext context, String message) {
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
-/// Yes/no question. Returns true only when the user confirms.
+/// Yes/no dialog. Only returns true if they confirm.
 Future<bool> confirmAction(
   BuildContext context, {
   required String title,
@@ -226,8 +225,8 @@ Future<bool> confirmAction(
   return result ?? false;
 }
 
-/// Small filled chip for a fact the AI found, e.g. "2 vehicles" or a
-/// number plate. Optional [icon] in front.
+/// Small filled chip for something the AI found, e.g. "2 vehicles" or a
+/// plate. [icon] is optional.
 class FactChip extends StatelessWidget {
   final String label;
   final IconData? icon;
@@ -251,7 +250,7 @@ class FactChip extends StatelessWidget {
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 4),
           ],
-          // Flexible + ellipsis: a long reason never overflows the chip
+          // Flexible + ellipsis so a long reason can't overflow the chip
           Flexible(
             child: Text(label,
                 overflow: TextOverflow.ellipsis,
@@ -263,17 +262,16 @@ class FactChip extends StatelessWidget {
   }
 }
 
-/// "1 vehicle" / "2 vehicles".
+/// "1 vehicle" / "2 vehicles"
 String plural(int n, String one, [String? many]) =>
     '$n ${n == 1 ? one : (many ?? '${one}s')}';
 
-/// What a card says about suspects, e.g. "2 confirmed suspects · about 1
-/// possible suspect awaiting investigator review". Null when there are
-/// none of either.
+/// The suspect line on a card, e.g. "2 confirmed suspects · about 1
+/// possible suspect awaiting investigator review". Null if there are none.
 ///
-/// Possible suspects are people the AI saw that no investigator has
-/// reviewed yet; only an investigator assigned to the case can confirm or
-/// dismiss them (POPIA), so the admin screens only ever show this count.
+/// Possible suspects are people the AI saw that nobody has reviewed yet.
+/// Only investigators on the case can confirm or dismiss them (POPIA), so
+/// the admin screens only ever get the count.
 String? suspectSummary({required int possible, required int confirmed}) {
   if (possible <= 0 && confirmed <= 0) return null;
   final text = [
@@ -284,13 +282,13 @@ String? suspectSummary({required int possible, required int confirmed}) {
   return text[0].toUpperCase() + text.substring(1);
 }
 
-/// Colour for [suspectSummary]: red once someone is confirmed, otherwise
-/// the accent (needs an investigator's attention).
+/// Colour for [suspectSummary]: red once someone's confirmed, otherwise the
+/// accent since it still needs an investigator to look at it.
 Color suspectColor({required int confirmed}) =>
     confirmed > 0 ? AppColors.danger : AppColors.accent;
 
-/// What to say about the AI summary when there isn't a usable one yet.
-/// Returns null when [summary] should be shown as it is.
+/// What to show when there's no usable AI summary yet. Returns null if
+/// [summary] is fine to show as it is.
 String? aiStatusNote(String status, {required bool hasSummary, int mediaCount = 1}) {
   if (mediaCount == 0 && !hasSummary) return 'No footage to analyse';
   switch (status) {
@@ -307,8 +305,8 @@ String? aiStatusNote(String status, {required bool hasSummary, int mediaCount = 
   }
 }
 
-/// The two descriptions of a submission: the citizen's own words and the
-/// AI's summary of the footage. [maxLines] shortens both on cards.
+/// A submission's two descriptions, the citizen's own words and the AI's
+/// summary. [maxLines] trims both on cards.
 class SubmissionDescriptions extends StatelessWidget {
   final String? citizen;
   final String? ai;
@@ -316,8 +314,8 @@ class SubmissionDescriptions extends StatelessWidget {
   final int mediaCount;
   final int? maxLines;
 
-  /// False leaves out the AI SUMMARY block (the submission page shows it in
-  /// its own section, with the people / vehicles / weapons under it).
+  /// False hides the AI SUMMARY block, for the submission page which shows
+  /// it in its own section with the people/vehicles/weapons.
   final bool showAi;
 
   const SubmissionDescriptions({
@@ -402,8 +400,8 @@ class SubmissionDescriptions extends StatelessWidget {
   }
 }
 
-/// A row of choice chips (used for the view and filter rows). Scrolls
-/// sideways on narrow phones.
+/// A row of choice chips for the view/filter rows. Scrolls sideways on
+/// narrow phones.
 class ChipRow<T> extends StatelessWidget {
   final List<(String, T)> options;
   final T selected;
@@ -445,7 +443,7 @@ class ChipRow<T> extends StatelessWidget {
   }
 }
 
-/// The card frame every admin list uses (dark box, thin border, ripple).
+/// Card frame every admin list uses (dark box, thin border, ripple).
 class AdminCard extends StatelessWidget {
   final Widget child;
   final VoidCallback? onTap;

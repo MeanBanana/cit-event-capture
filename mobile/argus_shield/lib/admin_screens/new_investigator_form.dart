@@ -1,12 +1,10 @@
-// new_investigator_form.dart — the form inside the "New investigator" popup
-// (opened by "+ New investigator" on the Investigators tab). The same form,
-// filled in, is the "Update investigator" popup (an investigator card's
-// Update button): there the password is optional.
+// The form in the "New investigator" popup (from "+ New investigator" on the
+// Investigators tab). The same form pre-filled is the "Update investigator"
+// popup, where the password becomes optional.
 //
-// Same look as NewCaseForm (pickers.dart): Courier labels, themed fields, a
-// red error line and one big orange button. The checks here match the
-// create-investigator Edge Function, so most mistakes are caught before
-// anything is sent.
+// Styled like NewCaseForm in pickers.dart. The checks match the
+// create-investigator Edge Function, so most mistakes get caught before we
+// send anything.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,18 +12,18 @@ import 'package:argus_shield/theme/app_theme.dart';
 import 'package:argus_shield/admin_screens/admin_ui.dart';
 import 'package:argus_shield/temp_password.dart';
 
-/// What the admin filled in. Optional fields are '' when left empty.
+/// What the admin typed. Optional fields come through as '' when empty.
 class NewInvestigatorDetails {
   final String firstName;
   final String surname;
   final String username;
   final String email;
-  final String phone; // the 9 digits after +27, or ''
+  final String phone; // 9 digits after +27, or ''
   final String rank;
   final String badgeNumber;
   final String station;
   final String unit;
-  final String password; // temporary; changed at their first log-in
+  final String password; // temporary, they change it on first login
 
   const NewInvestigatorDetails({
     required this.firstName,
@@ -42,12 +40,12 @@ class NewInvestigatorDetails {
 }
 
 class NewInvestigatorForm extends StatefulWidget {
-  /// Saves the account. Throw to show the error in the form (the popup
-  /// stays open so nothing typed is lost).
+  /// Saves the account. Throw to show the error in the form; the popup stays
+  /// open so nothing they typed is lost.
   final Future<void> Function(NewInvestigatorDetails details) onCreate;
 
-  /// Update mode: the investigator's current details (password ''). The
-  /// password is then optional: empty keeps their password.
+  /// Update mode: the investigator's current details, with password ''. The
+  /// password is optional then, leaving it empty keeps their current one.
   final NewInvestigatorDetails? initial;
 
   const NewInvestigatorForm({super.key, required this.onCreate, this.initial});
@@ -130,7 +128,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
     }
   }
 
-  // ---- validators (same rules as the Edge Function) ----------------------
+  // --- validators, same rules as the Edge Function
 
   static String? _required(String? value, String message) =>
       (value == null || value.trim().isEmpty) ? message : null;
@@ -160,8 +158,8 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
     return null;
   }
 
-  /// Fills in a random temporary password and shows it, so the admin can
-  /// note it down.
+  /// Fill in a random temporary password and show it so the admin can write
+  /// it down.
   void _generatePassword() {
     setState(() {
       _password.text = generateTempPassword();
@@ -243,7 +241,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
             height: 52,
             child: ElevatedButton(
               onPressed: _saving ? null : _submit,
-              // the theme's button text is 30px; this label is longer
+              // the theme's button text is 30px and this label is longer
               style: ElevatedButton.styleFrom(
                 textStyle: AppText.buttonSmall.copyWith(fontSize: 17),
               ),
@@ -262,7 +260,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
     );
   }
 
-  /// The temporary password, with Show/Hide and a Generate button.
+  /// The temporary password field, with Show/Hide and Generate.
   Widget _passwordField() {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.small),
@@ -318,7 +316,7 @@ class _NewInvestigatorFormState extends State<NewInvestigatorForm> {
     );
   }
 
-  /// A label + text field pair, spaced like NewCaseForm.
+  /// A label and text field, spaced like NewCaseForm.
   Widget _field(
     String label,
     TextEditingController controller, {

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 
 class LoadingScreen extends StatefulWidget {
-  final String resultMessage;   // message shown only here
+  final String resultMessage;
   final Widget nextScreen;
 
   const LoadingScreen({
@@ -19,7 +19,6 @@ class _LoadingScreenState extends State<LoadingScreen> {
   @override
   void initState() {
     super.initState();
-    // Delay before redirecting
     Future.delayed(const Duration(seconds: 3), () {
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -38,7 +37,6 @@ class _LoadingScreenState extends State<LoadingScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Show result message here
               Text(
                 widget.resultMessage,
                 textAlign: TextAlign.center,

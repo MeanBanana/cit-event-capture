@@ -1,17 +1,15 @@
-// connection_status.dart — tells the user, in plain words, when the phone has
-// no internet or the Argus server (Supabase) is not answering.
+// Tells people in plain words when the phone has no internet or Supabase
+// isn't answering.
 //
-//  * `connection` checks the server every 20 seconds while all is well, and
-//    every 5 seconds while it is down, so the message disappears by itself
-//    once the connection is back.
-//  * ConnectionBanner (wrapped around every screen in main.dart) shows a
-//    strip at the top of the screen while there is a problem, with a Retry
-//    button, and "Back online" for a moment when it is fixed.
-//  * networkErrorText(e) turns a raw network exception ("ClientException:
-//    SocketException: Failed host lookup ...") into a friendly sentence for
-//    snackbars and error messages, and asks the monitor to check right away.
+// `connection` pings the server every 20s when things are fine and every 5s
+// while it's down, so the warning clears itself once we're back.
+// ConnectionBanner (wrapped around every screen in main.dart) shows a strip
+// at the top with a Retry button while there's a problem, then "Back online"
+// for a moment. networkErrorText(e) turns raw stuff like "ClientException:
+// SocketException: Failed host lookup" into a friendly sentence, and pokes
+// the monitor to check right away.
 //
-// No extra packages: it uses dart:io (the app only runs on Android / iOS).
+// No extra packages, just dart:io, since the app only runs on Android/iOS.
 
 import 'dart:async';
 import 'dart:io';
@@ -22,8 +20,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_settings.dart';
 import 'theme/app_theme.dart';
 
-/// online: all good. offline: the phone has no internet.
-/// serverDown: the phone has internet, but the Argus server does not answer.
+/// online: all good. offline: the phone has no internet. serverDown: the
+/// phone has internet but our server isn't answering.
 enum NetStatus { online, offline, serverDown }
 
 const String noInternetMessage =
@@ -45,11 +43,11 @@ class ConnectionMonitor extends ChangeNotifier with WidgetsBindingObserver {
   NetStatus get status => _status;
   bool get isOnline => _status == NetStatus.online;
 
-  /// True for a few seconds after the connection came back.
+  /// True for a few seconds after we come back online.
   bool _justRecovered = false;
   bool get justRecovered => _justRecovered;
 
-  /// A check is running (the Retry button shows a spinner).
+  /// A check is in progress (Retry shows a spinner).
   bool _checking = false;
   bool get checking => _checking;
 
@@ -58,8 +56,8 @@ class ConnectionMonitor extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _timer;
   Timer? _recoveredTimer;
 
-  /// Called once from main(). Not started in widget tests, so they make no
-  /// network calls.
+  /// Called once from main(). Widget tests don't start it, so they never hit
+  /// the network.
   void start() {
     if (_started) return;
     _started = true;
@@ -67,7 +65,7 @@ class ConnectionMonitor extends ChangeNotifier with WidgetsBindingObserver {
     checkNow();
   }
 
-  /// Checks the server now (Retry button, or after a failed request).
+  /// Check right now (Retry button, or after a request failed).
   Future<void> checkNow() async {
     if (!_started || _checking) return;
     _timer?.cancel();
@@ -100,8 +98,8 @@ class ConnectionMonitor extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Asks Supabase's auth server if it is healthy. Any answer below 500
-  /// means the server is reachable.
+  /// Ask Supabase's auth server if it's healthy. Anything under 500 means
+  /// it's reachable.
   Future<NetStatus> _probe() async {
     final client = HttpClient()..connectionTimeout = _timeout;
     try {
@@ -113,14 +111,14 @@ class ConnectionMonitor extends ChangeNotifier with WidgetsBindingObserver {
       await response.drain<void>().timeout(_timeout);
       return response.statusCode < 500 ? NetStatus.online : NetStatus.serverDown;
     } catch (_) {
-      // The server did not answer: is it the phone's internet, or the server?
+      // no answer, so is it the phone's internet or the server?
       return await _hasInternet() ? NetStatus.serverDown : NetStatus.offline;
     } finally {
       client.close(force: true);
     }
   }
 
-  /// The phone has internet if it can look up a few well-known sites.
+  /// The phone has internet if it can resolve a few well-known sites.
   Future<bool> _hasInternet() async {
     for (final host in const ['google.com', 'cloudflare.com']) {
       try {
@@ -134,8 +132,8 @@ class ConnectionMonitor extends ChangeNotifier with WidgetsBindingObserver {
     return false;
   }
 
-  // Stop checking while the app is in the background; check straight away
-  // when the user comes back to it.
+  // Don't poll while the app's in the background, and check straight away
+  // when they come back to it.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -149,8 +147,8 @@ class ConnectionMonitor extends ChangeNotifier with WidgetsBindingObserver {
 /// The one monitor for the whole app.
 final connection = ConnectionMonitor._();
 
-/// True when [error] means the request never got an answer: no internet, the
-/// server is down or too slow, or the connection dropped half-way.
+/// True if the request never got an answer: no internet, server down or too
+/// slow, or the connection dropped halfway.
 bool isNetworkError(Object error) {
   if (error is SocketException ||
       error is TimeoutException ||
@@ -176,8 +174,8 @@ bool isNetworkError(Object error) {
   return signs.any(text.contains);
 }
 
-/// The friendly message for a network error (see isNetworkError), and a
-/// signal to the monitor to check the connection now.
+/// Friendly message for a network error (see isNetworkError). Also tells the
+/// monitor to check the connection now.
 String networkErrorText(Object error) {
   connection.checkNow();
   switch (connection.status) {
@@ -186,7 +184,7 @@ String networkErrorText(Object error) {
     case NetStatus.serverDown:
       return serverDownMessage;
     case NetStatus.online:
-      // Not checked yet: a failed name lookup almost always means no internet.
+      // haven't checked yet, but a failed name lookup nearly always means no internet
       final text = error.toString();
       if (text.contains('Failed host lookup') ||
           text.contains('Network is unreachable') ||
@@ -197,8 +195,8 @@ String networkErrorText(Object error) {
   }
 }
 
-/// Shows a strip at the top of every screen while there is no connection.
-/// Used in main.dart: MaterialApp(builder: ...ConnectionBanner(child: ...)).
+/// Shows a strip at the top of every screen while we're offline. Used in
+/// main.dart as MaterialApp(builder: ...ConnectionBanner(child: ...)).
 class ConnectionBanner extends StatelessWidget {
   const ConnectionBanner({super.key, required this.child});
 
@@ -224,8 +222,8 @@ class ConnectionBanner extends StatelessWidget {
             ),
             Expanded(
               // The strip already covers the status bar, so the page below
-              // must not add that space again.
-              // (always the same widgets, so the open screens keep their state)
+              // shouldn't add that padding again. (Same widget tree either
+              // way, so open screens keep their state.)
               child: MediaQuery.removePadding(
                 context: context,
                 removeTop: show,
@@ -270,7 +268,7 @@ class _Strip extends StatelessWidget {
           t('serverDownBody'),
         ),
     };
-    // amber needs dark text; red and green read best with white
+    // dark text on amber, white on red and green
     final ink = status == NetStatus.serverDown ? AppColors.header : Colors.white;
 
     return Material(

@@ -1,31 +1,24 @@
--- =====================================================================
--- Argus Shield: AI pipeline in the database - FUNCTIONS AND TRIGGERS
--- (docs: SUPABASE_AI_PIPELINE.md; tables in 20261012100000_ai_pipeline_tables.sql)
+-- AI pipeline, part 2: the functions and triggers.
+-- Tables are in 20261012100000_ai_pipeline_tables.sql, the write-up is in
+-- database/AI_PIPELINE.md.
 --
---   Citizen app                Database                         AI worker (service key)
---   upload 1-5 files
---   submit_for_analysis(42) -> aijob 'analyse' 42
---                                                 <- claim_next_job('gpu-1')
---                                                    run pipeline, upload crops
---                              detection rows    <- ai_save_analysis(42, results.json)
---                                                 <- finish_job(jobid)
---   Admin accepts           -> crimescene.caseid = 7
---                              trigger: aijob 'merge' 42 -> 7
---                                                 <- claim_next_job
---                                                 <- ai_load_case(7), ai_load_submission(42)
---                                                    case_matcher.merge_submission()
---                              caseentity, links <- ai_save_case(7, case)
---   Admin opens the case    -> get_case_evidence(7)
---   "Is this Person 2?"     -> answer_entity_match(detectionid, yes/no)
---                              (No -> aijob 'rematch')
+-- The flow, roughly:
+--   citizen uploads 1-5 files, calls submit_for_analysis(42) -> 'analyse' job
+--   worker claim_next_job()s it, runs the pipeline, calls ai_save_analysis()
+--     and then finish_job()
+--   admin accepts the submission into case 7 -> trigger queues a 'merge'
+--   worker loads the case + submission, runs case_matcher, ai_save_case()
+--   admin opens the case -> get_case_evidence(7)
+--   admin answers "Is this Person 2?" -> answer_entity_match(), a No queues
+--     a 'rematch'
 --
--- Why the worker writes through functions instead of plain inserts: each
--- save is ONE transaction (a re-run never leaves half old / half new rows,
--- which separate REST calls can't guarantee), and the database checks the
--- data (right incident, pictures in that incident's ai/ folder, human
--- decisions never overwritten).
+-- The worker writes through functions instead of plain inserts for two
+-- reasons. Each save is a single transaction, so a re-run can never leave a
+-- mix of old and new rows (separate REST calls can't promise that). And the
+-- database gets to check what it's given: right incident, pictures in that
+-- incident's own ai/ folder, and no stomping on decisions a person made.
 --
--- Who may call what
+-- Who calls what:
 --   citizen (own incident) / admin   submit_for_analysis
 --   admin                            answer_entity_match, ai_worker_status
 --   admin / assigned investigator    get_case_evidence
@@ -34,21 +27,14 @@
 --                                    ai_load_case, ai_load_submission,
 --                                    ai_save_case
 --
--- Contents
---   1. Small helpers              7. Worker: save a case's people/vehicles/weapons
---   2. Queue helpers              8. Triggers: case membership, protection
---   3. submit_for_analysis        9. get_case_evidence
---   4. claim_next_job, finish_job 10. answer_entity_match
---   5. Worker heartbeat / status  11. list_cases + AI summary
---   6. Worker: save an analysis   12. Privileges
--- =====================================================================
+-- Sections: 1 helpers, 2 queue helpers, 3 submit, 4 claim/finish, 5 worker
+-- status, 6 save analysis, 7 load/save case, 8 triggers, 9 get_case_evidence,
+-- 10 answer_entity_match, 11 list_cases, 12 privileges.
 
 
--- ---------------------------------------------------------------------
--- 1. Small helpers (results.json values -> column values, never failing)
--- ---------------------------------------------------------------------
+-- --- 1. helpers for turning results.json values into columns (they never raise)
 
--- '2026-10-08T17:01:55+02:00' -> timestamptz; NULL for anything unreadable
+-- ISO timestamp text -> timestamptz, NULL if it won't parse
 CREATE OR REPLACE FUNCTION public.ai_try_timestamptz(p_text text)
   RETURNS timestamptz
   LANGUAGE plpgsql STABLE
@@ -61,7 +47,7 @@ EXCEPTION WHEN others THEN
 END;
 $$;
 
--- JSON number -> numeric (NULL for anything else)
+-- JSON number -> numeric, NULL for anything else
 CREATE OR REPLACE FUNCTION public.ai_num(p_value jsonb)
   RETURNS numeric
   LANGUAGE sql IMMUTABLE
@@ -70,7 +56,7 @@ AS $$
   SELECT CASE WHEN jsonb_typeof(p_value) = 'number' THEN p_value::text::numeric END
 $$;
 
--- JSON list of p_dims numbers -> pgvector (NULL when missing or wrong size)
+-- JSON array of p_dims numbers -> pgvector, NULL if missing or the wrong length
 CREATE OR REPLACE FUNCTION public.ai_vector(p_value jsonb, p_dims integer)
   RETURNS extensions.vector
   LANGUAGE plpgsql IMMUTABLE
@@ -86,9 +72,9 @@ EXCEPTION WHEN others THEN
 END;
 $$;
 
--- How alike two appearance fingerprints are, about 0-1 (NULL if one is
--- missing). Same formula as ai/appearance.py similarity():
--- 0.7 x cosine(embedding) + 0.3 x cosine(colour_hist).
+-- Similarity of two appearance fingerprints, roughly 0-1, NULL if either is
+-- missing. Has to match similarity() in ai/appearance.py:
+-- 0.7 * cosine(embedding) + 0.3 * cosine(colour_hist).
 CREATE OR REPLACE FUNCTION public.appearance_similarity(
   p_emb_a extensions.vector, p_hist_a extensions.vector,
   p_emb_b extensions.vector, p_hist_b extensions.vector)
@@ -106,10 +92,9 @@ AS $$
   FROM c
 $$;
 
--- The pictures of one results.json detection as [{path, type}], in the
--- same order as ai/case_matcher.py _member(). Only paths inside the
--- incident's own ai/ folder are kept (upload_results.py puts them there),
--- so a detection can never point at another incident's files.
+-- A detection's pictures as [{path, type}], in the same order as
+-- case_matcher._member(). We only keep paths inside this incident's own ai/
+-- folder, so a detection can never be pointed at someone else's files.
 CREATE OR REPLACE FUNCTION public.ai_crops(p_det jsonb, p_incidentid integer)
   RETURNS jsonb
   LANGUAGE sql IMMUTABLE
@@ -143,7 +128,7 @@ AS $$
     AND path NOT LIKE '%..%'
 $$;
 
--- "top black, bottom blue · face seen" - same text as case_matcher.describe()
+-- e.g. "top black, bottom blue · face seen". Mirrors case_matcher.describe()
 CREATE OR REPLACE FUNCTION public.ai_entity_description(p_kind text, p_attributes jsonb)
   RETURNS text
   LANGUAGE sql IMMUTABLE
@@ -176,7 +161,7 @@ AS $$
   FROM a
 $$;
 
--- 'p2' / 'Person 2' for an entity
+-- 'p2' / 'Person 2' style ids and labels for an entity
 CREATE OR REPLACE FUNCTION public.ai_entity_key(p_kind text, p_number integer)
   RETURNS text
   LANGUAGE sql IMMUTABLE
@@ -190,11 +175,9 @@ CREATE OR REPLACE FUNCTION public.ai_entity_label(p_kind text, p_number integer)
 AS $$ SELECT initcap(p_kind) || ' ' || p_number $$;
 
 
--- ---------------------------------------------------------------------
--- 2. Queue helpers (internal: only used by the functions below)
--- ---------------------------------------------------------------------
+-- --- 2. queue helpers (internal, only the functions below use these)
 
--- Queue a job unless the same one is already waiting. Returns its id.
+-- Queue a job unless an identical one is already waiting. Returns its id.
 CREATE OR REPLACE FUNCTION public.queue_ai_job(
   p_kind        text,
   p_incidentid  integer DEFAULT NULL,
@@ -214,7 +197,7 @@ BEGIN
     DO NOTHING
   RETURNING jobid INTO v_id;
 
-  IF v_id IS NULL THEN                       -- already waiting
+  IF v_id IS NULL THEN                       -- there's already one waiting
     SELECT j.jobid INTO v_id FROM public.aijob j
     WHERE j.status = 'queued' AND j.kind = p_kind
       AND j.incidentid  IS NOT DISTINCT FROM p_incidentid
@@ -225,9 +208,9 @@ BEGIN
 END;
 $$;
 
--- A running job went wrong (error reported, or its worker stopped
--- answering). Back in the queue while attempts < 3, else 'failed' - and
--- then the app is told: "AI analysis failed" / the case summary failed.
+-- A running job went wrong, either it reported an error or its worker went
+-- quiet. Requeue it while attempts < 3, otherwise mark it failed, which is
+-- what makes the app show "AI analysis failed".
 CREATE OR REPLACE FUNCTION public.ai_job_failed(p_jobid bigint, p_error text)
   RETURNS void
   LANGUAGE plpgsql SECURITY DEFINER
@@ -239,7 +222,7 @@ DECLARE
 BEGIN
   SELECT * INTO v_job FROM public.aijob WHERE jobid = p_jobid FOR UPDATE;
 
-  -- the same work was queued again meanwhile: that one will do it
+  -- the same work got queued again in the meantime, so let that one do it
   v_newer := EXISTS (
     SELECT 1 FROM public.aijob q
     WHERE q.status = 'queued' AND q.jobid <> v_job.jobid AND q.kind = v_job.kind
@@ -273,8 +256,8 @@ BEGIN
 END;
 $$;
 
--- Entities left without any settled picture (first / auto / confirmed) are
--- removed. Their open questions go back to the worker ('rematch').
+-- Delete entities that have no settled pictures left (first/auto/confirmed)
+-- and send their open questions back to the worker as rematches.
 CREATE OR REPLACE FUNCTION public.ai_drop_empty_entities(p_caseid integer)
   RETURNS void
   LANGUAGE plpgsql SECURITY DEFINER
@@ -303,11 +286,10 @@ BEGIN
 END;
 $$;
 
--- A submission leaves its case (removed, moved, rejected, re-analysed):
--- its pictures are taken out of the case's people / vehicles / weapons
--- straight away, entities left empty are deleted, and the worker re-votes
--- the rest ('summary'). Without this a removed submission's crops would
--- stay under "Person 1".
+-- When a submission leaves its case (removed, moved, rejected, re-analysed)
+-- pull its pictures out of the case's entities right away, drop any entity
+-- that ends up empty and get the worker to re-vote the rest. Otherwise a
+-- removed submission's crops would hang around under "Person 1".
 CREATE OR REPLACE FUNCTION public.ai_unmerge_incident(p_incidentid integer, p_caseid integer)
   RETURNS void
   LANGUAGE plpgsql SECURITY DEFINER
@@ -315,7 +297,7 @@ CREATE OR REPLACE FUNCTION public.ai_unmerge_incident(p_incidentid integer, p_ca
 AS $$
 BEGIN
   UPDATE public.detection d
-     SET caseentityid = NULL               -- detection_clear_match clears the rest
+     SET caseentityid = NULL               -- detection_clear_match clears the other fields
     FROM public.media m, public.caseentity e
    WHERE m.mediaid = d.mediaid AND m.incidentid = p_incidentid
      AND e.entityid = d.caseentityid AND e.caseid = p_caseid;
@@ -323,8 +305,8 @@ BEGIN
   UPDATE public.crimescene SET aimerged = false
    WHERE incidentid = p_incidentid AND aimerged;
 
-  -- The whole case is being deleted (release_case_incidents): nothing to
-  -- tidy up, and its row can't be changed while it is being deleted.
+  -- The whole case is being deleted (release_case_incidents), so there's
+  -- nothing to tidy, and Postgres won't let us touch the row mid-delete anyway.
   IF current_setting('argus.deleting_case', true) = p_caseid::text THEN
     RETURN;
   END IF;
@@ -337,13 +319,11 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 3. submit_for_analysis - called by the citizen app after the LAST file
---    of a submission is uploaded (a trigger on media would start the
---    analysis after the first of up to 5 files).
--- ---------------------------------------------------------------------
+-- --- 3. submit_for_analysis
+-- The citizen app calls this once the last file is uploaded. We can't use a
+-- trigger on media because that would fire after the first of up to 5 files.
 CREATE OR REPLACE FUNCTION public.submit_for_analysis(p_incidentid integer)
-  RETURNS bigint                             -- the job id
+  RETURNS bigint                             -- job id
   LANGUAGE plpgsql SECURITY DEFINER
   SET search_path = ''
 AS $$
@@ -357,7 +337,7 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
-  -- one submit at a time per incident (double taps)
+  -- lock per incident so a double tap doesn't queue it twice
   PERFORM 1 FROM public.crimescene WHERE incidentid = p_incidentid FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Incident % not found', p_incidentid;
@@ -370,7 +350,7 @@ BEGIN
     RAISE EXCEPTION 'A submission can have at most 5 files (incident % has %)', p_incidentid, v_files;
   END IF;
 
-  -- already waiting or being analysed: nothing more to do
+  -- already queued or running, nothing to do
   SELECT j.jobid INTO v_job FROM public.aijob j
   WHERE j.kind = 'analyse' AND j.incidentid = p_incidentid
     AND j.status IN ('queued', 'processing')
@@ -386,18 +366,17 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 4. The worker takes and finishes jobs
--- ---------------------------------------------------------------------
+-- --- 4. workers taking and finishing jobs
 
--- Oldest queued job, or no row when there is nothing to do. Safe with
--- several workers: claims happen one at a time, and a job is skipped
--- while another job for the same case or incident is running (two merges
--- into one case at once would overwrite each other).
--- Also puts back jobs whose worker died, max 3 attempts. "Died" = running
--- for more than 60 min AND no heartbeat from its worker for 2 min (a long
--- analysis on a live worker is left alone), running for over 6 hours, or
--- the same worker asking for a new job (one job at a time per worker id).
+-- Hands out the oldest queued job, or nothing. Fine with several workers:
+-- claims are serialised, and we skip a job while another job for the same
+-- case or incident is running (two merges into one case at once would
+-- overwrite each other).
+-- This is also where dead jobs get requeued (max 3 attempts). We treat a job
+-- as dead if it's been running over 60 min and its worker hasn't sent a
+-- heartbeat in 2 min, if it's been running over 6 hours, or if the same
+-- worker asks for a new job (a worker only does one at a time, so it must
+-- have crashed and restarted). A long analysis on a live worker is left be.
 CREATE OR REPLACE FUNCTION public.claim_next_job(p_workerid text)
   RETURNS SETOF public.aijob
   LANGUAGE plpgsql SECURITY DEFINER
@@ -411,12 +390,12 @@ BEGIN
     RAISE EXCEPTION 'Give the worker an id (e.g. the machine name)';
   END IF;
 
-  -- claims take milliseconds; one at a time keeps the "nothing else is
-  -- running for this case" check below exact
+  -- claims are quick, and doing them one at a time keeps the "nothing else
+  -- running for this case" check below accurate
   PERFORM pg_advisory_xact_lock(hashtext('public.claim_next_job'));
 
-  -- a worker does one job at a time: if it asks for a new one, the job it
-  -- still has open was lost (it crashed and started again)
+  -- a worker only does one job at a time, so if it's asking for another the
+  -- one it still has open got lost (crash and restart)
   FOR v_jobid IN
     SELECT j.jobid FROM public.aijob j
     WHERE j.status = 'processing' AND j.workerid = p_workerid
@@ -472,8 +451,8 @@ BEGIN
 END;
 $$;
 
--- The worker is done with a job: no error -> 'done'; an error -> back in
--- the queue (attempts < 3) or 'failed'.
+-- Worker is done with a job. No error means done, otherwise it goes back in
+-- the queue (attempts < 3) or gets marked failed.
 CREATE OR REPLACE FUNCTION public.finish_job(p_jobid bigint, p_error text DEFAULT NULL)
   RETURNS public.aijob
   LANGUAGE plpgsql SECURITY DEFINER
@@ -501,14 +480,14 @@ BEGIN
   RETURNING * INTO v_job;
 
   IF v_job.kind = 'analyse' THEN
-    -- files the run didn't report on were not analysed
+    -- files the run didn't mention weren't analysed
     UPDATE public.media SET processingstatus = 'failed'
      WHERE incidentid = v_job.incidentid AND processingstatus IN ('pending', 'processing');
     UPDATE public.crimescene
        SET aisummarystatus = CASE WHEN aisummary IS NULL THEN 'none' ELSE 'ready' END
      WHERE incidentid = v_job.incidentid AND aisummarystatus = 'processing';
 
-    -- already accepted into a case: combine the new results into it
+    -- it's already in a case, so merge the new results in
     SELECT * INTO v_cs FROM public.crimescene WHERE incidentid = v_job.incidentid;
     IF v_cs.caseid IS NOT NULL AND v_cs.reviewstatus = 'accepted' AND NOT v_cs.aimerged THEN
       PERFORM public.queue_ai_job('merge', v_cs.incidentid, v_cs.caseid);
@@ -519,9 +498,7 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 5. Worker heartbeat and status
--- ---------------------------------------------------------------------
+-- --- 5. worker heartbeat and status
 CREATE OR REPLACE FUNCTION public.ai_worker_heartbeat(
   p_workerid text, p_gpu text DEFAULT NULL, p_version text DEFAULT NULL)
   RETURNS void
@@ -536,8 +513,8 @@ AS $$
         version  = COALESCE(EXCLUDED.version, public.aiworker.version)
 $$;
 
--- For the admin Overview: "AI worker online (RTX 3080, last seen 10 s ago)".
--- online = a heartbeat in the last 90 s (the worker sends one every ~30 s).
+-- For the admin Overview ("AI worker online, RTX 3080, last seen 10s ago").
+-- Online means a heartbeat in the last 90s. The worker sends one every ~30s.
 CREATE OR REPLACE FUNCTION public.ai_worker_status()
   RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -569,17 +546,14 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 6. Worker: save one analysis (the uploaded results.json) in the tables
---
--- p_result = the results.json AS UPLOADED by backend/upload_results.py
--- (picture paths already bucket paths, "mediaid" on every file).
--- One row per tracked object; a re-run of the same file UPDATES its rows
--- (same media + type + track id), so ids, suspect reviews and case links
--- survive. Old rows the new run no longer has are deleted unless a person
--- already worked on them (verified, suspect reviewed, corrected).
--- p_summary = the submission's AI summary text (optional).
--- ---------------------------------------------------------------------
+-- --- 6. ai_save_analysis: store one uploaded results.json
+-- p_result is results.json as upload_results.py uploaded it, so picture paths
+-- are already bucket paths and every file has its mediaid. One row per
+-- tracked object. Re-running the same file updates the existing rows (matched
+-- on media + type + track id) so ids, suspect reviews and case links
+-- survive. Rows the new run doesn't have are deleted, unless someone already
+-- did something with them (verified, reviewed, corrected).
+-- p_summary is the optional AI summary text.
 CREATE OR REPLACE FUNCTION public.ai_save_analysis(
   p_incidentid integer, p_result jsonb, p_summary text DEFAULT NULL)
   RETURNS jsonb
@@ -611,8 +585,8 @@ BEGIN
     RAISE EXCEPTION 'Incident % not found', p_incidentid;
   END IF;
 
-  -- analysed again after it was combined into its case: take the old
-  -- results out first (finish_job queues a fresh merge)
+  -- re-analysed after it was already merged into a case: take the old
+  -- results out first, finish_job will queue a fresh merge
   IF v_cs.aimerged AND v_cs.caseid IS NOT NULL THEN
     PERFORM public.ai_unmerge_incident(p_incidentid, v_cs.caseid);
   END IF;
@@ -629,7 +603,7 @@ BEGIN
     END IF;
     v_files := v_files + 1;
 
-    IF v_file ? 'error' THEN                 -- this file could not be analysed
+    IF v_file ? 'error' THEN                 -- the pipeline couldn't handle this file
       UPDATE public.media SET processingstatus = 'failed' WHERE mediaid = v_mediaid;
       CONTINUE;
     END IF;
@@ -649,7 +623,7 @@ BEGIN
            longitude = COALESCE(round(v_lon, 6), longitude)
      WHERE mediaid = v_mediaid;
 
-    -- people first: weapons point at the person holding them
+    -- people first, because weapons point at whoever is holding them
     v_keep := '{}';
     FOR v_det IN
       SELECT d FROM jsonb_array_elements(COALESCE(v_file -> 'detections', '[]'::jsonb))
@@ -675,7 +649,7 @@ BEGIN
         round(GREATEST(public.ai_num(v_det -> 'last_seen_seconds'),
                        public.ai_num(v_det -> 'first_seen_seconds')), 3),
         public.ai_num(v_det -> 'frames_seen')::integer,
-        -- the rest of what the AI said (paths and fingerprints have their own columns)
+        -- everything else the AI said (paths and fingerprints have their own columns)
         v_det - ARRAY['track_id', 'detection_type', 'bounding_box', 'confidence',
                       'first_seen_seconds', 'last_seen_seconds', 'frames_seen',
                       'model_version', 'appearance', 'person_crop_path', 'face_crop_path',
@@ -699,7 +673,7 @@ BEGIN
       RETURNING detectionid INTO v_detid;
       v_keep := v_keep || v_detid;
 
-      -- details; a value an investigator corrected (correctionlog) is kept
+      -- details, but anything an investigator corrected (correctionlog) stays
       IF NOT EXISTS (SELECT 1 FROM public.correctionlog c WHERE c.detectionid = v_detid) THEN
         IF v_kind = 'vehicle' THEN
           INSERT INTO public.vehicledetail (detectionid, vehicletype, make, colour,
@@ -735,7 +709,7 @@ BEGIN
       END IF;
     END LOOP;
 
-    -- rows of an earlier run the new run doesn't have, nobody worked on
+    -- rows from an earlier run that this run doesn't have and nobody has touched
     WITH stale AS (
       SELECT d.detectionid FROM public.detection d
       WHERE d.mediaid = v_mediaid
@@ -754,7 +728,7 @@ BEGIN
     v_all := v_all || v_keep;
   END LOOP;
 
-  -- where: the files' own GPS beats the phone's
+  -- location: GPS from the files beats the phone's
   v_lat := public.ai_num(p_result -> 'location' -> 'latitude');
   v_lon := public.ai_num(p_result -> 'location' -> 'longitude');
   IF COALESCE(p_result -> 'location' ->> 'source', 'file') = 'file'
@@ -785,21 +759,17 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 7. Worker: load and save a case's people / vehicles / weapons
---
--- ai_load_case / ai_load_submission return exactly the dicts
--- ai/case_matcher.py works with (case_matcher.new_case / submission_record),
--- with the DETECTION ID as each member's "key" and the media id as its
--- "file_index". So the worker does:
+-- --- 7. loading and saving a case for the worker
+-- ai_load_case/ai_load_submission return exactly the dicts case_matcher.py
+-- works with (new_case / submission_record), using the detection id as each
+-- member's "key" and the media id as "file_index". So the worker just does
 --
 --   case = rpc('ai_load_case', {'p_caseid': 7})
 --   sub  = rpc('ai_load_submission', {'p_incidentid': 42})
 --   case_matcher.merge_submission(case, sub)
 --   rpc('ai_save_case', {'p_caseid': 7, 'p_case': case})
--- ---------------------------------------------------------------------
 
--- One detection as a case_matcher member
+-- one detection, shaped like a case_matcher member
 CREATE OR REPLACE FUNCTION public.ai_member(p_detectionid integer)
   RETURNS jsonb
   LANGUAGE sql STABLE
@@ -832,7 +802,7 @@ AS $$
         'face_visible',              d.attributes -> 'face_visible',
         'face_size_px',              d.attributes -> 'face_size_px',
         'clothing_views',            d.attributes -> 'clothing_views')
-      -- vehicles: an investigator's correction in vehicledetail wins
+      -- for vehicles, an investigator's correction in vehicledetail wins
       WHEN 'vehicle' THEN jsonb_build_object(
         'class_name',        COALESCE(to_jsonb(vd.vehicletype), d.attributes -> 'class_name'),
         'make',              COALESCE(to_jsonb(vd.make), d.attributes -> 'make'),
@@ -857,7 +827,7 @@ AS $$
   WHERE d.detectionid = p_detectionid
 $$;
 
--- An incident as a case_matcher submission record (without its members)
+-- an incident as a case_matcher submission record, minus the members
 CREATE OR REPLACE FUNCTION public.ai_submission_info(p_incidentid integer)
   RETURNS jsonb
   LANGUAGE sql STABLE
@@ -883,7 +853,7 @@ AS $$
   WHERE cs.incidentid = p_incidentid
 $$;
 
--- case_matcher.submission_record() for incident p_incidentid, from the tables
+-- case_matcher.submission_record() for an incident, built from the tables
 CREATE OR REPLACE FUNCTION public.ai_load_submission(p_incidentid integer)
   RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -896,7 +866,7 @@ BEGIN
     RAISE EXCEPTION 'Incident % not found', p_incidentid;
   END IF;
   RETURN v_sub || jsonb_build_object('members', COALESCE((
-    -- fresh members: no case status yet (merge_submission decides)
+    -- new members don't have a case status yet, merge_submission decides
     SELECT jsonb_agg(public.ai_member(d.detectionid)
                      || '{"status": null, "score": null, "reasons": []}'::jsonb
                      ORDER BY m.mediaid, d.detectiontype, d.trackid, d.detectionid)
@@ -906,7 +876,7 @@ BEGIN
 END;
 $$;
 
--- case_matcher's case dict for case p_caseid, from the tables
+-- case_matcher's case dict for a case, built from the tables
 CREATE OR REPLACE FUNCTION public.ai_load_case(p_caseid integer)
   RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -927,7 +897,7 @@ BEGIN
     'created_at', v_case.datecreated,
     'updated_at', v_case.aisummaryat,
     'summary',    v_case.aisummary,
-    -- submissions already combined into the case
+    -- submissions already merged into the case
     'submissions', COALESCE((
        SELECT jsonb_agg(public.ai_submission_info(cs.incidentid) ORDER BY cs.incidentid)
        FROM public.crimescene cs
@@ -956,7 +926,7 @@ BEGIN
        FROM public.entitymatchrejection r
        JOIN public.caseentity e ON e.entityid = r.entityid
        WHERE e.caseid = p_caseid), '[]'::jsonb),
-    -- highest number used per kind, so new entities continue from there
+    -- highest number used per kind, so new entities carry on from there
     'counters', COALESCE((
        SELECT jsonb_object_agg(e.kind, e.n)
        FROM (SELECT kind, max(number) AS n FROM public.caseentity
@@ -964,15 +934,16 @@ BEGIN
 END;
 $$;
 
--- Store the case dict back (after merge_submission / re-vote / rematch).
--- Replaces the case's people / vehicles / weapons with the ones in p_case,
--- but the database has the last word on human decisions and on what is
--- in the case NOW (the admin may have acted while the worker was busy):
---   * only detections of submissions accepted in this case are linked
---   * an admin's "Yes" (confirmed) is never changed, and only an admin can
---     confirm (a 'confirmed' the database doesn't know becomes 'suggested')
---   * an admin's "No" (entitymatchrejection) is never linked again
--- Entities left without settled pictures are dropped.
+-- Save the case dict back after a merge / re-vote / rematch.
+-- This replaces the case's entities with what's in p_case, but the database
+-- has the final say on human decisions and on what's in the case right now
+-- (an admin may have done something while the worker was busy):
+--   - only detections from submissions accepted into this case get linked
+--   - an admin's Yes is never undone, and only admins can confirm, so a
+--     'confirmed' the database doesn't know about gets downgraded to
+--     'suggested'
+--   - an admin's No (entitymatchrejection) is never linked again
+-- Entities that end up with no settled pictures are dropped.
 CREATE OR REPLACE FUNCTION public.ai_save_case(p_caseid integer, p_case jsonb)
   RETURNS jsonb
   LANGUAGE plpgsql SECURITY DEFINER
@@ -996,7 +967,7 @@ BEGIN
     RAISE EXCEPTION 'p_case must be a case_matcher case with an "entities" list';
   END IF;
 
-  -- 1. entities (insert new ones, update existing ones)
+  -- entities: insert new, update existing
   FOR v_e IN SELECT e FROM jsonb_array_elements(p_case -> 'entities') e LOOP
     v_kind := v_e ->> 'kind';
     v_number := substring(v_e ->> 'entity_id' FROM '^[pvw]([0-9]{1,6})$')::integer;
@@ -1009,7 +980,7 @@ BEGIN
       RAISE EXCEPTION 'Entity % is in the case twice', v_e ->> 'entity_id';
     END IF;
 
-    -- the cover must be a picture of one of this case's submissions
+    -- cover picture has to come from one of this case's submissions
     v_cover := v_e ->> 'cover';
     IF v_cover IS NOT NULL AND NOT EXISTS (
          SELECT 1 FROM public.crimescene cs
@@ -1023,7 +994,7 @@ BEGIN
             CASE WHEN jsonb_typeof(v_e -> 'attributes') = 'object' THEN v_e -> 'attributes'
                  ELSE '{}'::jsonb END,
             v_cover,
-            -- keep the last 20 changes
+            -- only keep the last 20 changes
             COALESCE((SELECT jsonb_agg(u ORDER BY n)
                         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_e -> 'updated') = 'array'
                                                        THEN v_e -> 'updated' ELSE '[]'::jsonb END)
@@ -1039,7 +1010,7 @@ BEGIN
     v_ids := v_ids || jsonb_build_object(v_e ->> 'entity_id', v_id);
   END LOOP;
 
-  -- weapons: who holds them
+  -- who holds which weapon
   UPDATE public.caseentity ce
      SET heldbyentityid = CASE WHEN ce.kind = 'weapon'
                                THEN (v_ids ->> (e ->> 'held_by_entity'))::integer END
@@ -1048,15 +1019,15 @@ BEGIN
      AND ce.heldbyentityid IS DISTINCT FROM
          CASE WHEN ce.kind = 'weapon' THEN (v_ids ->> (e ->> 'held_by_entity'))::integer END;
 
-  -- 2. pictures -> entities
-  WITH valid AS (            -- detections of the submissions accepted in this case
+  -- pictures -> entities
+  WITH valid AS (            -- detections from submissions accepted into this case
     SELECT d.detectionid, d.detectiontype, d.caseentityid, d.matchstatus
     FROM public.crimescene cs
     JOIN public.media m     ON m.incidentid = cs.incidentid
     JOIN public.detection d ON d.mediaid = m.mediaid
     WHERE cs.caseid = p_caseid AND cs.reviewstatus = 'accepted'
   ),
-  wanted AS (                -- what the worker says, one entity per detection
+  wanted AS (                -- what the worker wants, one entity per detection
     SELECT DISTINCT ON (x.detectionid)
            x.detectionid, x.entityid, x.status, x.score, x.reasons
     FROM (
@@ -1084,7 +1055,7 @@ BEGIN
     SELECT v.detectionid,
            CASE WHEN v.matchstatus = 'confirmed' THEN v.caseentityid ELSE w.entityid END AS entityid,
            CASE WHEN v.matchstatus = 'confirmed' THEN 'confirmed'
-                WHEN w.status = 'confirmed' THEN 'suggested'     -- only admins confirm
+                WHEN w.status = 'confirmed' THEN 'suggested'     -- only admins get to confirm
                 ELSE w.status END AS status,
            w.score, w.reasons, v.matchstatus AS oldstatus
     FROM valid v
@@ -1105,7 +1076,7 @@ BEGIN
               AND (d.matchscore IS DISTINCT FROM round(t.score, 3)
                    OR d.matchreasons IS DISTINCT FROM t.reasons)));
 
-  -- members the worker sent that the database did not take
+  -- members the worker sent that we refused
   SELECT count(*) INTO v_skipped
   FROM jsonb_array_elements(p_case -> 'entities') e,
        jsonb_array_elements(CASE WHEN jsonb_typeof(e -> 'members') = 'array'
@@ -1116,7 +1087,7 @@ BEGIN
       AND d.detectionid = (mem ->> 'key')::integer
       AND d.caseentityid = (v_ids ->> (e ->> 'entity_id'))::integer);
 
-  -- 3. tidy up, mark which submissions are combined
+  -- tidy up and mark which submissions are merged
   PERFORM public.ai_drop_empty_entities(p_caseid);
 
   UPDATE public.crimescene cs
@@ -1127,7 +1098,7 @@ BEGIN
            WHERE (s ->> 'submission') ~ '^[0-9]{1,9}$'))
    WHERE cs.caseid = p_caseid AND cs.reviewstatus = 'accepted';
 
-  -- 4. the case summary (outdated straight away if more work is waiting)
+  -- case summary (immediately marked stale if there's more work queued)
   UPDATE public.cases
      SET aisummary = left(v_summary, 600),
          aisummaryat = now(),
@@ -1151,18 +1122,15 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 8. Triggers
--- ---------------------------------------------------------------------
+-- --- 8. triggers
 
--- 8a. A submission joins / leaves a case -> queue / undo the merge.
---     "In the case" = caseid set AND reviewstatus 'accepted' (duplicates
---     sit in the case too, but their footage is not combined twice).
---       joins  (accept, add to case, create case from it) -> 'merge'
---              (unless an analysis is still waiting: finish_job queues
---              the merge when it is done)
---       leaves (remove, reject, move, mark duplicate)    -> unlinked now
---       moves X -> Y                                      -> both
+-- 8a. Submission joins or leaves a case -> queue or undo the merge.
+-- "In the case" means caseid is set AND reviewstatus is 'accepted'.
+-- Duplicates sit in the case too, but we don't merge the same footage twice.
+--   joins (accepted, added, case created from it) -> queue a merge, unless
+--     an analysis is still pending, then finish_job queues it later
+--   leaves (removed, rejected, moved, marked duplicate) -> unlinked now
+--   moved from X to Y -> both
 CREATE OR REPLACE FUNCTION public.queue_case_ai_work()
   RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER
@@ -1197,9 +1165,9 @@ CREATE TRIGGER queue_case_ai_work
   AFTER INSERT OR UPDATE OF caseid, reviewstatus ON public.crimescene
   FOR EACH ROW EXECUTE FUNCTION public.queue_case_ai_work();
 
--- 8b. Deleting a case: same as before (incidents go back to pending), plus
---     a flag so the unmerge above leaves the disappearing case row alone
---     (Postgres refuses to change a row in the middle of deleting it).
+-- 8b. Deleting a case: incidents go back to pending like before, plus we set
+-- a flag so the unmerge above leaves the dying case row alone (Postgres
+-- won't let you modify a row while it's being deleted).
 CREATE OR REPLACE FUNCTION public.release_case_incidents()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -1213,14 +1181,14 @@ BEGIN
    WHERE caseid = OLD.caseid AND reviewstatus = 'accepted';
   UPDATE public.crimescene
      SET caseid = NULL
-   WHERE caseid = OLD.caseid;   -- duplicates stay duplicates
+   WHERE caseid = OLD.caseid;   -- duplicates stay as duplicates
   PERFORM set_config('argus.deleting_case', '', true);
   RETURN OLD;
 END;
 $$;
 
--- 8c. A detection that leaves its entity (unlinked, or its entity was
---     deleted) loses its match status / score / reasons too
+-- 8c. A detection that drops out of its entity (unlinked, or the entity got
+-- deleted) loses its match status, score and reasons too.
 CREATE OR REPLACE FUNCTION public.detection_clear_match()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -1240,8 +1208,8 @@ CREATE TRIGGER detection_clear_match
   BEFORE UPDATE OF caseentityid ON public.detection
   FOR EACH ROW EXECUTE FUNCTION public.detection_clear_match();
 
--- 8d. App users can't write AI output. Corrections keep going through
---     correctionlog / vehicledetail as before.
+-- 8d. App users can't write AI output. Corrections still go through
+-- correctionlog / vehicledetail.
 CREATE OR REPLACE FUNCTION public.protect_detection_ai()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -1256,7 +1224,7 @@ BEGIN
     OR NEW.framesseen   IS DISTINCT FROM OLD.framesseen
     OR NEW.attributes   IS DISTINCT FROM OLD.attributes
     OR NEW.crops        IS DISTINCT FROM OLD.crops
-    -- (as text: pgvector's = lives in the extensions schema)
+    -- compare as text because pgvector's = operator lives in the extensions schema
     OR NEW.appearance::text IS DISTINCT FROM OLD.appearance::text
     OR NEW.colourhist::text IS DISTINCT FROM OLD.colourhist::text
     OR NEW.caseentityid IS DISTINCT FROM OLD.caseentityid
@@ -1275,7 +1243,7 @@ CREATE TRIGGER protect_detection_ai
   BEFORE INSERT OR UPDATE ON public.detection
   FOR EACH ROW EXECUTE FUNCTION public.protect_detection_ai();
 
--- media: + latitude / longitude (per-file GPS comes from the AI worker)
+-- media gets latitude/longitude, per-file GPS that only the worker writes
 CREATE OR REPLACE FUNCTION public.protect_media_ai()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -1302,8 +1270,8 @@ BEGIN
 END;
 $$;
 
--- crimescene: + aimerged; gpssource 'file' only from the AI worker (the
--- app may say 'phone' or 'typed')
+-- crimescene gets aimerged. gpssource 'file' can only come from the worker,
+-- the app can only say 'phone' or 'typed'.
 CREATE OR REPLACE FUNCTION public.protect_crimescene_ai()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -1329,7 +1297,7 @@ BEGIN
 END;
 $$;
 
--- cases: the AI summary is written by the worker only
+-- only the worker writes a case's AI summary
 CREATE OR REPLACE FUNCTION public.protect_cases_ai()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -1355,13 +1323,11 @@ CREATE TRIGGER protect_cases_ai
   FOR EACH ROW EXECUTE FUNCTION public.protect_cases_ai();
 
 
--- ---------------------------------------------------------------------
--- 9. get_case_evidence - everything the case screen's AI section shows.
---    Exactly the shape of ai/case_matcher.py case_view() (the Flutter
---    model CaseEvidence.fromMap reads it). member_key = the detection id
---    as text; crop paths are bucket paths (the app makes signed URLs).
---    Admins, and investigators assigned to the case. NULL if no such case.
--- ---------------------------------------------------------------------
+-- --- 9. get_case_evidence: everything in the AI section of the case screen
+-- Same shape as case_matcher.case_view(), and CaseEvidence.fromMap in the app
+-- reads it. member_key is the detection id as text and crop paths are bucket
+-- paths (the app signs them). Admins and assigned investigators only. NULL if
+-- the case doesn't exist.
 CREATE OR REPLACE FUNCTION public.get_case_evidence(p_caseid integer)
   RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -1392,7 +1358,7 @@ BEGIN
     JOIN public.media m     ON m.mediaid = d.mediaid
     WHERE e.caseid = p_caseid
   ),
-  crop AS (                           -- case_matcher case_view() crops_of()
+  crop AS (                           -- like crops_of() in case_view()
     SELECT mb.detectionid, mb.caseentityid, mb.settled,
            jsonb_build_object(
              'path', c ->> 'path', 'type', c ->> 'type', 'submission', mb.incidentid,
@@ -1473,12 +1439,10 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 10. answer_entity_match - the admin answers "Is this Person 2?"
---     Yes -> confirmed; the worker re-votes Person 2's details ('summary')
---     No  -> never asked again; the worker finds another match or makes a
---            new person ('rematch')
--- ---------------------------------------------------------------------
+-- --- 10. answer_entity_match: the admin answers "Is this Person 2?"
+-- Yes confirms it and queues a summary re-vote. No means we never ask about
+-- that pair again, and the worker goes looking for another match or makes a
+-- new person (rematch).
 ALTER TABLE public.caseevent DROP CONSTRAINT caseevent_eventtype_check;
 ALTER TABLE public.caseevent ADD CONSTRAINT caseevent_eventtype_check
   CHECK (eventtype IN (
@@ -1538,11 +1502,9 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 11. list_cases (and getCase) also return the case's AI summary
---     Same as 20261006090000 plus aisummary / aisummarystatus /
---     aisummaryat at the end. The return type changes, so DROP + CREATE.
--- ---------------------------------------------------------------------
+-- --- 11. list_cases (and getCase) now include the AI summary
+-- Same as in 20261006090000 with aisummary / aisummarystatus / aisummaryat
+-- tacked on the end. Changing the return type means DROP + CREATE.
 DROP FUNCTION public.list_cases(text, text, integer, integer, timestamptz, integer);
 
 CREATE FUNCTION public.list_cases(
@@ -1651,7 +1613,7 @@ AS $_$
          b.aisummary, b.aisummarystatus, b.aisummaryat
   FROM page b
   LEFT JOIN public."User" u ON u.userid = b.createdby
-  -- per clip, then the highest clip of any submission in the case
+  -- per clip first, then the highest clip across the case's submissions
   LEFT JOIN LATERAL (
     SELECT max(per_clip.possible)::integer  AS possible,
            max(per_clip.confirmed)::integer AS confirmed
@@ -1668,13 +1630,11 @@ AS $_$
 $_$;
 
 
--- ---------------------------------------------------------------------
--- 12. Privileges
---     Supabase gives new functions to anon + authenticated by default, so
---     every function says explicitly who may run it.
--- ---------------------------------------------------------------------
+-- --- 12. privileges
+-- Supabase grants new functions to anon + authenticated by default, so we
+-- spell out who can run each one.
 
--- internal helpers and trigger functions: nobody calls them directly
+-- internal helpers and trigger functions, nobody calls these directly
 REVOKE ALL ON FUNCTION
   public.ai_try_timestamptz(text),
   public.ai_num(jsonb),
@@ -1698,7 +1658,7 @@ REVOKE ALL ON FUNCTION
   public.protect_cases_ai()
 FROM PUBLIC, anon, authenticated, service_role;
 
--- used by match_incidents (runs as the admin calling the suggestion functions)
+-- match_incidents uses this, running as the admin who asked for suggestions
 REVOKE ALL ON FUNCTION
   public.appearance_similarity(extensions.vector, extensions.vector, extensions.vector, extensions.vector)
 FROM PUBLIC, anon;
@@ -1706,7 +1666,7 @@ GRANT EXECUTE ON FUNCTION
   public.appearance_similarity(extensions.vector, extensions.vector, extensions.vector, extensions.vector)
 TO authenticated, service_role;
 
--- AI worker (service key) only
+-- worker only (service key)
 REVOKE ALL ON FUNCTION
   public.claim_next_job(text),
   public.finish_job(bigint, text),
@@ -1726,7 +1686,7 @@ GRANT EXECUTE ON FUNCTION
   public.ai_save_case(integer, jsonb)
 TO service_role;
 
--- the app (each function checks who is calling)
+-- called from the app (each one checks who's calling)
 REVOKE ALL ON FUNCTION
   public.submit_for_analysis(integer),
   public.get_case_evidence(integer),

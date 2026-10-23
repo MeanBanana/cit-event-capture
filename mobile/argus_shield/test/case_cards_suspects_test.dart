@@ -1,6 +1,5 @@
-// Tests for the suspect counts (possible / confirmed, POPIA) and the
-// suggested submission on the case cards.
-// Uses AdminFakeService, which keeps everything in memory.
+// Suspect counts (possible/confirmed, POPIA) and the suggested submission on
+// case cards. Runs against AdminFakeService.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

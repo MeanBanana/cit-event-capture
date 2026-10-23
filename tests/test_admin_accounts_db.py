@@ -1,10 +1,9 @@
 """
-Tests for admin accounts (migration 20261018100000_admin_accounts.sql):
-admin rows made by the sign-up trigger, the one root admin, and that only
-the root admin can list admins / change stations.
+Admin account tests (20261018100000_admin_accounts.sql): the sign-up trigger
+making admin rows, there only ever being one root admin, and only root being
+able to list admins or move them between stations.
 
-Runs against the LOCAL Supabase database like test_ai_pipeline_db.py (every
-test is rolled back):
+Same setup as test_ai_pipeline_db.py, every test gets rolled back:
     cd database && supabase db reset
     python tests/test_admin_accounts_db.py
 """
@@ -41,11 +40,11 @@ def test_signup_creates_normal_admin_rows():
         row = db.one("SELECT * FROM public.admin WHERE userid = %s", [kp["userid"]])
         assert row["admin_type"] == "normal" and row["admin_station"] == "Kempton Park SAPS"
         assert row["createdby"] == boss["userid"]
-        # the root admin: converted from a citizen, citizen row gone
+        # root admin gets converted from a citizen, and the citizen row goes away
         assert db.val('SELECT role::text FROM public."User" WHERE userid = %s', [boss["userid"]]) == "admin"
         assert db.val("SELECT count(*) FROM public.citizen WHERE userid = %s", [boss["userid"]]) == 0
         assert db.val("SELECT admin_type::text FROM public.admin WHERE userid = %s", [boss["userid"]]) == "root"
-        # a login can't make itself root through its metadata
+        # you can't make yourself root by fiddling with your own metadata
         sneaky = make_user(db, "admin", admin_station="X", admin_type="root")
         assert db.val("SELECT admin_type::text FROM public.admin WHERE userid = %s", [sneaky["userid"]]) == "normal"
 
@@ -61,7 +60,7 @@ def test_only_one_root():
         inv_name = db.val('SELECT username FROM public."User" WHERE userid = %s', [inv["userid"]])
         db.rows("UPDATE public.admin SET admin_type = 'normal' WHERE admin_type = 'root'")
         fails(lambda: db.val("SELECT public.make_root_admin(%s, 'X')", [inv_name]), "investigator")
-        # nobody can call make_root_admin from the apps
+        # make_root_admin isn't callable from either app
         fails(lambda: db.val("SELECT public.make_root_admin(%s, 'X')", [other], who=kp), "permission")
 
 
@@ -89,7 +88,7 @@ def test_root_only_functions():
         assert db.val("SELECT admin_station FROM public.admin WHERE userid = %s", [sandton["userid"]]) == "Midrand SAPS"
         fails(lambda: db.rows("SELECT public.set_admin_station(%s, ' ')", [sandton["userid"]], who=boss), "enter a station")
 
-        # direct table access: own row only (root sees all), no changes
+        # straight table reads: you see your own row (root sees everyone), and nobody can edit
         assert len(db.rows("SELECT * FROM public.admin", who=kp)) == 1
         assert len(db.rows("SELECT * FROM public.admin", who=boss)) == 3
         assert db.rows("SELECT * FROM public.admin", who=make_user(db, "citizen")) == []
@@ -105,23 +104,23 @@ def test_deleting_the_user_deletes_the_admin_row():
 
 
 def test_changing_the_password_clears_must_change_password():
-    # migration 20261020100000_must_change_password.sql
+    # 20261020100000_must_change_password.sql
     with session() as db:
         kp = make_user(db, "admin", admin_station="Kempton Park SAPS")
         flag = "SELECT raw_app_meta_data FROM auth.users WHERE id = %s"
-        # what create-admin / create-investigator do: temporary password + flag
+        # create-admin / create-investigator set a temp password and the flag
         db.rows("UPDATE auth.users SET raw_app_meta_data = raw_app_meta_data || "
                 "'{\"must_change_password\": true}', encrypted_password = 'temp-hash' "
                 "WHERE id = %s", [kp["authid"]])
-        # setting the FIRST password (account being made) keeps the flag
+        # the first password, set while the account is being created, leaves the flag alone
         assert db.val(flag, [kp["authid"]])["must_change_password"] is True
 
-        # other changes (e.g. signing in) keep it too
+        # so does anything else, e.g. signing in
         db.rows("UPDATE auth.users SET last_sign_in_at = now(), encrypted_password = 'temp-hash' "
                 "WHERE id = %s", [kp["authid"]])
         assert db.val(flag, [kp["authid"]])["must_change_password"] is True
 
-        # a new password takes it off, and the role stays
+        # picking a new password clears it, role stays the same
         db.rows("UPDATE auth.users SET encrypted_password = 'new-hash' WHERE id = %s", [kp["authid"]])
         meta = db.val(flag, [kp["authid"]])
         assert "must_change_password" not in meta and meta["role"] == "admin"

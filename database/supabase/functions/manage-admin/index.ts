@@ -1,24 +1,17 @@
-// manage-admin — Supabase Edge Function
+// manage-admin: the "Remove" button on a station admin in web/admin-console.
+// Root admin only. Body is { action: "delete", userid }.
 //
-// Called by the web admin console's "Remove" on a station admin
-// (web/admin-console). Only the ROOT admin may.
+// remove_admin_account decides what happens. If they never touched anything,
+// the rows and the login are just deleted. If they did work on submissions or
+// cases, that work has to stay on record, so they become "Former admin", the
+// login gets banned for good and moved to a placeholder email. Either way a
+// DEL line goes into the activity log. Root itself can't be removed.
 //
-//   { action: "delete", userid }
-//       Removes the account (database function remove_admin_account):
-//         'deleted'    nothing they did is on record -> rows + login deleted
-//         'anonymised' they worked on submissions / cases -> their work stays
-//                      in the records as "Former admin", and the login is
-//                      blocked for good and moved to a placeholder email
-//       Either way the activity log gets a DEL line ("Admin removed: ...").
-//       The root admin itself can't be removed.
+// Needs the service key to delete/ban someone else's login, hence an Edge
+// Function rather than the browser.
 //
-// Why here and not in the browser: deleting or blocking someone else's login
-// needs the service key, which must never be in a web page.
-//
-// Deploy (from the database/ folder):
-//   supabase functions deploy manage-admin
-// verify_jwt is off in config.toml because this function checks the caller
-// itself (logged in AND root admin), like create-admin.
+// Deploy from database/:  supabase functions deploy manage-admin
+// verify_jwt is off in config.toml, we check the caller is root ourselves.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -29,7 +22,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** JSON response. Errors are always { error: "message for the admin" }. */
+/** JSON reply. Errors are always { error: "something the admin can read" }. */
 function reply(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -40,10 +33,10 @@ function reply(status: number, body: Record<string, unknown>): Response {
 const fail = (status: number, message: string) =>
   reply(status, { error: message });
 
-/** Trimmed string, or "" for anything that isn't a string. */
+/** Trimmed string, or "" if it isn't a string at all. */
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-/** A long random password for a blocked login (nobody ever uses it). */
+/** Long random password for a banned login. Nobody will ever type it. */
 function randomPassword(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") + "Aa1";
@@ -62,7 +55,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ---- Who is calling? Must be the root admin. ------------------------------
+  // caller has to be the root admin
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return fail(401, "Please sign in again.");
   const { data: auth, error: authError } = await admin.auth.getUser(token);
@@ -92,8 +85,7 @@ Deno.serve(async (req) => {
   if (!Number.isInteger(userid) || userid <= 0) return fail(400, "Which admin?");
   if (action !== "delete") return fail(400, "Unknown action.");
 
-  // =========================================================================
-  // The database checks the target is a station admin (not the root admin).
+  // the db function makes sure the target is a station admin and not root
   const { data: removed, error: removeError } = await admin.rpc(
     "remove_admin_account",
     { p_userid: userid, p_removed_by: caller.userid },
@@ -110,8 +102,8 @@ Deno.serve(async (req) => {
     const { error } = await admin.auth.admin.deleteUser(authid);
     if (error) console.error("deleteUser failed (the account rows are gone)", error);
   } else {
-    // Their work stays on record, so the login can't be deleted; block it
-    // for good and free the real email address.
+    // Their work is still on record so we can't delete the login. Ban it
+    // permanently instead and free up their real email address.
     const { error } = await admin.auth.admin.updateUserById(authid, {
       email,
       email_confirm: true,

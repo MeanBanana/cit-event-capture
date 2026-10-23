@@ -5,8 +5,8 @@ import {useReveals} from '../hooks/useReveals';
 type Status = 'idle' | 'invalid' | 'sent';
 
 /**
- * Contact. The numbers behind the problem on one side, a short form on the
- * other; the form hands a drafted message to the visitor's mail app.
+ * Contact section. The stats on one side and a short form on the other. The
+ * form doesn't send anything itself, it just opens a drafted email.
  */
 export function Contact() {
   const ref = useReveals<HTMLElement>();
@@ -34,7 +34,7 @@ export function Contact() {
 
   return (
     <section ref={ref} id="contact" aria-labelledby="contact-title" className="relative overflow-hidden bg-void px-4 pb-28 sm:px-6 md:px-[6vw] md:pb-40">
-      {/* Sodium streetlight glow at the bottom edge — the hero's road, bookended. */}
+      {/* Orange streetlight glow along the bottom, echoing the hero's road. */}
       <div aria-hidden="true" className="pointer-events-none absolute -bottom-[62vw] left-1/2 size-[90vw] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_50%_30%,rgba(255,171,64,0.28),rgba(255,171,64,0.05)_55%,transparent_70%)]" />
 
       <div className="relative grid gap-12 border-t border-white/10 pt-20 md:grid-cols-2 md:gap-16 md:pt-28">

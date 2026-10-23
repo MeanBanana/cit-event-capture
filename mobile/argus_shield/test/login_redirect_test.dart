@@ -1,11 +1,9 @@
-// Tests for what happens after the login button is pressed.
+// What happens after you press the login button. Uses a fake SupabaseService
+// so no network or Supabase project is needed.
 //
-// A fake SupabaseService stands in for the real one, so these tests run
-// without a network connection or a Supabase project.
-//
-// After the button is pressed the LoadingScreen shows a message for 3
-// seconds and then opens the next screen. Each test checks the message
-// first (logIn), then lets the 3 seconds pass (finishLoading).
+// After the button the LoadingScreen shows a message for 3 seconds, then
+// opens the next screen. Each test checks the message first (logIn), then
+// lets the 3 seconds run out (finishLoading).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +15,7 @@ import 'package:argus_shield/citizen/citizen_dashboard.dart';
 import 'package:argus_shield/admin_screens/admin_dashboard.dart';
 import 'package:argus_shield/investigator_dashboard/investigator_dashboard.dart';
 
-/// Returns a canned login result instead of calling Supabase.
+/// Hands back a canned login result instead of calling Supabase.
 class FakeSupabaseService extends SupabaseService {
   FakeSupabaseService(this.result);
 
@@ -55,7 +53,7 @@ Map<String, dynamic> successFor(String role) => {
     };
 
 void main() {
-  // A phone-sized screen (360 x 800 logical pixels) so the login form fits.
+  // phone-sized screen (360 x 800 logical pixels) so the login form fits
   setUp(() {
     final view = TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
     view.physicalSize = const Size(1080, 2400);
@@ -67,8 +65,8 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
-  /// Fills in the form, presses the button and stops while the loading
-  /// screen is showing its message.
+  /// Fill in the form, press the button, and stop while the loading screen
+  /// is showing its message.
   Future<void> logIn(WidgetTester tester, FakeSupabaseService service,
       {String username = 'thandi', String password = 'secret123'}) async {
     await tester.pumpWidget(MaterialApp(home: LoginPage(service: service)));
@@ -79,9 +77,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500)); // page transition
   }
 
-  /// Lets the loading screen's 3 seconds pass and the next screen open.
-  /// Fixed pumps, not pumpAndSettle: the admin Overview has a border that
-  /// animates forever (AnimatedStripeBorder), so it would never "settle".
+  /// Let the loading screen's 3 seconds pass and the next screen open.
+  /// Fixed pumps rather than pumpAndSettle, because the admin Overview has a
+  /// border that animates forever and would never settle.
   Future<void> finishLoading(WidgetTester tester) async {
     await tester.pump(const Duration(seconds: 3)); // loading delay ends
     await tester.pump(); // start the page transition

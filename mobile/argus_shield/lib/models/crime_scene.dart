@@ -1,32 +1,29 @@
-// crime_scene.dart — the crime scenes of a case and what investigators can
-// correct about them.
+// Models for a case's crime scenes and the corrections investigators make.
+// CrimeSceneCardInfo is a card on the case page (list_case_crime_scenes),
+// CrimeSceneDetail is the full scene page (get_crime_scene) with its files,
+// everything the AI found with its correctable fields, and the log.
 //
-//   CrimeSceneCardInfo   one card on the case page (list_case_crime_scenes)
-//   CrimeSceneDetail     the crime scene page (get_crime_scene): its files,
-//                        every person / vehicle / weapon the AI found with
-//                        each correctable field, and the corrections log
-//
-// The database decides who may see / correct what; see migration
+// Who can see or correct what is decided in the database, see
 // 20261013100000_crime_scenes_and_corrections.sql.
 
 import 'package:argus_shield/models/crime_scene_summary.dart'
     show incidentReference;
 
-/// Where the AI is with a crime scene's footage.
+/// How far the AI has got with a scene's footage.
 enum AnalysisStatus {
-  /// Nothing was uploaded.
+  /// Nothing uploaded.
   noFootage,
 
-  /// Waiting for the AI worker (queued, or not submitted yet).
+  /// Waiting for the worker (queued, or not submitted yet).
   pending,
 
-  /// The AI worker is analysing it right now.
+  /// The worker is on it right now.
   analysing,
 
-  /// No file could be analysed.
+  /// None of the files could be analysed.
   failed,
 
-  /// Analysed (some files may have failed, see filesFailed).
+  /// Done. Some files might still have failed, see filesFailed.
   done;
 
   static AnalysisStatus parse(String? value) => switch (value) {
@@ -38,23 +35,23 @@ enum AnalysisStatus {
         _ => AnalysisStatus.pending,
       };
 
-  /// True while the AI may still change what it found.
+  /// True while the AI could still change its results.
   bool get inProgress =>
       this == AnalysisStatus.pending || this == AnalysisStatus.analysing;
 }
 
-/// One crime scene of a case, as its card shows it.
+/// A crime scene as its card shows it.
 class CrimeSceneCardInfo {
   final int incidentId;
   final String location;
   final String? description;
   final String? attackType;
-  final DateTime dateTime; // the time the citizen typed
-  final DateTime? capturedAt; // earliest capture time in the footage
+  final DateTime dateTime; // what the citizen typed
+  final DateTime? capturedAt; // earliest capture time from the footage
   final String reviewStatus; // 'accepted' | 'duplicate' ...
   final int mediaCount;
 
-  /// Most seen in any one clip (the same person in two clips counts once).
+  /// Max seen in any single clip, so one person in two clips counts once.
   final int suspects;
   final int confirmedSuspects;
   final int vehicles;
@@ -106,13 +103,13 @@ class CrimeSceneCardInfo {
 
   String get reference => incidentReference(incidentId);
 
-  /// The footage's capture time when it has one, else the typed time.
+  /// The footage's capture time if it has one, otherwise the typed time.
   DateTime get bestTime => capturedAt ?? dateTime;
 
   bool get isDuplicate => reviewStatus == 'duplicate';
 }
 
-/// One clip / photo of a crime scene.
+/// One clip or photo in a scene.
 class SceneFile {
   final int mediaId;
   final int number; // Clip 1, 2 ...
@@ -143,12 +140,12 @@ class SceneFile {
       );
 }
 
-/// One correctable field of a detection: what the AI said and what counts.
+/// One correctable field: what the AI said and what currently counts.
 class DetectionField {
   final String field; // 'plate', 'make', 'weapon_type', 'dismissed' ...
-  final String? ai; // the AI's value (null = it didn't say)
+  final String? ai; // AI's value, null if it didn't say
   final String? value; // what counts now
-  final bool corrected; // value comes from an investigator
+  final bool corrected; // true if an investigator set it
 
   const DetectionField({
     required this.field,
@@ -167,15 +164,15 @@ class DetectionField {
   String get label => fieldLabel(field);
 }
 
-/// A person / vehicle / weapon the AI found in the crime scene's footage.
+/// A person/vehicle/weapon the AI found in the scene's footage.
 class SceneDetection {
   final int detectionId;
   final String kind; // 'person' | 'vehicle' | 'weapon'
   final String label; // 'Vehicle 1'
   final int clip;
   final double? firstSeen; // seconds into the clip
-  final List<String> crops; // bucket paths, clearest first
-  final bool dismissed; // "not a real vehicle"
+  final List<String> crops; // bucket paths, best first
+  final bool dismissed; // marked "not a real vehicle" etc
   final String? suspectStatus; // people: 'possible' | 'confirmed' | 'dismissed'
   final bool canCorrect;
   final List<DetectionField> fields;
@@ -222,22 +219,22 @@ class SceneDetection {
     return null;
   }
 
-  /// The fields shown as "Make: Toyota" lines (not the dismissed flag).
+  /// Fields shown as "Make: Toyota" lines (everything except dismissed).
   List<DetectionField> get detailFields =>
       [for (final f in fields) if (f.field != 'dismissed') f];
 
   bool get isCorrected => fields.any((f) => f.corrected);
 }
 
-/// One line of the corrections log.
+/// One line in the corrections log.
 class CorrectionEntry {
   final int correctionId;
 
-  /// The crime scene the correction belongs to (correctionlog.incidentid).
+  /// The scene this correction belongs to (correctionlog.incidentid).
   final int? incidentId;
   final int detectionId;
   final String? label; // 'Vehicle 1'
-  final String? field; // null for corrections made before fields were logged
+  final String? field; // null for old corrections from before we logged fields
   final String? original;
   final String? corrected;
   final String? note;
@@ -284,7 +281,7 @@ class CorrectionEntry {
   }
 }
 
-/// Everything the crime scene page shows.
+/// Everything on the crime scene page.
 class CrimeSceneDetail {
   final int incidentId;
   final int? caseId;
@@ -374,11 +371,10 @@ class CrimeSceneDetail {
   List<SceneDetection> ofKind(String kind) =>
       [for (final d in detections) if (d.kind == kind) d];
 
-  /// How many suspects / vehicles / weapons, counted the way the crime scene
-  /// card is (list_case_crime_scenes), so both show the same number: the
-  /// most in any ONE analysed clip (the same person in two clips counts
-  /// once), without dismissed detections. Suspects are people who are still
-  /// possible or confirmed suspects (not ones dismissed as a suspect).
+  /// Suspect/vehicle/weapon counts, worked out the same way as the card
+  /// (list_case_crime_scenes) so the two always match: the max in any one
+  /// analysed clip, ignoring dismissed detections. Suspects means people who
+  /// are still possible or confirmed, not ones ruled out.
   int countOf(String kind) {
     final analysed = {
       for (final f in files)
@@ -398,9 +394,9 @@ class CrimeSceneDetail {
   }
 }
 
-// ---- Field names and values -------------------------------------------------
+// --- field names and values
 
-/// The weapon types the database accepts (weapondetail.weapontype).
+/// Weapon types the database accepts (weapondetail.weapontype).
 const weaponTypes = <String>[
   'handgun',
   'long_gun',
@@ -427,7 +423,7 @@ String fieldLabel(String field) => switch (field) {
       _ => field.replaceAll('_', ' '),
     };
 
-/// A value as people read it: null -> 'none', 'long_gun' -> 'long gun'.
+/// A value the way a person would read it: null -> 'none', 'long_gun' -> 'long gun'.
 String displayValue(String? field, String? value) {
   if (value == null || value.isEmpty) {
     return field == 'plate' ? 'no readable plate' : 'unknown';
@@ -436,7 +432,7 @@ String displayValue(String? field, String? value) {
   return value.replaceAll('_', ' ');
 }
 
-// ---- Parsing helpers ----------------------------------------------------------
+// --- parsing helpers
 
 DateTime? parseTime(Object? value) =>
     value is String ? DateTime.parse(value).toLocal() : null;

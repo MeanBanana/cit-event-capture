@@ -1,16 +1,16 @@
-// entity_crops_page.dart — every picture of ONE person / vehicle / weapon in
-// a case, from all of the case's submissions.
+// Every picture of one person/vehicle/weapon in a case, across all its
+// submissions.
 //
 //   Person 1                     top black, bottom blue · face seen
 //   Top black (82%) · Bottom blue (64%) · Face seen
 //   [ Is this Person 1?  pictures  reasons   [No] [Yes] ]   (open questions)
 //   [ Same as another person?  [Person 1 ▾]  [Combine] ]    (cases only)
 //   ┌───┬───┬───┐
-//   │   │   │   │   3 columns; grows as submissions add pictures
+//   │   │   │   │   3 columns, grows as submissions add pictures
 //   ├───┼───┼───┤
 //   ...
-// Tap a picture: it opens large (pinch to zoom) with a Download button that
-// saves it to the phone's gallery.
+// Tap a picture to see it big (pinch to zoom) with a Download button that
+// saves it to the gallery.
 
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
@@ -23,8 +23,8 @@ import 'package:argus_shield/admin_screens/admin_ui.dart';
 class EntityCropsPage extends StatefulWidget {
   final int caseId;
 
-  /// Which entry to show: [entityId] ("p1"), or on a crime scene / submission
-  /// the [detectionId] of the detection (labels can be numbered differently).
+  /// Which entry to show. [entityId] ("p1") on a case, or [detectionId] on a
+  /// crime scene/submission, where the label numbers can differ.
   final String? entityId;
   final int? detectionId;
   final CaseEvidenceSource source;
@@ -44,24 +44,23 @@ class EntityCropsPage extends StatefulWidget {
 class _EntityCropsPageState extends State<EntityCropsPage> {
   EvidenceEntity? _entity;
 
-  /// Which entry is shown; changes to the other one after combining.
+  /// The entry being shown. Switches to the other one after combining.
   late String? _entityId = widget.entityId;
 
-  /// The case's other entries of the same kind (for "Same as ...").
+  /// The case's other entries of the same kind, for "Same as...".
   List<EvidenceEntity> _others = const [];
   bool _loading = true;
   bool _busy = false;
 
-  /// The source as an [EntityCombiner], or null if it can't combine.
-  /// (Assigned to an Object first: EntityCombiner isn't a subtype of
-  /// CaseEvidenceSource, so an `is` check on the source itself wouldn't
-  /// narrow its type.)
+  /// The source as an [EntityCombiner], or null if it can't combine. We go
+  /// through Object first because EntityCombiner isn't a subtype of
+  /// CaseEvidenceSource, so an `is` check on the source wouldn't narrow it.
   EntityCombiner? get _combiner {
     final Object source = widget.source;
     return source is EntityCombiner ? source : null;
   }
 
-  /// Combining is only for a case's entries (not one submission's clips).
+  /// Only cases can combine, not a single submission's clips.
   bool get _canCombine =>
       widget.detectionId == null && (_combiner?.canCombine ?? false);
 
@@ -111,8 +110,8 @@ class _EntityCropsPageState extends State<EntityCropsPage> {
     if (mounted) setState(() => _busy = false);
   }
 
-  /// "This is the same as [target]": asks first, then moves all of this
-  /// entry's pictures to [target] and shows [target].
+  /// "This is the same as [target]": confirm, move all of this entry's
+  /// pictures over to [target], then show [target].
   Future<void> _combine(EvidenceEntity target) async {
     final e = _entity;
     final combiner = _combiner;
@@ -261,7 +260,7 @@ class _EntityCropsPageState extends State<EntityCropsPage> {
   }
 }
 
-/// One square in the grid: the picture with its submission underneath.
+/// A grid square: the picture with its submission underneath.
 class _CropTile extends StatelessWidget {
   final EvidenceCrop crop;
   final CaseEvidenceSource source;
@@ -309,7 +308,7 @@ class _CropTile extends StatelessWidget {
   }
 }
 
-/// "Is this Person 1?" with the new pictures, the reasons and Yes / No.
+/// "Is this Person 1?" with the new pictures, the reasons and Yes/No.
 class _QuestionCard extends StatelessWidget {
   final String label;
   final MatchQuestion question;
@@ -374,8 +373,8 @@ class _QuestionCard extends StatelessWidget {
               style: AppText.bodyMuted.copyWith(
                   fontSize: 12, fontStyle: FontStyle.italic)),
           const SizedBox(height: 8),
-          // Wrap, not Row: on a narrow phone the two buttons don't fit side
-          // by side, so the second one moves to the next line
+          // Wrap rather than Row, on narrow phones the buttons don't fit
+          // side by side so the second one drops to the next line
           Wrap(
             alignment: WrapAlignment.end,
             spacing: 8,
@@ -399,7 +398,7 @@ class _QuestionCard extends StatelessWidget {
   }
 }
 
-/// "Same as another person?": pick Person 1 / 2 / 3 ... and combine.
+/// "Same as another person?": pick Person 1/2/3... and combine.
 class _CombineCard extends StatefulWidget {
   final EvidenceEntity entity;
   final List<EvidenceEntity> others;

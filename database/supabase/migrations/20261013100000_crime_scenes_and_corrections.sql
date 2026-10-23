@@ -1,51 +1,30 @@
--- =====================================================================
--- Argus Shield: CRIME SCENES inside a case, and INVESTIGATOR CORRECTIONS
--- of what the AI found.
+-- Crime scenes inside a case, and investigators correcting the AI.
 --
--- A case groups several crime scenes (crimescene rows). The case page now
--- shows one small card per crime scene (description, location, how many
--- suspects / vehicles / weapons) and a page per crime scene with its
--- footage, what the AI found and the corrections made to it.
+-- A case is made up of several crime scenes (crimescene rows). The case page
+-- now shows a small card per scene, and each scene gets its own page with
+-- the footage, what the AI found and any corrections.
 --
--- After the AI has analysed a crime scene's footage, an investigator on
--- the case (or an admin) can correct what it found:
+-- Once the AI is done with a scene, an investigator on the case (or an admin)
+-- can fix what it got wrong: clothing colours for people; type, make, model,
+-- colour and plate for vehicles; weapon type; or dismiss a detection outright
+-- as "not actually a person/vehicle/weapon". Nothing can be corrected while
+-- the footage is still waiting or being analysed.
 --
---   person    top colour, bottom colour
---   vehicle   type, make, model, colour, number plate
---   weapon    weapon type
---   any       "not a real person / vehicle / weapon" (dismissed)
+-- All corrections go through correct_detection() and get logged in
+-- correctionlog (who, when, field, old -> new, why). The app can't write to
+-- vehicledetail / weapondetail / correctionlog directly any more, so there's
+-- no way to change something without it being logged.
 --
--- Every correction goes through correct_detection() and is written to
--- correctionlog (who, when, which field, old -> new value, why). The app
--- can no longer change vehicledetail / weapondetail / correctionlog
--- directly, so nothing is changed without being logged.
---
--- While the footage is still waiting for the AI or being analysed, nothing
--- can be corrected: the app shows "Waiting for analysis" / "Analysing".
---
--- Corrections win over the AI:
---   * detection.corrections holds the corrected values; a re-run of the
---     analysis (ai_save_analysis) never touches it
---   * the worker reads the corrected values when it combines a case's
---     people / vehicles / weapons (ai_member), so the case summary follows
---   * a dismissed detection leaves its case entity and is never merged
---     into a case again (until the dismissal is undone)
---
--- Contents
---   1. correctionlog: + fieldname, note; writes only through the function
---   2. detection.corrections + who may write it
---   3. Helpers: AI value / current value of a field, analysis status
---   4. Worker: corrected values and dismissals
---   5. correct_detection()
---   6. list_case_crime_scenes(), get_crime_scene()
---   7. Privileges
--- =====================================================================
+-- Corrections always beat the AI:
+--   - they live in detection.corrections, which re-runs never touch
+--   - the worker reads corrected values when building a case's entities
+--     (ai_member), so the case summary picks them up
+--   - a dismissed detection drops out of its entity and won't be merged into
+--     a case again unless the dismissal is undone
 
 
--- ---------------------------------------------------------------------
--- 1. correctionlog
---    fieldname is null only for rows written before this migration.
--- ---------------------------------------------------------------------
+-- --- 1. correctionlog
+-- fieldname is only NULL on rows from before this migration
 ALTER TABLE public.correctionlog
   ADD COLUMN fieldname varchar(30)
       CHECK (fieldname IN ('upper_clothing', 'lower_clothing',
@@ -56,33 +35,31 @@ ALTER TABLE public.correctionlog
 CREATE INDEX IF NOT EXISTS idx_correctionlog_detection_time
   ON public.correctionlog (detectionid, correctiontimestamp DESC);
 
--- Append-only, and only through correct_detection() (SECURITY DEFINER):
--- an app user inserting rows by hand could log a change that never
--- happened, or change a value without a log entry.
+-- Append-only, and only via correct_detection() (SECURITY DEFINER).
+-- Otherwise someone could log a change that never happened, or make a change
+-- without logging it.
 DROP POLICY IF EXISTS "correctionlog_insert" ON public.correctionlog;
 REVOKE ALL ON public.correctionlog FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES
   ON public.correctionlog FROM authenticated;
 REVOKE ALL ON SEQUENCE public.correctionlog_correctionid_seq FROM anon, authenticated;
 
--- vehicledetail / weapondetail: corrections only through correct_detection()
+-- same for the detail tables: corrections only through correct_detection()
 DROP POLICY IF EXISTS "vehicledetail_update" ON public.vehicledetail;
 DROP POLICY IF EXISTS "weapondetail_update" ON public.weapondetail;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.vehicledetail FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.weapondetail FROM anon, authenticated;
 
 
--- ---------------------------------------------------------------------
--- 2. detection.corrections: {"plate": "ND654321", "dismissed": true, ...}
---    A key is there only while the value differs from the AI's. A JSON
---    null means "none / unknown" (e.g. no readable plate).
--- ---------------------------------------------------------------------
+-- --- 2. detection.corrections, e.g. {"plate": "ND654321", "dismissed": true}
+-- A key is only present while it differs from what the AI said. JSON null
+-- means "none/unknown", like no readable plate.
 ALTER TABLE public.detection
   ADD COLUMN corrections jsonb NOT NULL DEFAULT '{}'::jsonb,
   ADD CONSTRAINT detection_corrections_check CHECK (jsonb_typeof(corrections) = 'object');
 
--- Same as before (20261012100100 8d), plus: corrections are written by
--- correct_detection() only - not by the app and not by the AI worker.
+-- Same as before (20261012100100, 8d), and now corrections can only be
+-- written by correct_detection(), not by the app or the worker.
 CREATE OR REPLACE FUNCTION public.protect_detection_ai()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -105,7 +82,7 @@ BEGIN
     OR NEW.framesseen   IS DISTINCT FROM OLD.framesseen
     OR NEW.attributes   IS DISTINCT FROM OLD.attributes
     OR NEW.crops        IS DISTINCT FROM OLD.crops
-    -- (as text: pgvector's = lives in the extensions schema)
+    -- compare as text because pgvector's = operator lives in the extensions schema
     OR NEW.appearance::text IS DISTINCT FROM OLD.appearance::text
     OR NEW.colourhist::text IS DISTINCT FROM OLD.colourhist::text
     OR NEW.caseentityid IS DISTINCT FROM OLD.caseentityid
@@ -120,9 +97,8 @@ BEGIN
 END;
 $$;
 
--- A dismissed detection ("not a real weapon") never sits in a case entity,
--- even if a worker that loaded the case before the dismissal saves it
--- afterwards.
+-- A dismissed detection can never sit in a case entity, even if a worker
+-- loaded the case before the dismissal and saves it afterwards.
 CREATE OR REPLACE FUNCTION public.detection_keep_dismissed_out()
   RETURNS trigger
   LANGUAGE plpgsql
@@ -145,11 +121,9 @@ CREATE TRIGGER detection_keep_dismissed_out
   FOR EACH ROW EXECUTE FUNCTION public.detection_keep_dismissed_out();
 
 
--- ---------------------------------------------------------------------
--- 3. Helpers
--- ---------------------------------------------------------------------
+-- --- 3. helpers
 
--- The fields that can be corrected, per kind of detection (in screen order)
+-- which fields can be corrected for each kind, in the order the screen shows them
 CREATE OR REPLACE FUNCTION public.correctable_fields(p_kind text)
   RETURNS text[]
   LANGUAGE sql IMMUTABLE
@@ -163,7 +137,7 @@ AS $$
   END
 $$;
 
--- What the AI said for a field (null = it didn't say)
+-- what the AI said for a field (NULL if it didn't say)
 CREATE OR REPLACE FUNCTION public.detection_ai_value(p_attributes jsonb, p_field text)
   RETURNS text
   LANGUAGE sql IMMUTABLE
@@ -182,7 +156,7 @@ AS $$
   END
 $$;
 
--- The value that counts: the investigator's correction, else the AI's
+-- the value that counts: the correction if there is one, otherwise the AI's
 CREATE OR REPLACE FUNCTION public.detection_value(
   p_attributes jsonb, p_corrections jsonb, p_field text)
   RETURNS text
@@ -199,12 +173,12 @@ CREATE OR REPLACE FUNCTION public.detection_dismissed(p_corrections jsonb)
   SET search_path = ''
 AS $$ SELECT COALESCE(p_corrections ->> 'dismissed', 'false') = 'true' $$;
 
--- Where a crime scene's footage is with the AI:
---   no_footage  nothing was uploaded
---   pending     waiting for the AI worker (queued, or not submitted yet)
---   analysing   the worker is analysing it right now
---   failed      no file could be analysed
---   done        analysed (failed > 0: some files could not be analysed)
+-- Where a scene's footage is up to with the AI:
+--   no_footage  nothing uploaded
+--   pending     waiting for the worker (queued or not submitted yet)
+--   analysing   being worked on right now
+--   failed      none of the files could be analysed
+--   done        finished (failed > 0 means some files didn't work)
 CREATE OR REPLACE FUNCTION public.crime_scene_analysis(p_incidentid integer)
   RETURNS jsonb
   LANGUAGE sql STABLE
@@ -241,11 +215,9 @@ AS $$
 $$;
 
 
--- ---------------------------------------------------------------------
--- 4. Worker: use the corrected values, skip dismissed detections
--- ---------------------------------------------------------------------
+-- --- 4. worker: corrected values win, dismissed detections are skipped
 
--- Same as 20261012100100 section 7, with the corrected values winning
+-- same as 20261012100100 section 7, except corrected values win
 CREATE OR REPLACE FUNCTION public.ai_member(p_detectionid integer)
   RETURNS jsonb
   LANGUAGE sql STABLE
@@ -272,7 +244,7 @@ AS $$
     'attributes',   CASE d.detectiontype
       WHEN 'person' THEN jsonb_build_object(
         'upper_clothing',            to_jsonb(public.detection_value(d.attributes, d.corrections, 'upper_clothing')),
-        -- a corrected value is certain
+        -- a corrected value is treated as certain
         'upper_clothing_confidence', CASE WHEN d.corrections ? 'upper_clothing' THEN to_jsonb(1)
                                           ELSE d.attributes -> 'upper_clothing_confidence' END,
         'lower_clothing',            to_jsonb(public.detection_value(d.attributes, d.corrections, 'lower_clothing')),
@@ -314,7 +286,7 @@ AS $$
   WHERE d.detectionid = p_detectionid
 $$;
 
--- Same as before, without dismissed detections
+-- same as before, minus dismissed detections
 CREATE OR REPLACE FUNCTION public.ai_load_submission(p_incidentid integer)
   RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -327,7 +299,7 @@ BEGIN
     RAISE EXCEPTION 'Incident % not found', p_incidentid;
   END IF;
   RETURN v_sub || jsonb_build_object('members', COALESCE((
-    -- fresh members: no case status yet (merge_submission decides)
+    -- new members don't have a case status yet, merge_submission decides
     SELECT jsonb_agg(public.ai_member(d.detectionid)
                      || '{"status": null, "score": null, "reasons": []}'::jsonb
                      ORDER BY m.mediaid, d.detectiontype, d.trackid, d.detectionid)
@@ -339,20 +311,18 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 5. correct_detection - an investigator corrects what the AI found
+-- --- 5. correct_detection: an investigator fixes what the AI found
 --
 --   select correct_detection(812, 'plate', 'ND 654-321');
 --   select correct_detection(812, 'dismissed', 'true', 'It is a parked car');
 --   select correct_detection(812, 'plate', <the AI's value>);  -- undo
 --
--- p_value: the new value as text ('' or null = none / unknown; for
--- 'dismissed' 'true' / 'false'). Setting the AI's own value again removes
--- the correction (the log keeps both steps).
--- Who: admins, and investigators assigned to the case while it is not
--- closed. Only once the AI has finished with the crime scene's footage.
--- Returns {correctionid, field, original, corrected}.
--- ---------------------------------------------------------------------
+-- p_value is text. '' or NULL means none/unknown, and 'dismissed' takes
+-- 'true'/'false'. Setting it back to the AI's value removes the correction
+-- (the log keeps both). Admins can always do this, investigators only on
+-- cases they're assigned to that aren't closed, and only after the AI has
+-- finished with the footage. Returns {correctionid, field, original,
+-- corrected}.
 ALTER TABLE public.caseevent DROP CONSTRAINT caseevent_eventtype_check;
 ALTER TABLE public.caseevent ADD CONSTRAINT caseevent_eventtype_check
   CHECK (eventtype IN (
@@ -364,7 +334,7 @@ ALTER TABLE public.caseevent ADD CONSTRAINT caseevent_eventtype_check
     'ai_match_confirmed', 'ai_match_rejected',
     'detection_corrected'));
 
--- "Person 2", "Vehicle 1" ... as the crime scene page numbers them
+-- "Person 2", "Vehicle 1" etc, numbered the same way the scene page does
 CREATE OR REPLACE FUNCTION public.detection_label(p_detectionid integer)
   RETURNS text
   LANGUAGE sql STABLE
@@ -430,8 +400,8 @@ BEGIN
     END IF;
   END IF;
 
-  -- the AI must be finished with this footage, or its results could
-  -- still change under the investigator
+  -- the AI has to be finished, otherwise its results could change under
+  -- the investigator's feet
   IF v_media.processingstatus <> 'completed'
      OR (public.crime_scene_analysis(v_cs.incidentid) ->> 'status') IN ('pending', 'analysing') THEN
     RAISE EXCEPTION 'The AI is still working on the footage of %: corrections are possible once it has finished',
@@ -443,7 +413,7 @@ BEGIN
       v_det.detectiontype, array_to_string(public.correctable_fields(v_det.detectiontype), ', ');
   END IF;
 
-  -- clean up the new value
+  -- tidy up the value
   v_new := NULLIF(trim(COALESCE(p_value, '')), '');
   CASE p_field
     WHEN 'dismissed' THEN
@@ -466,7 +436,7 @@ BEGIN
       IF char_length(v_new) > 100 THEN
         RAISE EXCEPTION '% is too long (100 characters at most)', p_field;
       END IF;
-    ELSE   -- colours, vehicle type
+    ELSE   -- colours and vehicle type
       v_new := lower(v_new);
       IF char_length(v_new) > 50 THEN
         RAISE EXCEPTION '% is too long (50 characters at most)', p_field;
@@ -492,18 +462,18 @@ BEGIN
     END IF;
   END IF;
 
-  -- 1. the value
+  -- a) the value itself
   UPDATE public.detection
      SET corrections = CASE WHEN v_new IS NOT DISTINCT FROM v_ai
-                            THEN corrections - p_field                 -- back to the AI's
+                            THEN corrections - p_field                 -- back to what the AI said
                             ELSE corrections || jsonb_build_object(p_field,
                                    CASE WHEN p_field = 'dismissed' THEN to_jsonb(v_new = 'true')
                                         ELSE to_jsonb(v_new) END) END
    WHERE detectionid = p_detectionid
   RETURNING * INTO v_det;
 
-  -- 2. keep the detail tables (used by plate matching, list_submissions
-  --    ...) the same as what counts now
+  -- b) keep the detail tables in step, plate matching and list_submissions
+  -- read from them
   IF v_det.detectiontype = 'vehicle' AND p_field <> 'dismissed' THEN
     INSERT INTO public.vehicledetail AS t (detectionid, vehicletype, make, model, colour,
                                            platedetected, licenceplatenumber, plateconfidence)
@@ -531,14 +501,14 @@ BEGIN
     ON CONFLICT (detectionid) DO UPDATE SET weapontype = EXCLUDED.weapontype;
   END IF;
 
-  -- 3. the log
+  -- c) log it
   INSERT INTO public.correctionlog (detectionid, correctedby, fieldname,
                                     originalvalue, correctedvalue, note)
   VALUES (p_detectionid, public.current_user_id(), p_field,
           COALESCE(v_old, ''), COALESCE(v_new, ''), v_note)
   RETURNING correctionid INTO v_id;
 
-  -- 4. the case's combined people / vehicles / weapons follow
+  -- d) the case's combined entities follow
   IF v_cs.caseid IS NOT NULL AND v_cs.reviewstatus = 'accepted' AND v_cs.aimerged THEN
     IF p_field = 'dismissed' AND v_new = 'true' THEN
       IF v_det.caseentityid IS NOT NULL THEN
@@ -546,7 +516,7 @@ BEGIN
         PERFORM public.ai_drop_empty_entities(v_cs.caseid);
       END IF;
     ELSIF p_field = 'dismissed' THEN
-      -- back in: the worker places it again (another entity or a new one)
+      -- un-dismissed: the worker places it again (existing entity or a new one)
       PERFORM public.queue_ai_job('rematch', NULL, v_cs.caseid, p_detectionid);
     END IF;
     UPDATE public.cases SET aisummarystatus = 'outdated'
@@ -554,7 +524,7 @@ BEGIN
     PERFORM public.queue_ai_job('summary', NULL, v_cs.caseid);
   END IF;
 
-  -- 5. the case history
+  -- e) case history
   v_label := public.detection_label(p_detectionid);
   IF v_cs.caseid IS NOT NULL THEN
     PERFORM public.log_case_event('detection_corrected', v_cs.caseid, v_cs.incidentid,
@@ -571,14 +541,12 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 6. Crime scenes of a case, and one crime scene in full
--- ---------------------------------------------------------------------
+-- --- 6. a case's crime scenes, and one scene in full
 
--- The cards on the case page: one row per crime scene in the case.
--- suspects / vehicles / weapons = the most seen in any ONE clip (the same
--- person in two clips of one scene counts once), without dismissed ones
--- and without people an investigator dismissed as a suspect.
+-- The scene cards on the case page. suspects / vehicles / weapons are the
+-- most seen in any single clip (so the same person in two clips counts
+-- once), leaving out dismissed detections and people an investigator has
+-- ruled out as suspects.
 CREATE OR REPLACE FUNCTION public.list_case_crime_scenes(p_caseid integer)
   RETURNS TABLE (
     incidentid        integer,
@@ -649,11 +617,11 @@ BEGIN
 END;
 $$;
 
--- Everything the crime scene page shows, as one JSON object:
---   the scene, where the AI is with it (analysis), whether you may
---   correct, its files, every detection with each correctable field
---   ({field, ai, value, corrected}) and the corrections log (newest first).
--- Admins, and investigators assigned to its case. NULL if no such scene.
+-- Everything the scene page needs in one JSON object: the scene, its
+-- analysis status, whether you're allowed to correct, its files, every
+-- detection with its correctable fields ({field, ai, value, corrected}) and
+-- the corrections log, newest first. Admins and assigned investigators only,
+-- NULL if the scene doesn't exist.
 CREATE OR REPLACE FUNCTION public.get_crime_scene(p_incidentid integer)
   RETURNS jsonb
   LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -765,9 +733,7 @@ END;
 $$;
 
 
--- ---------------------------------------------------------------------
--- 7. Privileges
--- ---------------------------------------------------------------------
+-- --- 7. privileges
 -- internal helpers
 REVOKE ALL ON FUNCTION
   public.crime_scene_analysis(integer),
@@ -779,7 +745,7 @@ GRANT EXECUTE ON FUNCTION
   public.detection_label(integer)
 TO service_role;
 
--- pure helpers (no data access)
+-- pure helpers, no data access
 REVOKE ALL ON FUNCTION
   public.correctable_fields(text),
   public.detection_ai_value(jsonb, text),
@@ -793,7 +759,7 @@ GRANT EXECUTE ON FUNCTION
   public.detection_dismissed(jsonb)
 TO authenticated, service_role;
 
--- for the app (each checks who is asking)
+-- called by the app (each one checks who's asking)
 REVOKE ALL ON FUNCTION
   public.correct_detection(integer, text, text, text),
   public.list_case_crime_scenes(integer),

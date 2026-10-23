@@ -1,53 +1,36 @@
 """
-case_matcher.py - links submissions to cases and combines what the AI found
-in each submission into ONE list of people, vehicles and weapons per case.
+Everything to do with cases on the AI side: suggesting which case a new
+submission belongs to, merging accepted submissions into a case, and building
+the combined people/vehicles/weapons list the case screen shows.
 
-Three jobs:
+Suggesting: a case comes up if one of its submissions was filmed within 1km
+and 14 days of the new one, or if the same plate appears. Other overlap
+(look-alike people/vehicles) bumps the score. Nothing actually joins a case
+until an admin says yes.
 
-  1. SUGGEST a case for a new submission (shown to admins in the Submissions
-     tab). A case is suggested when one of its submissions was filmed within
-     SUGGEST_KM (1 km, GPS from the video / photo itself) and SUGGEST_DAYS
-     (14 days) of the new one - or when the same number plate shows up.
-     Extra evidence (same plate, same-looking vehicle, a person who looks
-     alike) raises the score and is listed as reasons.
-     Nothing joins a case until an admin accepts.
+Merging: each person/vehicle/weapon in the new submission gets compared to
+what the case already has.
+  - vehicles: same plate (or one character off with make/colour agreeing)
+    is an automatic match. Same make+colour+type without a plate becomes an
+    "Is this Vehicle 2?" question.
+  - people: appearance fingerprint plus clothing. Very close is automatic,
+    fairly close is a question, otherwise it's someone new.
+  - weapons: tag along with whoever is holding them.
+Two people on screen at the same moment in the same clip are never merged.
+After linking, every entity's details are re-voted over all its clips, so a
+new clip can fill in a plate we couldn't read before or outvote a bad read.
 
-  2. MERGE an accepted submission into the case. Every person / vehicle /
-     weapon it found is compared with the case's existing ones:
-        vehicle  same plate (or 1 character off, make and colour agreeing)
-                 -> the same vehicle. Same make + colour + type, no plate
-                 -> "Is this Vehicle 2?" for the admin.
-        person   appearance fingerprint (appearance.py) + clothing colours:
-                 very alike and same clothing -> the same person; fairly
-                 alike -> "Is this Person 2?"; else a new person.
-        weapon   follows the person holding it (Person 2's long gun stays
-                 Person 2's long gun); otherwise a new weapon.
-     Two people seen AT THE SAME TIME in one clip are never merged into one.
-     Its crops are added to that person's / vehicle's list, and each one's
-     combined details are re-voted over everything linked to it - a new clip
-     can fill a gap (a plate nobody could read before) or outvote a weak
-     reading. Changes are listed under "updated".
+case_view() spits out exactly what the case screen needs.
 
-  3. VIEW: case_view(case) gives exactly what the case screen shows: the
-     summary, counts, and per person / vehicle / weapon its details, cover
-     picture, all its crops (for the 3-column grid) and open questions.
+The worker calls these functions against Supabase. The CLI below keeps cases
+as JSON files in cases/ so you can play with it locally, e.g.
 
-Until the Supabase side is built, cases are kept as JSON files in cases/
-(one per case), so everything can be tried on a laptop:
+    python case_matcher.py create "crops/submission 1/results.json" --title "N1 Midrand"
+    python case_matcher.py add 1 "crops/submission 5/results.json"
+    python case_matcher.py confirm 1 s5/f1/person/3 yes
 
-    python case_matcher.py suggest "crops/submission 5/results.json"
-    python case_matcher.py create  "crops/submission 1/results.json" --title "N1 Midrand CIT robbery"
-    python case_matcher.py add 1   "crops/submission 5/results.json"      (admin accepted)
-    python case_matcher.py questions 1
-    python case_matcher.py confirm 1 s5/f1/person/3 yes                   (or: no)
-    python case_matcher.py show 1
-    python case_matcher.py view 1 > case_1_view.json                      (what the app shows)
-
-A submission without GPS in its files (WhatsApp strips it) can be given the
-phone's location instead: --lat -26.0045 --lon 28.1271
-
-Later the worker calls the same functions (suggest_cases, merge_submission,
-confirm_match, case_view) and stores the result in Supabase instead of cases/.
+Run with --help for the rest. If the files have no GPS (WhatsApp strips it)
+pass the phone's location with --lat/--lon.
 """
 
 import argparse
@@ -65,14 +48,12 @@ from clothing import clothing_word
 CASES_DIR = Path("cases")
 SUGGEST_KM = 1.0
 SUGGEST_DAYS = 14
-SAME_DAY_HOURS = 12        # people change clothes: appearance only links within this
-SURE_SHARE = 0.5           # a clothing / make / colour answer counts as "known" from here
-VEHICLE_MAYBE = 0.85       # same type + colour, no plate/make: ask from this look-alike score
+SAME_DAY_HOURS = 12        # past this people may have changed clothes, so don't auto-link
+SURE_SHARE = 0.5           # below this we treat a clothing/make/colour answer as unknown
+VEHICLE_MAYBE = 0.85       # look-alike score needed to ask about a plate-less, make-less car
 
 
-# ---------------------------------------------------------------------------
-# Small helpers
-# ---------------------------------------------------------------------------
+# --- small helpers
 
 def _time(text):
     if not text:
@@ -96,7 +77,7 @@ def distance_km(a, b):
 
 
 def normalize_plate(plate):
-    """'nd 123-456 gp' -> 'ND123456GP' (None if nothing is left)."""
+    """'nd 123-456 gp' -> 'ND123456GP'"""
     text = re.sub(r"[^A-Za-z0-9]", "", plate or "").upper()
     return text or None
 
@@ -113,8 +94,8 @@ def _levenshtein(a, b):
 
 
 def plates_similar(a, b):
-    """Exactly one character apart (an OCR mix-up like 0/O or 8/B), both at
-    least 5 characters - same rule as the database's plates_similar()."""
+    """One character apart, i.e. the OCR mixed up 0/O or 8/B. Keep this in
+    sync with plates_similar() in the database."""
     return (a and b and len(a) >= 5 and len(b) >= 5 and abs(len(a) - len(b)) <= 1
             and _levenshtein(a, b) == 1)
 
@@ -135,14 +116,11 @@ def _fmt_gap(hours):
     return f"{round(hours / 24)} days"
 
 
-# ---------------------------------------------------------------------------
-# A submission, as the matcher sees it
-# ---------------------------------------------------------------------------
+# --- loading a submission
 
 def load_submission(results_path, latitude=None, longitude=None):
-    """Reads a results.json (from main.py) into a submission record.
-    latitude / longitude: the phone's location, used only when no file in the
-    submission has GPS of its own."""
+    """Load a main.py results.json. The lat/lon is the phone's location and
+    only gets used if none of the files had GPS."""
     results_path = Path(results_path)
     data = json.loads(results_path.read_text(encoding="utf-8"))
     if "files" not in data:
@@ -177,14 +155,14 @@ def submission_record(data, results_path=None, latitude=None, longitude=None):
             record["members"].append(member)
             if member["kind"] == "person":
                 people[d["track_id"]] = member["key"]
-        for member in record["members"]:          # weapon -> the holder's key
+        for member in record["members"]:          # swap the holder's track id for their key
             if member["file_index"] == index and member["kind"] == "weapon":
                 member["held_by"] = people.get(member.pop("held_by_track", None))
     return record
 
 
 def _member(submission, file_index, file_name, f, d):
-    """One tracked person / vehicle / weapon from one file."""
+    """Build the record for one tracked thing in one file."""
     kind = d["detection_type"]
     member = {
         "key": f"s{submission}/f{file_index}/{kind}/{d['track_id']}",
@@ -197,7 +175,7 @@ def _member(submission, file_index, file_name, f, d):
         "last_seen": d.get("last_seen_seconds", d.get("first_seen_seconds", 0.0)),
         "capture_time": f.get("capture_time"),
         "appearance": d.get("appearance"),
-        "status": None,             # first | auto | confirmed | suggested
+        "status": None,             # first / auto / confirmed / suggested
         "score": None,
         "reasons": [],
     }
@@ -239,14 +217,13 @@ def _member(submission, file_index, file_name, f, d):
     return member
 
 
-# ---------------------------------------------------------------------------
-# Is this member the same as that entity?
-# ---------------------------------------------------------------------------
-# Each returns (decision, score, reasons): decision is "auto" (same),
-# "suggest" (ask the admin) or None (different / don't know).
+# --- is this member the same as that entity?
+#
+# The compare_* functions return (decision, score, reasons) where decision
+# is "auto", "suggest" (ask an admin) or None.
 
 def _linked(entity):
-    """Members whose link is settled (count for votes and comparisons)."""
+    """Members that are settled, i.e. not still waiting on an admin."""
     return [m for m in entity["members"] if m["status"] in ("first", "auto", "confirmed")]
 
 
@@ -309,7 +286,7 @@ def compare_vehicle(member, entity):
     if make_clash or colour_clash:
         return None, 0.0, []
     if not colour_a or not colour_e:
-        return None, 0.0, []                    # too little to go on
+        return None, 0.0, []                    # not enough to go on
     same_type = a.get("class_name") == e.get("class_name")
     sims = [s for s in (similarity(member["appearance"], o["appearance"]) for o in _linked(entity))
             if s is not None]
@@ -332,13 +309,11 @@ def compare_weapon(member, entity, person_entity_of):
     return None, 0.0, []
 
 
-# ---------------------------------------------------------------------------
-# Merging a submission into a case
-# ---------------------------------------------------------------------------
+# --- merging a submission into a case
 
 def _overlaps(member, entity):
-    """Does the entity already have someone from the SAME file at the SAME
-    time? Then this member is a different person/vehicle (both on screen)."""
+    """True if the entity already has something from the same file on screen
+    at the same time. Two things visible at once can't be the same thing."""
     for o in entity["members"]:
         if o["submission"] == member["submission"] and o["file_index"] == member["file_index"]:
             if member["first_seen"] <= o["last_seen"] and o["first_seen"] <= member["last_seen"]:
@@ -369,7 +344,7 @@ def _link(member, entity, status, score=None, reasons=()):
     member.update(status=status, score=None if score is None else round(score, 3),
                   reasons=list(reasons))
     entity["members"].append(member)
-    _revote(entity)            # later comparisons see the updated details
+    _revote(entity)            # so the next comparison sees the new details
 
 
 def _candidates(member, entities, case, person_entity_of):
@@ -388,8 +363,7 @@ def _candidates(member, entities, case, person_entity_of):
 
 
 def merge_submission(case, sub):
-    """Adds an accepted submission to the case. Returns a report:
-    {"linked": [...], "questions": [...], "new": [...], "updated": [...]}."""
+    """Merge an accepted submission into the case and report what happened."""
     if any(s["submission"] == sub["submission"] for s in case["submissions"]):
         raise ValueError(f"Submission {sub['submission']} is already in case {case['case_id']}")
     case["submissions"].append({k: sub[k] for k in ("submission", "results_path", "location",
@@ -399,11 +373,11 @@ def merge_submission(case, sub):
     person_entity_of = {m["key"]: e["entity_id"] for e in case["entities"]
                         if e["kind"] == "person" for m in e["members"]}
 
-    members = [json.loads(json.dumps(m)) for m in sub["members"]]   # own copies
-    for kind in ("person", "vehicle", "weapon"):                     # weapons need people first
+    members = [json.loads(json.dumps(m)) for m in sub["members"]]   # deep copy
+    for kind in ("person", "vehicle", "weapon"):                     # people before weapons, weapons need holders
         todo = [m for m in members if m["kind"] == kind]
 
-        # 1) the best pairs with the case's EXISTING entities first
+        # First pass: match against what the case already had, best pairs first
         existing = [e for e in case["entities"] if e["kind"] == kind]
         pairs = []
         for m in todo:
@@ -419,8 +393,8 @@ def merge_submission(case, sub):
             (report["linked"] if decision == "auto" else report["questions"]).append(
                 (m["key"], entity["label"], round(score, 2), reasons))
 
-        # 2) the rest: one by one, so a second clip of the same person in this
-        #    submission joins the entity the first clip just created
+        # Second pass: the leftovers, one at a time. That way a second clip of
+        # someone new in this submission can join the entity the first clip made.
         for m in sorted((m for m in todo if m["key"] not in placed),
                         key=lambda m: -(m["last_seen"] - m["first_seen"])):
             fresh = [e for e in case["entities"] if e["kind"] == kind
@@ -471,7 +445,7 @@ _SHOWN_FIELDS = {
 
 
 def _vote(pairs):
-    """[(value, weight)] -> (winner, share of the weight, {top 3})."""
+    """Weighted vote. Returns (winner, its share, top 3)."""
     totals = Counter()
     for value, weight in pairs:
         if value and weight > 0:
@@ -484,7 +458,7 @@ def _vote(pairs):
 
 
 def _revote(entity, case=None):
-    """The entity's combined details, voted over all its settled members."""
+    """Recompute an entity's details from all its settled members."""
     linked = _linked(entity)
     a = {}
     if entity["kind"] == "person":
@@ -538,14 +512,11 @@ def _revote(entity, case=None):
     entity["cover"] = cover["crops"][0]["path"] if cover and cover["crops"] else None
 
 
-# ---------------------------------------------------------------------------
-# Admin answers "Is this Person 2?"
-# ---------------------------------------------------------------------------
+# --- admin answering "Is this Person 2?"
 
 def place_member(case, member):
-    """Puts ONE member into its best entity (rejected pairs skipped), or
-    into a new entity. Used after an admin's "No" (the worker's 'rematch'
-    job). Returns the entity; member["status"] says how it was placed."""
+    """Find the best home for one member, or make a new entity for it.
+    The worker's rematch job uses this after an admin says no."""
     person_entity_of = {m["key"]: e["entity_id"] for e in case["entities"]
                         if e["kind"] == "person" for m in e["members"]}
     found = _candidates(member, case["entities"], case, person_entity_of)
@@ -562,8 +533,7 @@ def place_member(case, member):
 
 
 def revote_case(case):
-    """Re-votes every entity's details and rewrites the summary (after an
-    admin's answer, or a submission leaving the case)."""
+    """Re-vote everything and refresh the summary."""
     for entity in case["entities"]:
         _revote(entity, case)
     case["summary"] = summary_text(case)
@@ -575,8 +545,8 @@ def open_questions(case):
 
 
 def confirm_match(case, member_key, accept):
-    """Yes: the suggested member really is that entity. No: it is moved out
-    (to another match or a new entity) and never suggested there again."""
+    """Yes keeps the member where it is. No moves it somewhere else and
+    remembers never to suggest that pairing again."""
     for entity in case["entities"]:
         for member in entity["members"]:
             if member["key"] == member_key and member["status"] == "suggested":
@@ -612,12 +582,10 @@ def confirm_match(case, member_key, accept):
     return result
 
 
-# ---------------------------------------------------------------------------
-# Suggesting cases for a new submission
-# ---------------------------------------------------------------------------
+# --- suggesting cases
 
 def suggest_cases(sub, cases, limit=3):
-    """[{case_id, title, score, distance_km, hours_apart, reasons}], best first."""
+    """Top few cases this submission might belong to, best first."""
     suggestions = []
     for case in cases:
         if case.get("status", "open") == "closed":
@@ -656,7 +624,7 @@ def suggest_cases(sub, cases, limit=3):
 
 
 def _evidence(case, sub):
-    """What the submission has in common with the case (no changes made)."""
+    """What the submission has in common with the case. Read-only."""
     reasons, score = [], 0
     vehicles = [e for e in case["entities"] if e["kind"] == "vehicle"]
     people = [e for e in case["entities"] if e["kind"] == "person"]
@@ -681,9 +649,7 @@ def _evidence(case, sub):
     return reasons, score
 
 
-# ---------------------------------------------------------------------------
-# What the case screen shows
-# ---------------------------------------------------------------------------
+# --- the case screen
 
 def describe(entity):
     a = entity["attributes"]
@@ -708,8 +674,8 @@ def describe(entity):
 
 
 def summary_text(case):
-    """Plain summary for the top of the case (a Claude-written one can
-    replace it later: same place in the data, 'ai_summary')."""
+    """The plain summary at the top of a case. We might swap this for an
+    LLM-written one later, it'd live in the same ai_summary field."""
     subs = case["submissions"]
     times = sorted(t for t in (_time(s["capture_time"]) for s in subs) if t)
     people = [e for e in case["entities"] if e["kind"] == "person"]
@@ -723,7 +689,7 @@ def summary_text(case):
             f"AI found {len(people)} {'person' if len(people) == 1 else 'people'}, "
             f"{len(vehicles)} vehicle{'s' if len(vehicles) != 1 else ''} and "
             f"{len(weapons)} weapon{'s' if len(weapons) != 1 else ''}.")
-    held = defaultdict(list)                  # Person 1 -> [handgun, long gun]
+    held = defaultdict(list)                  # "Person 1" -> ["handgun", ...]
     for e in weapons:
         holder, kind = e["attributes"].get("held_by"), e["attributes"].get("kind")
         kind = (kind or "weapon").replace("_", " ")
@@ -745,8 +711,7 @@ def summary_text(case):
 
 
 def case_view(case):
-    """Everything the case screen needs (also what the app will get from
-    Supabase later)."""
+    """All the data the case screen needs."""
     sub_info = {s["submission"]: s for s in case["submissions"]}
 
     def crops_of(members):
@@ -794,9 +759,7 @@ def case_view(case):
     }
 
 
-# ---------------------------------------------------------------------------
-# Cases on disk (until Supabase)
-# ---------------------------------------------------------------------------
+# --- local JSON storage for the CLI
 
 def new_case(case_id, title):
     return {"case_id": case_id, "title": title, "status": "open",
