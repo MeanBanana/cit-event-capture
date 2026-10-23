@@ -901,8 +901,13 @@ def test_reanalysing_a_merged_submission_merges_it_again(db, w):
 
 
 def test_deleting_a_case_with_people_works(db, w):
+    # Since 20261021120000_root_case_management only the root admin can delete
+    # a case, and only once it's closed.
+    from test_admin_deletes_db import root_admin
     inc, media, case_id, _ = analysed_case(db, w)
-    db.rows("DELETE FROM public.cases WHERE caseid = %s", [case_id], who=w.admin)
+    boss = root_admin(db)
+    db.rows("UPDATE public.cases SET status = 'closed' WHERE caseid = %s", [case_id])
+    db.rpc("delete_closed_case", who=boss, p_caseid=case_id)
     assert db.val("SELECT count(*) FROM public.caseentity") == 0
     cs = db.one("SELECT * FROM public.crimescene WHERE incidentid = %s", [inc])
     assert cs["caseid"] is None and cs["reviewstatus"] == "pending" and not cs["aimerged"]
