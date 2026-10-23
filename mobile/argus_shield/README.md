@@ -49,8 +49,9 @@ lib/
 ├── app_settings.dart, settings_screen.dart
 │                               ← language (English / Afrikaans / Zulu) and dark mode
 ├── sign_out_button.dart        ← logout icon in every dashboard's app bar
-├── case_evidence_section.dart, case_evidence_source.dart, submission_evidence_source.dart
-│                               ← AI summary + people / vehicles / weapons of a case or submission
+├── case_evidence_source.dart, submission_evidence_source.dart
+│                               ← where the AI summary + people / vehicles / weapons come from
+│                                  (the section itself is admin_screens/case_evidence_section.dart)
 ├── supabase_service.dart       ← EVERY call to Supabase goes through here
 ├── theme/
 │   ├── app_theme.dart          ← colours, fonts, text styles, spacing, ThemeData
@@ -113,7 +114,7 @@ test/
 * **Suggested matches**: the green bar above the list opens a review list of submissions that probably belong to an existing case, with the reasons. The admin unticks anything wrong and accepts the rest in one tap. Nothing joins a case before that.
 * **Accept** on a pending submission suggests cases first; "Case not listed? Create a new case" creates one and opens it.
 * **Case page**: submissions as cards, recommended submissions with one-tap Add, remove (never deletes, goes back to Pending), lead investigator (star), and the case history.
-* Every page stays above the phone's navigation buttons (`keepAboveSystemBars` in `theme/argus_widgets.dart`, used as the `builder` in `main.dart` and `citizen/argus_app.dart`).
+* Every page stays above the phone's navigation buttons (`keepAboveSystemBars` in `theme/argus_widgets.dart`, used as the `builder` in `main.dart`).
 
 ## Conventions
 

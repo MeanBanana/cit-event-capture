@@ -6,8 +6,7 @@ import 'citizen_store.dart';
 import 'citizen_dashboard.dart';
 
 // Holds the citizen's store and shows their dashboard. login.dart sends
-// citizens here. (ArgusApp does the same thing but builds its own
-// MaterialApp, so it can't be pushed as a route from login.)
+// citizens here.
 class CitizenHome extends StatefulWidget {
   // tests pass a fake in here, the app just uses the real one
   final SupabaseService? service;
