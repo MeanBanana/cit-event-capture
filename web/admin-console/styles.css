@@ -159,6 +159,21 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
 .tab:hover { color: var(--text); }
 .tab[aria-current="page"] { color: var(--navy); border-bottom-color: var(--navy); font-weight: 600; }
 
+/* --- app download switch */
+.page.switch-wrap { padding-bottom: 0; }
+.switch-wrap ~ .page { padding-top: 16px; }
+.download-switch {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--line-strong);
+  border-radius: var(--radius); padding: 12px 16px; box-shadow: var(--shadow);
+}
+.download-switch[data-state="on"] { border-left-color: var(--success); }
+.download-switch[data-state="off"] { border-left-color: var(--danger); background: var(--danger-soft); }
+.switch-title { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge.on { background: #e8f5ee; color: var(--success); }
+.badge.off { background: var(--danger); color: #fff; }
+.switch-text { min-width: 0; }
+
 /* --- cases */
 .card-head.wrap { flex-wrap: wrap; }
 .segments { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; flex: none; }
@@ -258,6 +273,7 @@ td.actions-col .link { display: block; margin-left: auto; white-space: nowrap; }
   .stats { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .stat { padding: 10px 12px; }
   .stat-value { font-size: 20px; }
+  .download-switch button { width: 100%; }
   .grid2 { grid-template-columns: 1fr; }
   .admins tr { grid-template-columns: 1fr 1fr; padding: 12px 14px; }
   .case-list { padding: 4px 12px 12px; }

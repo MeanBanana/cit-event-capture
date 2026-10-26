@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import QRCode from 'qrcode';
 import {download} from '../content';
 import {useReveals} from '../hooks/useReveals';
+import {apkDownloadEnabled} from '../lib/apk-switch';
 import {detectDevice, type DeviceKind} from '../lib/device';
 
 /**
@@ -12,25 +13,46 @@ import {detectDevice, type DeviceKind} from '../lib/device';
  *   iPhone/iPad     "Android only for now"
  * Netlify also guards the file itself (netlify/edge-functions/apk-guard.ts),
  * so you can't just copy the link onto another device.
+ *
+ * Root can also switch the download off from the admin console (free
+ * Supabase, big demos). Then everyone just gets a "paused" notice.
  */
 export function Download() {
   const ref = useReveals<HTMLElement>();
   const [device, setDevice] = useState<DeviceKind>('desktop');
   const [qr, setQr] = useState<string | null>(null);
+  // null while we're still asking Supabase
+  const [enabled, setEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     setDevice(detectDevice());
+    const abort = new AbortController();
+    apkDownloadEnabled(abort.signal).then((on) => {
+      if (!abort.signal.aborted) setEnabled(on);
+    });
+    return () => abort.abort();
   }, []);
 
+  const paused = enabled === false;
+  const canDownload = device === 'android-phone' && enabled === true;
+
   useEffect(() => {
-    if (device === 'android-phone') return;
+    if (device === 'android-phone' || paused) return;
     const url = `${window.location.origin}/#download`;
     QRCode.toDataURL(url, {margin: 1, width: 360, color: {dark: '#070b14', light: '#ffffff'}})
       .then(setQr)
       .catch(() => setQr(null));
-  }, [device]);
+  }, [device, paused]);
 
-  const notice: Record<Exclude<DeviceKind, 'android-phone'>, {title: string; body: string}> = {
+  const notice: Record<Exclude<DeviceKind, 'android-phone'> | 'paused' | 'checking', {title: string; body: string}> = {
+    paused: {
+      title: 'Downloads are paused',
+      body: 'The app download is switched off for the moment. Check back later to get Argus Shield on your Android phone.',
+    },
+    checking: {
+      title: 'One moment',
+      body: 'Checking whether the download is available.',
+    },
     desktop: {
       title: 'Open this on your Android phone',
       body: 'The app installs on Android phones only. Scan the code with your phone’s camera to open this page there, then tap Download. On your phone already? Switch off “Desktop site” in your browser menu.',
@@ -45,6 +67,8 @@ export function Download() {
     },
   };
 
+  const noticeKey = paused ? 'paused' : device === 'android-phone' ? 'checking' : device;
+
   return (
     <section ref={ref} id="download" aria-labelledby="download-title" className="relative bg-void px-4 pb-28 sm:px-6 md:px-[6vw] md:pb-40">
       <div className="grid gap-12 border-t border-white/10 pt-20 md:grid-cols-2 md:gap-16 md:pt-28">
@@ -55,7 +79,7 @@ export function Download() {
           </h2>
           <p className="mt-5 max-w-[28rem] text-body text-steel/70">{download.body}</p>
 
-          {device === 'android-phone' ? (
+          {canDownload ? (
             <div className="mt-10">
               <a
                 href={download.apk}
@@ -78,18 +102,18 @@ export function Download() {
                 className="flex w-full cursor-not-allowed items-center justify-center gap-3 rounded-[4px] bg-white/10 px-5 py-4 font-mono text-label text-white/40 uppercase sm:w-auto sm:inline-flex"
               >
                 <AndroidIcon className="size-5" />
-                Download · Android phones only
+                {paused ? 'Download · Paused' : 'Download · Android phones only'}
               </button>
               <div id="download-notice" className="mt-5 max-w-[28rem] border-l-2 border-signal pl-4">
-                <p className="font-display text-[0.9375rem] tracking-[0.06em] text-white uppercase">{notice[device].title}</p>
-                <p className="mt-2 text-[0.9375rem] leading-relaxed text-steel/70">{notice[device].body}</p>
+                <p className="font-display text-[0.9375rem] tracking-[0.06em] text-white uppercase">{notice[noticeKey].title}</p>
+                <p className="mt-2 text-[0.9375rem] leading-relaxed text-steel/70">{notice[noticeKey].body}</p>
               </div>
             </div>
           )}
         </div>
 
         <div data-reveal>
-          {device === 'android-phone' ? (
+          {canDownload ? (
             <ol className="space-y-4">
               {download.steps.map((step, i) => (
                 <li key={step} className="flex gap-4">
@@ -98,7 +122,7 @@ export function Download() {
                 </li>
               ))}
             </ol>
-          ) : device === 'desktop' && qr ? (
+          ) : device === 'desktop' && !paused && qr ? (
             <figure className="flex flex-col items-start gap-4 md:items-center">
               <div className="brackets p-4 text-white/30">
                 <img src={qr} alt="QR code that opens this page on your phone" width={220} height={220} className="size-[220px] rounded-[4px]" />

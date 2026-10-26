@@ -58,6 +58,20 @@
       <button type="button" class="tab" data-tab="cases">Cases</button>
     </nav>
 
+    <!-- app download on/off, shown above every tab so it's quick to reach mid-demo -->
+    <div class="page switch-wrap">
+      <section class="download-switch" id="download-switch" data-state="loading">
+        <div class="switch-text">
+          <div class="switch-title">
+            Android app download
+            <span id="download-state" class="badge normal">Checking…</span>
+          </div>
+          <div id="download-note" class="sub">Whether people can download the APK from the website.</div>
+        </div>
+        <button id="download-toggle" class="ghost" type="button" disabled>…</button>
+      </section>
+    </div>
+
     <main class="page" id="admins-page">
       <section class="page-head">
         <div>

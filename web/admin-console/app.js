@@ -4,7 +4,8 @@
 // back as 'root' or we sign you straight out again. From there root can list
 // admins, create new ones (create-admin, with a temp password they change on
 // first sign-in), change an admin's station, remove admins (manage-admin),
-// and see all cases and delete closed ones.
+// see all cases and delete closed ones, and switch the APK download on the
+// website on or off.
 //
 // Nothing here is the actual security. The database and Edge Functions
 // enforce every rule, the checks in this file are just there to give nicer
@@ -175,8 +176,71 @@
     $("me-name").textContent = me.name || me.username;
     show("console");
     openTab("admins");
+    loadDownloadSwitch();
     await loadAdmins();
   }
+
+  // --- app download switch
+  // Turns the APK download on the website on or off (we're on free Supabase,
+  // so it goes off when we demo to a big crowd). The website and the Netlify
+  // guard in front of the APK both read the same setting.
+  let downloadEnabled = null;
+
+  function renderDownloadSwitch(state) {
+    const box = $("download-switch");
+    const badge = $("download-state");
+    const note = $("download-note");
+    const button = $("download-toggle");
+    box.dataset.state = state;
+    if (state === "loading" || state === "error") {
+      badge.className = "badge normal";
+      badge.textContent = state === "loading" ? "Checking…" : "Unknown";
+      note.textContent = state === "loading"
+        ? "Whether people can download the APK from the website."
+        : "Could not check the setting. Try again.";
+      button.className = "ghost";
+      button.textContent = "Try again";
+      button.disabled = state === "loading";
+      return;
+    }
+    const on = state === "on";
+    badge.className = "badge " + state;
+    badge.textContent = on ? "On" : "Off";
+    note.textContent = on
+      ? "Anyone on an Android phone can download the APK from the website."
+      : "The Download button on the website is switched off and the APK link is blocked.";
+    button.className = on ? "danger" : "primary";
+    button.textContent = on ? "Disable download" : "Enable download";
+    button.disabled = false;
+  }
+
+  async function loadDownloadSwitch() {
+    renderDownloadSwitch("loading");
+    const { data, error } = await sb.rpc("apk_download_enabled");
+    if (error) {
+      downloadEnabled = null;
+      renderDownloadSwitch("error");
+      return;
+    }
+    downloadEnabled = data !== false;
+    renderDownloadSwitch(downloadEnabled ? "on" : "off");
+  }
+
+  $("download-toggle").addEventListener("click", async () => {
+    if (downloadEnabled === null) return loadDownloadSwitch();
+    const button = $("download-toggle");
+    const next = !downloadEnabled;
+    busy(button, true, next ? "Enabling…" : "Disabling…");
+    const { data, error } = await sb.rpc("set_apk_download_enabled", { p_enabled: next });
+    if (error) {
+      busy(button, false);
+      toast(await messageOf(error, "Could not change the download setting."));
+      return;
+    }
+    downloadEnabled = data !== false;
+    renderDownloadSwitch(downloadEnabled ? "on" : "off");
+    toast(downloadEnabled ? "App download enabled" : "App download disabled");
+  });
 
   function openTab(name) {
     document.querySelectorAll(".tab").forEach((tab) => {
