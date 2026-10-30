@@ -48,6 +48,9 @@ class CaseEvidenceSection extends StatefulWidget {
   /// Shown when the AI hasn't found anything (yet).
   final String emptyText;
 
+  /// Passed on to the pictures page's app bar.
+  final String roleLabel;
+
   const CaseEvidenceSection({
     super.key,
     required this.caseId,
@@ -58,6 +61,7 @@ class CaseEvidenceSection extends StatefulWidget {
     this.belowSummary,
     this.perSubmission = false,
     this.emptyText = 'No AI analysis for this case yet.',
+    this.roleLabel = 'Admin',
   });
 
   @override
@@ -99,6 +103,7 @@ class _CaseEvidenceSectionState extends State<CaseEvidenceSection> {
           caseId: widget.caseId,
           entityId: entity.entityId,
           source: _source,
+          roleLabel: widget.roleLabel,
         ),
       ),
     );

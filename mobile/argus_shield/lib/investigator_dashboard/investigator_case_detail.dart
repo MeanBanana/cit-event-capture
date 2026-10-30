@@ -261,6 +261,7 @@ class _InvestigatorCaseDetailPageState
             caseId: current.caseId,
             source: CaseEvidenceSource.standard,
             title: appSettings.t('aiSummaryTab'),
+            roleLabel: 'Investigator',
           )
         else
           Text(

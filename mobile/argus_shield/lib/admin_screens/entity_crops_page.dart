@@ -29,12 +29,16 @@ class EntityCropsPage extends StatefulWidget {
   final int? detectionId;
   final CaseEvidenceSource source;
 
+  /// Shown in the app bar, so investigators don't see "ADMIN" here.
+  final String roleLabel;
+
   const EntityCropsPage({
     super.key,
     required this.caseId,
     this.entityId,
     this.detectionId,
     required this.source,
+    this.roleLabel = 'Admin',
   }) : assert(entityId != null || detectionId != null);
 
   @override
@@ -160,7 +164,7 @@ class _EntityCropsPageState extends State<EntityCropsPage> {
   Widget build(BuildContext context) {
     final e = _entity;
     return Scaffold(
-      appBar: const ArgusAppBar(roleLabel: 'Admin'),
+      appBar: ArgusAppBar(roleLabel: widget.roleLabel),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : e == null

@@ -150,6 +150,7 @@ class _CrimeScenePageState extends State<CrimeScenePage> {
           caseId: widget.incidentId,
           detectionId: d.detectionId,
           source: source,
+          roleLabel: widget.roleLabel,
         ),
       ),
     );

@@ -109,7 +109,16 @@ class RoleAppBar extends StatelessWidget implements PreferredSizeWidget {
             children: [
               _RoleMarkerIcon(marker: marker),
               const SizedBox(width: 8),
-              Text(roleLabel.toUpperCase(), style: AppText.caption),
+              // Flexible + ellipsis: long labels like "SYSTEM ADMINISTRATOR"
+              // overflowed narrow screens by 50px (Deliverable 5, bug 11.B1).
+              Flexible(
+                child: Text(
+                  roleLabel.toUpperCase(),
+                  style: AppText.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 2),

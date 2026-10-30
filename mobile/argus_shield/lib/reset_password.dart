@@ -153,7 +153,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
                 const SizedBox(height: AppSpacing.large),
 
-                FieldLabel(appSettings.t('newPassword')),
+                FieldLabel(appSettings.t('newPasswordLabel')),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: !_showPassword,

@@ -239,6 +239,7 @@ class AppSettings extends ChangeNotifier {
         'choosePasswordBody':
             'You signed in with a temporary password. Choose your own password to continue.',
         'newPasswordBody': 'Choose a new password for your Argus Shield account.',
+        'newPasswordLabel': 'New password',
         'confirmNewPassword': 'Confirm new password',
         'savePassword': 'Save Password',
         'cancel': 'Cancel',
@@ -472,6 +473,7 @@ class AppSettings extends ChangeNotifier {
         'choosePasswordBody':
             'Jy het met ’n tydelike wagwoord aangemeld. Kies jou eie wagwoord om voort te gaan.',
         'newPasswordBody': 'Kies ’n nuwe wagwoord vir jou Argus Shield-rekening.',
+        'newPasswordLabel': 'Nuwe wagwoord',
         'confirmNewPassword': 'Bevestig nuwe wagwoord',
         'savePassword': 'Stoor wagwoord',
         'cancel': 'Kanselleer',
@@ -705,6 +707,7 @@ class AppSettings extends ChangeNotifier {
         'choosePasswordBody':
             'Ungene ngephasiwedi yesikhashana. Khetha iphasiwedi yakho ukuze uqhubeke.',
         'newPasswordBody': 'Khetha iphasiwedi entsha ye-akhawunti yakho ye-Argus Shield.',
+        'newPasswordLabel': 'Iphasiwedi entsha',
         'confirmNewPassword': 'Qinisekisa iphasiwedi entsha',
         'savePassword': 'Londoloza iphasiwedi',
         'cancel': 'Khansela',
